@@ -287,7 +287,7 @@ def call_claude(prompt, max_tokens=2000):
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}]
         },
-        timeout=60
+        timeout=25  # Under Railway's 30s request timeout
     )
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
@@ -526,6 +526,27 @@ def index():
     return render_template_string(HTML)
 
 
+# ── Railway timeout protection ───────────────────────────────────────────────
+# Railway terminates requests after 30s. We use a thread + timeout pattern.
+import threading
+
+def run_with_timeout(func, args=(), kwargs={}, timeout_seconds=28):
+    """Run a function with a timeout. Returns (result, error)."""
+    result = [None]
+    error = [None]
+    def target():
+        try:
+            result[0] = func(*args, **kwargs)
+        except Exception as e:
+            error[0] = str(e)
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout_seconds)
+    if t.is_alive():
+        return None, "Analysis timed out. The repo may be too large. Try using ZIP upload with fewer files."
+    return result[0], error[0]
+
+
 @app.route("/fetch", methods=["POST"])
 def fetch_files():
     """Fetch and cache files. Called first before any analysis step."""
@@ -597,7 +618,8 @@ def run_step2():
             return jsonify({"error":"Session expired. Please start a new analysis."}), 400
 
         repo_name = cache_key.replace("zip_","").replace("url_","")
-        result = step2_security(files, repo_name)
+        result, err = run_with_timeout(step2_security, args=(files, repo_name))
+        if err: return jsonify({"error": err}), 500
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -614,7 +636,8 @@ def run_step3():
             return jsonify({"error":"Session expired. Please start a new analysis."}), 400
 
         repo_name = cache_key.replace("zip_","").replace("url_","")
-        result = step3_api_frontend(files, repo_name)
+        result, err = run_with_timeout(step3_api_frontend, args=(files, repo_name))
+        if err: return jsonify({"error": err}), 500
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -729,6 +752,13 @@ input:focus{border-color:var(--pu)}
 .p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
 .bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
+@media print{
+  .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner{display:none!important}
+  .rpt{display:block!important}
+  body{background:white;padding:0}
+  .wrap{max-width:100%;padding:1rem}
+  .ca{min-height:auto}
+}
 </style>
 </head>
 <body>
@@ -1082,11 +1112,31 @@ input:focus{border-color:var(--pu)}
     <div style="display:flex;align-items:center;gap:8px">
       <i class="ti ti-topology-star" style="font-size:16px;color:var(--pu)"></i>
       <span style="font-size:13px;font-weight:500;color:var(--pu)">Verilay</span>
-      <span style="font-size:11px;color:var(--mut)">Report ready</span>
+      <span style="font-size:11px;color:var(--mut)" id="report-status">Report ready</span>
     </div>
-    <button class="btn-sm" id="btn-new">
-      <i class="ti ti-plus" style="font-size:13px"></i> New analysis
-    </button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="btn-save-report" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
+        <i class="ti ti-link" style="font-size:12px"></i> Share link
+      </button>
+      <button id="btn-export-md" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
+        <i class="ti ti-download" style="font-size:12px"></i> Export .md
+      </button>
+      <button id="btn-print" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
+        <i class="ti ti-printer" style="font-size:12px"></i> Print / PDF
+      </button>
+      <button class="btn-sm" id="btn-new">
+        <i class="ti ti-plus" style="font-size:13px"></i> New analysis
+      </button>
+    </div>
+  </div>
+  <!-- Share link banner -->
+  <div id="share-banner" style="display:none;background:var(--grl);border-radius:var(--r);padding:.65rem 1rem;margin-bottom:.75rem;display:none;align-items:center;gap:10px">
+    <i class="ti ti-check" style="color:var(--grt);font-size:16px;flex-shrink:0"></i>
+    <div style="flex:1">
+      <div style="font-size:12px;font-weight:500;color:var(--grt);margin-bottom:3px">Report saved — shareable link ready</div>
+      <input id="share-url" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:11px;font-family:var(--mono);background:white;color:var(--txt)">
+    </div>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('share-url').value)" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer">Copy</button>
   </div>
 
   <div id="report-content"></div>
@@ -1215,6 +1265,59 @@ var currentLayers = {};
 var activeLayer = null;
 var activeMode = 'expert';
 
+var savedReportId = null;
+
+async function saveReport() {
+  var btn = document.getElementById('btn-save-report');
+  if (!btn) return;
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    // Collect all current data
+    var reportData = Object.assign({}, currentReport || {});
+    reportData.layers = Object.values(currentLayers);
+    if (window._step4Data) {
+      reportData.top_fixes = window._step4Data.top_fixes || [];
+      reportData.second_opinion = window._step4Data.second_opinion || {};
+      reportData.security_score = window._step4Data.security_score || {};
+    }
+
+    var resp = await fetch('/save-report', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(reportData)
+    });
+    var data = await resp.json();
+    if (data.report_id) {
+      savedReportId = data.report_id;
+      var shareUrl = window.location.origin + '/report/' + data.report_id;
+      document.getElementById('share-url').value = shareUrl;
+      document.getElementById('share-banner').style.display = 'flex';
+      btn.innerHTML = '<i class="ti ti-check" style="font-size:12px"></i> Saved';
+      btn.style.color = 'var(--grt)';
+    }
+  } catch(e) {
+    btn.textContent = 'Save failed';
+    btn.disabled = false;
+  }
+}
+
+function exportMarkdown() {
+  if (!savedReportId) {
+    // Save first then download
+    saveReport().then(function() {
+      setTimeout(function() {
+        if (savedReportId) {
+          window.location.href = '/export/markdown/' + savedReportId;
+        }
+      }, 1000);
+    });
+    return;
+  }
+  window.location.href = '/export/markdown/' + savedReportId;
+}
+
 function init() {
   // Method cards
   ['github','zip','url'].forEach(function(m) {
@@ -1240,6 +1343,18 @@ function init() {
   if (btnNew) btnNew.addEventListener('click', resetForm);
   var btnNew2 = document.getElementById('btn-new2');
   if (btnNew2) btnNew2.addEventListener('click', resetForm);
+
+  // Save report / share link
+  var btnSave = document.getElementById('btn-save-report');
+  if (btnSave) btnSave.addEventListener('click', saveReport);
+
+  // Export markdown
+  var btnMd = document.getElementById('btn-export-md');
+  if (btnMd) btnMd.addEventListener('click', exportMarkdown);
+
+  // Print / PDF
+  var btnPrint = document.getElementById('btn-print');
+  if (btnPrint) btnPrint.addEventListener('click', function() { window.print(); });
 
   // Part 2 buttons
   var btnP2 = document.getElementById('btn-p2');
@@ -1526,7 +1641,9 @@ async function runSteps23() {
       body: JSON.stringify({ cache_key: cacheKey })
     });
     var s2data = await s2resp.json();
-    if (!s2data.error && s2data.layers) {
+    if (s2data.error) {
+      showLayerError('Security layer analysis timed out. Try again or use ZIP upload.');
+    } else if (s2data.layers) {
       appendLayers(s2data.layers);
     }
 
@@ -1538,7 +1655,9 @@ async function runSteps23() {
       body: JSON.stringify({ cache_key: cacheKey })
     });
     var s3data = await s3resp.json();
-    if (!s3data.error && s3data.layers) {
+    if (s3data.error) {
+      showLayerError('API layer analysis timed out. The stack map above is still accurate.');
+    } else if (s3data.layers) {
       appendLayers(s3data.layers);
     }
 
@@ -1850,10 +1969,19 @@ async function runPart2() {
       document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">' + esc(data.error) + '</div>';
       return;
     }
+    window._step4Data = data;
     renderPart2(data);
   } catch(e) {
     document.getElementById('p2-loading').style.display = 'none';
     document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">Deep analysis failed. Please try again.</div>';
+  }
+}
+
+function showLayerError(msg) {
+  var loadingEl = document.getElementById('layers-loading');
+  if (loadingEl) {
+    loadingEl.innerHTML = '<i class="ti ti-alert-triangle" style="font-size:13px;color:var(--ort);flex-shrink:0"></i><span style="font-size:11px;color:var(--ort)">' + msg + '</span>';
+    loadingEl.style.display = 'flex';
   }
 }
 
@@ -1970,6 +2098,102 @@ document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>"""
+
+
+# ── Report storage & export ───────────────────────────────────────────────────
+import uuid as _uuid
+_reports = {}
+REPORT_TTL = 86400  # 24 hours
+
+def generate_markdown(data):
+    repo = data.get("repo","unknown")
+    h = data.get("health",{})
+    pr = data.get("prod_ready",{})
+    lines = []
+    lines.append("# Verilay Report: " + repo)
+    lines.append("Generated: " + data.get("generated_at",""))
+    lines.append("")
+    lines.append("## Production Verdict")
+    verdict_map = {"ready":"Production Ready","needs_work":"Needs Work","not_ready":"Not Production Ready"}
+    lines.append("**" + verdict_map.get(pr.get("verdict","needs_work"),"Needs Work") + "** (" + pr.get("confidence","?") + " confidence)")
+    lines.append(pr.get("reason",""))
+    lines.append("")
+    lines.append("## Health Score: " + str(h.get("score","?")))
+    lines.append("- Critical: " + str(h.get("critical",0)))
+    lines.append("- Warnings: " + str(h.get("warnings",0)))
+    lines.append("- Passing: " + str(h.get("passing",0)))
+    lines.append("")
+    lines.append("## Tech Stack")
+    for s in data.get("stack",[]):
+        lines.append("- **" + s.get("name","") + " " + s.get("version","") + "** (" + s.get("category","") + ") - " + s.get("plain_english",""))
+    lines.append("")
+    lines.append("## Layers")
+    for layer in data.get("layers",[]):
+        lines.append("### " + layer.get("name","") + " - " + layer.get("status","").upper())
+        ex = layer.get("expert",{})
+        if ex.get("summary"):
+            lines.append("**Expert:** " + ex.get("summary",""))
+        for f2 in ex.get("findings",[]):
+            sev = {"critical":"CRITICAL","warning":"WARNING","passing":"OK"}.get(f2.get("severity","info"),"INFO")
+            lines.append("**" + sev + ": " + f2.get("title","") + "** - " + f2.get("detail",""))
+        lrn = layer.get("learner",{})
+        if lrn.get("what_is_it"):
+            lines.append("**Plain English:** " + lrn.get("what_is_it",""))
+        lines.append("")
+    for fix in data.get("top_fixes",[]):
+        lines.append("### Fix " + str(fix.get("priority","")) + ": " + fix.get("title",""))
+        lines.append("**Why:** " + fix.get("why_it_matters",""))
+        lines.append("**How:** " + fix.get("how_to_fix",""))
+        lines.append("**Effort:** " + fix.get("estimated_effort",""))
+        lines.append("")
+    so = data.get("second_opinion",{})
+    if so.get("summary_prompt"):
+        lines.append("## Second Opinion Prompts")
+        lines.append("### General Review")
+        lines.append("```")
+        lines.append(so.get("summary_prompt",""))
+        lines.append("```")
+        lines.append("### Security")
+        lines.append("```")
+        lines.append(so.get("security_prompt",""))
+        lines.append("```")
+    lines.append("---")
+    lines.append("*Generated by [Verilay](https://verilay.dev)*")
+    return "\n".join(lines)
+
+
+@app.route("/save-report", methods=["POST"])
+def save_report():
+    try:
+        data = request.get_json()
+        report_id = _uuid.uuid4().hex[:12]
+        _reports[report_id] = {"data": data, "saved_at": time.time()}
+        expired = [k for k,v in _reports.items() if time.time()-v["saved_at"] > REPORT_TTL]
+        for k in expired: del _reports[k]
+        return jsonify({"report_id": report_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/report/<report_id>")
+def view_report(report_id):
+    entry = _reports.get(report_id)
+    if not entry:
+        return "<h2 style='font-family:sans-serif;padding:2rem;color:#666'>Report not found or expired (reports are kept for 24 hours).</h2>", 404
+    saved_data = json.dumps(entry["data"])
+    extra = "<script>window.addEventListener('load',function(){try{var d=" + saved_data + ";renderReport(d);if(d.top_fixes&&d.top_fixes.length)renderPart2(d);}catch(e){console.error(e);}});</script>"
+    return render_template_string(HTML + extra)
+
+
+@app.route("/export/markdown/<report_id>")
+def export_markdown(report_id):
+    entry = _reports.get(report_id)
+    if not entry:
+        return "Report not found", 404
+    md = generate_markdown(entry["data"])
+    from flask import Response
+    return Response(md, mimetype="text/markdown",
+        headers={"Content-Disposition": "attachment; filename=verilay-" + report_id + ".md"})
 
 
 if __name__ == "__main__":
