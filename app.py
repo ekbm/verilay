@@ -131,88 +131,14 @@ def read_from_url(live_url):
 
 # ── Analyser ─────────────────────────────────────────────────────────────────
 
-def analyse(files, repo_name, input_method, all_file_list):
+def call_claude(prompt, max_tokens=4000):
+    """Single Claude API call with clean JSON parsing."""
     if not ANTHROPIC_API_KEY:
-        raise ValueError("No ANTHROPIC_API_KEY in .env — get one at console.anthropic.com")
-
-    files_text = "".join(f"\n\n=== FILE: {p} ===\n{c}" for p, c in files.items())
-    file_tree  = "\n".join(all_file_list[:80]) if all_file_list else "Not available"
-
-    surface_note = "\nIMPORTANT: SURFACE SCAN — source not available, analyse compiled HTML only." if input_method=="url" else ""
-
-    prompt = f"""You are Verilay, a codebase analysis tool for non-developers who built apps with Lovable, Replit, or Emergent.
-Input: {input_method} | Repo: {repo_name}{surface_note}
-
-FILE TREE (first 80 entries):
-{file_tree}
-
-FILES CONTENT:
-{files_text}
-
-Return ONLY valid JSON (absolutely no markdown fences, no text outside the JSON):
-{{
-  "repo": "{repo_name}",
-  "input_method": "{input_method}",
-  "summary": "One sentence: what does this app do?",
-  "built_with": "Which AI platform and why",
-  "analysis_depth": "full or surface",
-  "prod_ready": {{
-    "verdict": "ready|needs_work|not_ready",
-    "confidence": "high|medium|low",
-    "reason": "One sentence verdict for a non-developer"
-  }},
-  "stack": [
-    {{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"what it does in one sentence"}}
-  ],
-  "health": {{"critical":0,"warnings":0,"passing":0,"score":"A|B|C|D|F"}},
-  "layers": [
-    {{
-      "name": "Auth|Database|API|Frontend|Libraries|Config|File Handling",
-      "status": "critical|warning|passing",
-      "expert": {{
-        "summary": "Technical summary",
-        "findings": [
-          {{"severity":"critical|warning|info|passing","title":"","detail":"specific technical finding","file":"filename if relevant","why_it_matters":"why a non-developer should care about this","code_to_verify":"the specific code snippet or pattern to copy and verify externally (max 20 lines, or empty string if not applicable)"}}
-        ]
-      }},
-      "learner": {{
-        "what_is_it": "Plain English: what is this layer and why does every app need it?",
-        "analogy": "A real-world analogy that explains this layer (e.g. Auth is like a bouncer at a club)",
-        "what_it_does_in_your_app": "Specifically what this layer does in THIS app",
-        "how_it_connects": "How this layer connects to the other layers (e.g. Auth talks to the Database to check passwords)",
-        "key_concept": "The single most important concept a non-developer should understand about this layer",
-        "findings_plain": [
-          {{"severity":"critical|warning|passing","plain_title":"","plain_detail":"explanation any person can understand","real_world_impact":"what could actually go wrong for real users if this is not fixed","action":"specific step-by-step thing they should do"}}
-        ]
-      }},
-      "quiz": [
-        {{"question":"A quick-check question to test understanding of this layer","answer":"The correct answer","why":"Why this matters"}}
-      ]
-    }}
-  ],
-  "top_fixes": [
-    {{"priority":1,"title":"","why_it_matters":"","how_to_fix":"","estimated_effort":"5 minutes|30 minutes|1 hour|1 day","code_to_copy":"relevant code snippet to paste into another AI for verification (or empty string)"}}
-  ],
-  "second_opinion": {{
-    "summary_prompt": "A complete prompt the user can copy and paste into Claude, ChatGPT, or any AI to get a second opinion on this codebase. Include the key findings and ask the AI to verify them. Should be self-contained.",
-    "security_prompt": "A focused prompt specifically asking another AI to verify the security findings",
-    "prod_checklist_prompt": "A prompt asking another AI: is this app ready for production? Include context about what was built and what Verilay found."
-  }},
-  "security_score": {{
-    "env_secrets_exposed": false,
-    "auth_properly_configured": true,
-    "rls_likely_configured": true,
-    "dependencies_current": true,
-    "no_hardcoded_secrets": true
-  }}
-}}
-
-Be thorough and genuinely useful. The learner sections should teach real understanding, not just describe. The second_opinion prompts should be complete and self-contained — a user should be able to copy them directly into any AI tool and get a useful verification response."""
-
+        raise ValueError("No ANTHROPIC_API_KEY in .env")
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-        json={"model":"claude-sonnet-4-5","max_tokens":8000,"messages":[{"role":"user","content":prompt}]}
+        json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"messages":[{"role":"user","content":prompt}]}
     )
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
@@ -220,19 +146,48 @@ Be thorough and genuinely useful. The learner sections should teach real underst
         raw = raw.split("```")[1]
         if raw.startswith("json"): raw = raw[4:]
     if raw.endswith("```"): raw = raw.rsplit("```",1)[0]
-    raw = raw.strip()
-    # Handle truncated JSON by finding the last complete top-level key
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # Try to recover by truncating to last valid closing brace
-        for i in range(len(raw)-1, 0, -1):
-            if raw[i] == '}':
-                try:
-                    return json.loads(raw[:i+1])
-                except json.JSONDecodeError:
-                    continue
-        raise ValueError("Could not parse response from Claude. Please try again.")
+    return json.loads(raw.strip())
+
+
+def analyse(files, repo_name, input_method, all_file_list):
+    """Part 1 — Stack, health, production verdict, layers. Fast, fits in 4000 tokens."""
+    files_text = "".join(f"\n\n=== FILE: {p} ===\n{c}" for p, c in files.items())
+    file_tree  = "\n".join(all_file_list[:60]) if all_file_list else "Not available"
+    surface_note = "\nSURFACE SCAN only — analyse compiled HTML." if input_method=="url" else ""
+
+    prompt = f"""You are Verilay, a codebase analysis tool for non-developers.
+Input: {input_method} | Repo: {repo_name}{surface_note}
+
+FILE TREE: {file_tree}
+FILES: {files_text}
+
+Return ONLY valid compact JSON — no markdown, no extra text:
+{{"repo":"{repo_name}","input_method":"{input_method}","summary":"one sentence","built_with":"platform and why","analysis_depth":"full or surface","prod_ready":{{"verdict":"ready|needs_work|not_ready","confidence":"high|medium|low","reason":"one sentence"}},"stack":[{{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"one sentence"}}],"health":{{"critical":0,"warnings":0,"passing":0,"score":"A|B|C|D|F"}},"layers":[{{"name":"Auth|Database|API|Frontend|Libraries|Config|File Handling","status":"critical|warning|passing","expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}}]}},"learner":{{"what_is_it":"2 sentences","analogy":"one sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"one sentence","key_concept":"one sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}}]}},"quiz":[{{"question":"","answer":"","why":""}}]}}]}}
+
+Keep all text fields SHORT — 1-2 sentences max. Identify 4-6 layers only."""
+
+    result = call_claude(prompt, max_tokens=4000)
+    result["part2_loaded"] = False
+    result["top_fixes"] = []
+    result["second_opinion"] = {}
+    result["security_score"] = {}
+    return result
+
+
+def analyse_part2(files, repo_name, findings_summary):
+    """Part 2 — Fix list, second opinion prompts, security score. User triggered."""
+    files_text = "".join(f"\n\n=== FILE: {p} ===\n{c}" for p, c in list(files.items())[:8])
+
+    prompt = f"""You are Verilay continuing analysis of: {repo_name}
+Key findings from part 1: {findings_summary}
+Files sample: {files_text}
+
+Return ONLY valid compact JSON:
+{{"top_fixes":[{{"priority":1,"title":"","why_it_matters":"one sentence","how_to_fix":"2-3 steps","estimated_effort":"5 minutes|30 minutes|1 hour|1 day","code_to_copy":""}}],"second_opinion":{{"summary_prompt":"Complete self-contained prompt to paste into any AI to verify Verilay findings about {repo_name}","security_prompt":"Complete prompt to verify security findings","prod_checklist_prompt":"Complete prompt asking: is {repo_name} ready for production?"}},"security_score":{{"env_secrets_exposed":false,"auth_properly_configured":true,"rls_likely_configured":true,"dependencies_current":true,"no_hardcoded_secrets":true}}}}
+
+Top fixes: 3-5 items. Keep text SHORT."""
+
+    return call_claude(prompt, max_tokens=3000)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -262,6 +217,20 @@ def run_analysis():
         result = analyse(files, name, method, tree)
         result["files_read"] = len(files)
         result["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/analyse-part2", methods=["POST"])
+def run_analysis_part2():
+    """Part 2 triggered by user after reviewing Part 1."""
+    try:
+        data = request.get_json()
+        repo_name = data.get("repo_name","")
+        findings_summary = data.get("findings_summary","")
+        files_cache = data.get("files_cache", {})
+        result = analyse_part2(files_cache, repo_name, findings_summary)
+        result["part2_loaded"] = True
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -493,6 +462,35 @@ input:focus{border-color:var(--pu)}
     </button>
   </div>
   <div id="rc"></div>
+
+  <!-- Part 2 prompt banner -->
+  <div id="part2-banner" style="display:none;margin-top:1.25rem;background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete — ready for the deep analysis?</div>
+        <div style="font-size:12px;color:var(--put);line-height:1.55;margin-bottom:.85rem">You've seen your stack, layers, and findings. Part 2 goes deeper — <strong>fix list with effort estimates</strong>, <strong>second opinion prompts</strong> to verify in Claude or ChatGPT, and your full <strong>security checklist</strong>. Takes another 15–20 seconds.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="loadPart2()" id="part2-btn" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
+            <i class="ti ti-chevron-right" style="font-size:13px"></i> Yes, run Part 2
+          </button>
+          <button onclick="document.getElementById('part2-banner').style.display='none'" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:12px;cursor:pointer">
+            Skip for now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Part 2 loading -->
+  <div id="part2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
+    <div style="width:28px;height:28px;border:2.5px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto .75rem"></div>
+    <div style="font-size:13px;color:var(--mut)" id="p2msg">Running deep analysis...</div>
+  </div>
+
+  <!-- Part 2 results injected here -->
+  <div id="part2-results"></div>
+
   <div style="margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center">
     <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
     <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Run Verilay on any GitHub repo, ZIP file, or live URL</div>
@@ -593,6 +591,10 @@ function reset(){
   document.getElementById('fs').style.display='block';
   document.getElementById('ab').disabled=false;
   layers={};activeLayer=null;mode='expert';
+  currentReport=null; currentFilesCache={};
+  document.getElementById('part2-banner').style.display='none';
+  document.getElementById('part2-loading').style.display='none';
+  document.getElementById('part2-results').innerHTML='';
 }
 
 /* ── render ──────────────────────────────────────────── */
@@ -711,6 +713,14 @@ function render(data){
   document.getElementById('rc').innerHTML=html;
   document.getElementById('rpt').classList.add('vis');
   setTimeout(()=>{var f=document.querySelector('.lb');if(f)f.click();},50);
+
+  // Store for part 2
+  currentReport = data;
+
+  // Show part 2 banner if not surface scan
+  if(data.analysis_depth !== 'surface'){
+    document.getElementById('part2-banner').style.display='block';
+  }
 }
 
 function showTab(id,btn){
@@ -788,6 +798,97 @@ function revealQuiz(i){
 
 function esc(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Part 2 ────────────────────────────────────────────────────────────────────
+var currentReport = null;
+var currentFilesCache = {};
+
+async function loadPart2(){
+  var btn = document.getElementById('part2-btn');
+  if(btn) btn.disabled = true;
+  document.getElementById('part2-banner').style.display='none';
+  document.getElementById('part2-loading').style.display='block';
+
+  var msgs = ['Running deep analysis...','Building fix list...','Writing second opinion prompts...','Generating security checklist...'];
+  var mi=0;
+  var iv = setInterval(()=>{
+    mi=(mi+1)%msgs.length;
+    var el = document.getElementById('p2msg');
+    if(el) el.textContent = msgs[mi];
+  }, 3000);
+
+  // Build a short findings summary from part1
+  var summary = '';
+  if(currentReport){
+    var h = currentReport.health||{};
+    summary = 'Health: '+h.critical+' critical, '+h.warnings+' warnings, score '+h.score+'. ';
+    summary += 'Stack: '+(currentReport.stack||[]).slice(0,5).map(s=>s.name).join(', ')+'. ';
+    summary += 'Layers: '+(currentReport.layers||[]).map(l=>l.name+' ('+l.status+')').join(', ');
+  }
+
+  try {
+    var resp = await fetch('/analyse-part2', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        repo_name: currentReport ? currentReport.repo : '',
+        findings_summary: summary,
+        files_cache: currentFilesCache
+      })
+    });
+    var data = await resp.json();
+    clearInterval(iv);
+    document.getElementById('part2-loading').style.display='none';
+    if(data.error){
+      document.getElementById('part2-results').innerHTML='<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">'+data.error+'</div>';
+      return;
+    }
+    renderPart2(data);
+  } catch(e) {
+    clearInterval(iv);
+    document.getElementById('part2-loading').style.display='none';
+    document.getElementById('part2-results').innerHTML='<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">Part 2 failed. Please try again.</div>';
+  }
+}
+
+function renderPart2(data){
+  var html = '<div style="margin-top:1rem">';
+
+  // Security checklist
+  var sec = data.security_score||{};
+  var checks=[['env_secrets_exposed','No secrets in .env committed',true],['auth_properly_configured','Auth properly configured',false],['rls_likely_configured','Row Level Security configured',false],['dependencies_current','Dependencies are current',false],['no_hardcoded_secrets','No hardcoded secrets in code',false]];
+  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Security checklist</div>';
+  checks.forEach(([k,label,inv])=>{
+    var v=sec[k]; var pass=(v===null||v===undefined)?null:(inv?!v:v);
+    var bg,clr,ico;
+    if(pass===true){bg='var(--grl)';clr='var(--grt)';ico='ti-circle-check';}
+    else if(pass===false){bg='var(--rdl)';clr='var(--rdt)';ico='ti-alert-circle';}
+    else{bg='#F1EFE8';clr='#5F5E5A';ico='ti-minus';}
+    html+=`<div style="border-radius:8px;padding:.55rem .85rem;margin-bottom:5px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;background:${bg};color:${clr}"><i class="ti ${ico}" style="font-size:14px"></i>${label}</div>`;
+  });
+
+  // Fix list
+  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Fix list — most urgent first</div>';
+  (data.top_fixes||[]).forEach(f=>{
+    var effortColors={'5 minutes':'var(--grl):var(--grt)','30 minutes':'var(--pul):var(--put)','1 hour':'var(--orl):var(--ort)','1 day':'var(--rdl):var(--rdt)'};
+    var ec=(effortColors[f.estimated_effort]||'#F1EFE8:#5F5E5A').split(':');
+    var codeHtml = f.code_to_copy ? `<div style="margin-top:6px;background:var(--bg);border-radius:6px;padding:6px 8px;font-size:11px;font-family:var(--mono);color:var(--mut);white-space:pre-wrap;word-break:break-all">${esc(f.code_to_copy)}</div><button onclick="navigator.clipboard.writeText(${JSON.stringify(f.code_to_copy||'')})" style="font-size:10px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer;margin-top:4px">Copy snippet</button>` : '';
+    html+=`<div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start"><div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">${f.priority||''}</div><div style="flex:1"><div style="font-size:13px;font-weight:500;margin-bottom:3px">${esc(f.title||'')}</div><div style="font-size:12px;color:var(--mut);margin-bottom:4px;line-height:1.4">${esc(f.why_it_matters||'')}</div><div style="font-size:11px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:5px">${esc(f.how_to_fix||'')}</div><span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;background:${ec[0]};color:${ec[1]}">${f.estimated_effort||'varies'}</span>${codeHtml}</div></div>`;
+  });
+
+  // Second opinion
+  var so = data.second_opinion||{};
+  var soItems = [['General second opinion',so.summary_prompt,'ti-message-dots'],['Security verification',so.security_prompt,'ti-shield-check'],['Production readiness',so.prod_checklist_prompt,'ti-rocket']];
+  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Second opinion — verify with any AI</div>';
+  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem;line-height:1.5">Copy any prompt below into Claude, ChatGPT, or share with a developer to independently verify Verilay's findings.</div>';
+  soItems.forEach(([title,prompt,icon])=>{
+    if(!prompt) return;
+    html+=`<div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px"><div style="font-size:12px;font-weight:500;margin-bottom:.4rem;display:flex;align-items:center;gap:6px"><i class="ti ${icon}" style="font-size:14px;color:var(--pu)"></i>${title}</div><div style="background:var(--bg);border-radius:6px;padding:.6rem .75rem;font-size:11px;font-family:var(--mono);color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:150px;overflow-y:auto;line-height:1.5">${esc(prompt)}</div><div style="display:flex;gap:6px;margin-top:.5rem"><button onclick="navigator.clipboard.writeText(${JSON.stringify(prompt||'')})" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">Copy prompt</button><a href="https://claude.ai" target="_blank" style="font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open Claude</a><a href="https://chat.openai.com" target="_blank" style="font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open ChatGPT</a></div></div>`;
+  });
+
+  html += '</div>';
+  document.getElementById('part2-results').innerHTML = html;
 }
 </script>
 </body>
