@@ -15,13 +15,42 @@ GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "verilay-secret-key-change-in-production")
+import secrets as _secrets
+app.secret_key = os.getenv("SECRET_KEY", _secrets.token_hex(32))
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 # ── File cache (in-memory, keyed by session) ──────────────────────────────────
 # Stores: {cache_key: {"files": {}, "tree": [], "fetched_at": timestamp}}
 _file_cache = {}
 CACHE_TTL = 1800  # 30 minutes
+
+# ── Rate limiting (no auth needed, just abuse prevention) ─────────────────────
+# Stores: {ip: [timestamp, timestamp, ...]}
+_rate_limit = {}
+RATE_LIMIT_MAX  = 10    # max analyses per IP
+RATE_LIMIT_WINDOW = 3600  # per hour
+
+def check_rate_limit(ip):
+    """Returns (allowed, remaining, reset_in_seconds)."""
+    now = time.time()
+    hits = _rate_limit.get(ip, [])
+    # Remove hits outside the window
+    hits = [t for t in hits if now - t < RATE_LIMIT_WINDOW]
+    _rate_limit[ip] = hits
+    if len(hits) >= RATE_LIMIT_MAX:
+        oldest = min(hits)
+        reset_in = int(RATE_LIMIT_WINDOW - (now - oldest))
+        return False, 0, reset_in
+    hits.append(now)
+    _rate_limit[ip] = hits
+    return True, RATE_LIMIT_MAX - len(hits), 0
+
+def get_client_ip():
+    """Get real IP, accounting for proxies (Railway sits behind one)."""
+    forwarded = request.headers.get("X-Forwarded-For","")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
 
 def cache_set(key, files, tree):
     _file_cache[key] = {"files": files, "tree": tree, "fetched_at": time.time()}
@@ -202,7 +231,30 @@ def read_from_zip(zip_bytes, original_filename):
 
 
 def read_from_url(live_url):
-    """Surface scan a live URL."""
+    """Surface scan a live URL — with SSRF protection."""
+    import ipaddress
+    from urllib.parse import urlparse
+
+    # SSRF protection — block internal/private URLs
+    parsed = urlparse(live_url)
+    hostname = parsed.hostname or ""
+
+    # Block private IP ranges, localhost, metadata endpoints
+    blocked_hosts = ["localhost","127.0.0.1","0.0.0.0","169.254.169.254"]
+    if hostname in blocked_hosts:
+        raise ValueError("Cannot scan internal or localhost URLs.")
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ValueError("Cannot scan internal IP addresses.")
+    except ValueError as e:
+        if "Cannot scan" in str(e): raise
+        pass  # hostname is a domain name, not an IP — fine
+
+    # Only allow http/https
+    if parsed.scheme not in ("http","https"):
+        raise ValueError("Only http:// and https:// URLs are supported.")
+
     r = requests.get(live_url, timeout=10, headers={"User-Agent":"Verilay/1.0"})
     r.raise_for_status()
     domain = live_url.split("/")[2]
@@ -265,12 +317,24 @@ def call_claude(prompt, max_tokens=2000):
     raise ValueError("Could not parse Claude response. Please try again.")
 
 
+def sanitise_for_prompt(content):
+    """Remove common prompt injection patterns from file content."""
+    # Truncate very long lines that might be injection attempts
+    lines = content.split("\n")
+    cleaned = []
+    for line in lines:
+        # Flag but keep lines that look like injection attempts
+        if len(line) > 500:
+            line = line[:500] + " [truncated]"
+        cleaned.append(line)
+    return "\n".join(cleaned)
+
 def files_text(files, keys):
     """Build a files text block from selected keys only."""
     out = ""
     for k in keys:
         if k in files:
-            out += "\n\n=== " + k + " ===\n" + files[k]
+            out += "\n\n=== " + k + " ===\n" + sanitise_for_prompt(files[k])
     return out
 
 
@@ -308,7 +372,7 @@ Every text field must be ONE sentence maximum:
 "stack":[{{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"one sentence"}}]
 }}
 
-Identify ALL libraries/frameworks found. Be accurate and concise."""
+Identify ALL libraries/frameworks found. Be accurate and concise. Give HONEST health scores — do not inflate. A score means genuinely production-ready. Most AI-generated apps score B or C. If you find hardcoded secrets, fallback secret keys, or SSRF risks — mark health as critical."""
 
     return call_claude(prompt, max_tokens=2000)
 
@@ -327,28 +391,44 @@ def step2_security(files, repo_name):
     if not ftext:
         ftext = files_text(files, list(files.keys())[:4])
 
-    prompt = f"""You are Verilay analysing security-critical layers of: {repo_name}
+    prompt = f"""You are Verilay, a rigorous security analyst reviewing: {repo_name}
 
-FILES (auth, config, database):
+You MUST check for these specific issues in every analysis:
+CRITICAL SECURITY CHECKS:
+- Hardcoded secrets, API keys, passwords anywhere in code (not just .env)
+- Fallback/default values for secret keys that ship as defaults (e.g. "change-me-in-production")
+- .env files committed to the repo
+- SSRF vulnerabilities — URLs from user input passed directly to requests.get()
+- SQL injection — user input concatenated into queries
+- Prompt injection — user/file content interpolated directly into AI prompts without sanitisation
+- Authentication bypass possibilities
+- Exposed admin routes without auth
+- JWT tokens with no expiry or weak secrets
+- Supabase RLS policies missing or too permissive
+- Session fixation or CSRF vulnerabilities
+
+FILES (auth, config, database — read carefully):
 {ftext}
 
-Analyse these 3 layers. Return ONLY valid JSON.
-ALL text fields must be 1-2 sentences maximum. Max 3 findings per layer. 1 quiz per layer:
+Be a skeptical security reviewer. Assume the worst until proven safe. Give a REAL score — do not be generous.
+Return ONLY valid JSON. ALL text fields 1-2 sentences max. Max 4 findings per layer. 1 quiz per layer:
 
 {{"layers":[
   {{"name":"Auth","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"1 sentence","file":"","why_it_matters":"1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence","real_world_impact":"1 sentence","action":"1 sentence"}}]}},
+    "expert":{{"summary":"2 sentences — be specific about what auth mechanism is used and its real security posture","findings":[{{"severity":"critical|warning|info|passing","title":"specific issue name","detail":"exact code reference if possible, 1-2 sentences","file":"filename","why_it_matters":"concrete attack scenario, 1 sentence"}}]}},
+    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence no jargon","real_world_impact":"what could a real attacker do, 1 sentence","action":"specific step to fix, 1 sentence"}}]}},
     "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}},
   {{"name":"Config","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"1 sentence","file":"","why_it_matters":"1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence","real_world_impact":"1 sentence","action":"1 sentence"}}]}},
+    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}}]}},
+    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}}]}},
     "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}},
   {{"name":"Database","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"1 sentence","file":"","why_it_matters":"1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence","real_world_impact":"1 sentence","action":"1 sentence"}}]}},
+    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}}]}},
+    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}}]}},
     "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}}
-]}}"""
+]}}
+
+IMPORTANT: If you find a critical issue, mark status as "critical". Do NOT mark everything as "passing" to seem safe. A generous false A score is worse than an honest C score."""
 
     return call_claude(prompt, max_tokens=2500)
 
@@ -449,6 +529,13 @@ def index():
 @app.route("/fetch", methods=["POST"])
 def fetch_files():
     """Fetch and cache files. Called first before any analysis step."""
+    # Rate limit check
+    ip = get_client_ip()
+    allowed, remaining, reset_in = check_rate_limit(ip)
+    if not allowed:
+        mins = reset_in // 60
+        return jsonify({"error": f"You have reached the limit of {RATE_LIMIT_MAX} free analyses per hour. Please try again in {mins} minutes. Want unlimited analyses? Star the repo on GitHub and let us know."}), 429
+
     method = request.form.get("method","github")
     try:
         if method == "github":
@@ -758,6 +845,20 @@ input:focus{border-color:var(--pu)}
         </div>
         <div style="font-size:11px;color:var(--mut);line-height:1.45">Copy-ready prompts to verify findings in Claude, ChatGPT, or with a developer.</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Honest scope statement -->
+  <div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem;margin-bottom:2rem;display:flex;align-items:flex-start;gap:10px">
+    <i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>
+    <div style="font-size:12px;color:var(--mut);line-height:1.6">
+      <strong style="color:var(--txt)">What Verilay is — and isn't.</strong>
+      Verilay gives you a plain-English first-pass overview of your AI-built app. It highlights obvious issues, explains your tech stack, and helps you understand what was built.
+      It is <em>not</em> a full penetration test or a replacement for a professional security audit.
+      For apps going live with real user data or payments, we always recommend a deeper review from
+      <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:none">Snyk</a>,
+      <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:none">CodeRabbit</a>,
+      or a developer before launch. The second opinion prompts in every report make this easy.
     </div>
   </div>
 
@@ -1525,6 +1626,17 @@ function renderReport(data) {
   html += '<div><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + pb[3] + '</div>';
   html += '<div style="font-size:12px;opacity:.85">' + esc(pr.reason||'') + '</div></div></div>';
 
+  // Scope notice — always shown, sets honest expectations
+  html += '<div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
+  html += '<i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>';
+  html += '<div style="font-size:12px;color:var(--mut);line-height:1.55">';
+  html += '<strong style="color:var(--txt)">What Verilay covers:</strong> This is a first-pass overview of your codebase — great for understanding what was built and catching obvious issues. ';
+  html += 'For apps handling real users or sensitive data, we recommend a deeper review: ';
+  html += '<a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:none">Snyk</a> for dependency vulnerabilities, ';
+  html += '<a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:none">CodeRabbit</a> for code review, ';
+  html += 'or a developer security audit before going live with real user data.';
+  html += '</div></div>';
+
   var pills = (data.stack||[]).map(function(s) {
     var c = catColors(s.category);
     return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(s.name||'') + ' ' + esc(s.version||'') + '</span>';
@@ -1562,12 +1674,24 @@ function renderReport(data) {
   }).join('');
 
   html += '<div class="panel on" id="p-layers">';
-  html += '<div class="ll"><div class="lnav" id="layer-nav">' + lbtns + '</div>';
-  html += '<div class="ca"><div class="mt" id="mode-toggle">';
+  html += '<div class="ll">';
+  html += '<div class="lnav" id="layer-nav">';
+  html += '<div id="layers-loading" style="font-size:11px;color:var(--mut);padding:.5rem .25rem;display:flex;align-items:center;gap:6px">';
+  html += '<div style="width:14px;height:14px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
+  html += 'Loading layers...</div>';
+  html += lbtns;
+  html += '</div>';
+  html += '<div class="ca">';
+  html += '<div id="mode-toggle" class="mt" style="display:none">';
   html += '<button class="mb on" data-mode="expert">Expert</button>';
   html += '<button class="mb" data-mode="learner">Learner</button>';
-  html += '<button class="mb" data-mode="quiz">Quiz</button>';
-  html += '</div><div id="layer-content"></div></div></div></div>';
+  html += '</div>';
+  html += '<div id="layer-content" style="padding:.75rem 0">';
+  html += '<div style="font-size:12px;color:var(--mut);display:flex;align-items:center;gap:8px">';
+  html += '<div style="width:16px;height:16px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
+  html += 'Analysing your codebase — layers will appear shortly...</div>';
+  html += '</div>';
+  html += '</div></div></div>';
 
   var scards = (data.stack||[]).map(function(s) {
     var c = catColors(s.category);
@@ -1624,6 +1748,16 @@ function renderLayer() {
   var layer = currentLayers[activeLayer];
   var html = '';
 
+  // Mode toggle button wiring (re-wire every time layer changes)
+  document.querySelectorAll('#mode-toggle .mb').forEach(function(btn) {
+    btn.onclick = function() {
+      document.querySelectorAll('#mode-toggle .mb').forEach(function(b) { b.classList.remove('on'); });
+      btn.classList.add('on');
+      activeMode = btn.dataset.mode;
+      renderLayer();
+    };
+  });
+
   if (activeMode === 'expert') {
     var ex = layer.expert || {};
     html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">' + esc(ex.summary||'') + '</div>';
@@ -1651,18 +1785,23 @@ function renderLayer() {
       if (f.action) html += '<div style="margin-top:5px;font-size:11px;font-weight:500">Action: ' + esc(f.action) + '</div>';
       html += '</div></div>';
     });
-  } else {
+
+    // Quiz as optional collapsible at bottom of learner mode
     var quiz = layer.quiz || [];
-    if (!quiz.length) {
-      html = '<div style="font-size:13px;color:var(--mut);padding:1rem 0">No quiz questions for this layer.</div>';
-    } else {
+    if (quiz.length > 0) {
+      html += '<div style="margin-top:.85rem;border-top:0.5px solid var(--bdr);padding-top:.75rem">';
+      html += '<button id="quiz-toggle" style="font-size:12px;font-weight:500;padding:5px 14px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);cursor:pointer;display:flex;align-items:center;gap:5px">';
+      html += '<i class="ti ti-brain" style="font-size:13px"></i> Test your understanding (optional quiz)';
+      html += '</button>';
+      html += '<div id="quiz-content" style="display:none;margin-top:.65rem">';
       quiz.forEach(function(q, i) {
-        html += '<div class="qcard"><div style="font-size:12px;font-weight:500;margin-bottom:.5rem">' + esc(q.question||'') + '</div>';
+        html += '<div class="qcard" style="margin-bottom:7px"><div style="font-size:12px;font-weight:500;margin-bottom:.5rem">' + esc(q.question||'') + '</div>';
         html += '<button id="qbtn-' + i + '" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">Reveal answer</button>';
-        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put)"><strong>' + esc(q.answer||'') + '</strong>';
+        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer||'') + '</strong>';
         if (q.why) html += '<div style="font-size:11px;opacity:.8;margin-top:3px">' + esc(q.why) + '</div>';
         html += '</div></div>';
       });
+      html += '</div></div>';
     }
   }
 
@@ -1677,6 +1816,17 @@ function renderLayer() {
       if (ans) ans.style.display = ans.style.display === 'block' ? 'none' : 'block';
     });
   });
+
+  // Wire quiz toggle
+  var qt = document.getElementById('quiz-toggle');
+  var qc = document.getElementById('quiz-content');
+  if (qt && qc) {
+    qt.addEventListener('click', function() {
+      var open = qc.style.display === 'block';
+      qc.style.display = open ? 'none' : 'block';
+      qt.style.background = open ? 'transparent' : 'var(--pul)';
+    });
+  }
 }
 
 async function runPart2() {
@@ -1708,18 +1858,24 @@ async function runPart2() {
 }
 
 function appendLayers(newLayers) {
-  // Add new layers to the layer nav and currentLayers dict
+  var nav = document.getElementById('layer-nav');
+  if (!nav) return;
+
+  var icons = {Auth:'ti-shield',Database:'ti-database',Config:'ti-lock',Frontend:'ti-layout',Libraries:'ti-package',API:'ti-api','File Handling':'ti-file'};
+  var sdot = {critical:'#E24B4A',warning:'#EF9F27',passing:'#639922'};
+  var sibg = {critical:'var(--rdl)',warning:'var(--orl)',passing:'var(--grl)'};
+  var siclr = {critical:'var(--rdt)',warning:'var(--ort)',passing:'var(--grt)'};
+
+  // Hide the loading indicator once first layers arrive
+  var loadingEl = document.getElementById('layers-loading');
+  if (loadingEl) loadingEl.style.display = 'none';
+
+  // Show mode toggle
+  var mt = document.getElementById('mode-toggle');
+  if (mt) mt.style.display = 'flex';
+
   newLayers.forEach(function(layer) {
     currentLayers[layer.name] = layer;
-
-    // Add button to layer nav
-    var nav = document.getElementById('layer-nav');
-    if (!nav) return;
-
-    var icons = {Auth:'ti-shield',Database:'ti-database',Config:'ti-lock',Frontend:'ti-layout',Libraries:'ti-package',API:'ti-api','File Handling':'ti-file'};
-    var sdot = {critical:'#E24B4A',warning:'#EF9F27',passing:'#639922'};
-    var sibg = {critical:'var(--rdl)',warning:'var(--orl)',passing:'var(--grl)'};
-    var siclr = {critical:'var(--rdt)',warning:'var(--ort)',passing:'var(--grt)'};
 
     var btn = document.createElement('button');
     btn.className = 'lb';
@@ -1734,13 +1890,15 @@ function appendLayers(newLayers) {
       document.querySelectorAll('#layer-nav .lb').forEach(function(b) { b.classList.remove('act'); });
       btn.classList.add('act');
       activeLayer = layer.name;
+      activeMode = document.querySelector('#mode-toggle .mb.on') ?
+        document.querySelector('#mode-toggle .mb.on').dataset.mode : 'expert';
       renderLayer();
     });
     nav.appendChild(btn);
   });
 
-  // If no layer is currently selected, select the first new one
-  if (!activeLayer && newLayers.length > 0) {
+  // Auto-select first layer button if none selected
+  if (!activeLayer) {
     var firstBtn = document.querySelector('#layer-nav .lb');
     if (firstBtn) firstBtn.click();
   }
@@ -1781,6 +1939,17 @@ function renderPart2(data) {
     ['Security verification', so.security_prompt, 'ti-shield-check'],
     ['Production readiness', so.prod_checklist_prompt, 'ti-rocket']
   ];
+  // Next steps recommendation
+  html += '<div style="background:var(--pul);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0;border-left:3px solid var(--pu)">';
+  html += '<div style="font-size:12px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
+  html += '<div style="font-size:12px;color:var(--put);line-height:1.6">';
+  html += 'Verilay gives you a first-pass overview — good for understanding and catching obvious issues. For production apps we recommend going further:<br>';
+  html += '&bull; <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency &amp; vulnerability scanning (connects to GitHub)<br>';
+  html += '&bull; <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> — AI code review on every pull request (free for open source)<br>';
+  html += '&bull; Share the second opinion prompts below with a developer for a human review<br>';
+  html += '&bull; Fix all critical issues before going live with real users or payments';
+  html += '</div></div>';
+
   html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Second opinion - verify with any AI</div>';
   html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Copy any prompt into Claude or ChatGPT to independently verify findings.</div>';
   soItems.forEach(function(item) {
