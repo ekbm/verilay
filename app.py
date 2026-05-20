@@ -765,4 +765,4 @@ if __name__ == "__main__":
     if not ANTHROPIC_API_KEY:
         print("\n⚠️  No ANTHROPIC_API_KEY in .env — get one at console.anthropic.com\n")
     print("🔍 Verilay v2 running at http://localhost:5000\n")
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
