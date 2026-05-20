@@ -212,7 +212,7 @@ Be thorough and genuinely useful. The learner sections should teach real underst
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-        json={"model":"claude-sonnet-4-5","max_tokens":5000,"messages":[{"role":"user","content":prompt}]}
+        json={"model":"claude-sonnet-4-5","max_tokens":8000,"messages":[{"role":"user","content":prompt}]}
     )
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
@@ -220,7 +220,19 @@ Be thorough and genuinely useful. The learner sections should teach real underst
         raw = raw.split("```")[1]
         if raw.startswith("json"): raw = raw[4:]
     if raw.endswith("```"): raw = raw.rsplit("```",1)[0]
-    return json.loads(raw.strip())
+    raw = raw.strip()
+    # Handle truncated JSON by finding the last complete top-level key
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Try to recover by truncating to last valid closing brace
+        for i in range(len(raw)-1, 0, -1):
+            if raw[i] == '}':
+                try:
+                    return json.loads(raw[:i+1])
+                except json.JSONDecodeError:
+                    continue
+        raise ValueError("Could not parse response from Claude. Please try again.")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
