@@ -540,21 +540,24 @@ document.addEventListener('DOMContentLoaded', function(){
   // File input
   var zf = document.getElementById('zf');
   if(zf) zf.addEventListener('change', function(){ fileSel(this); });
-  // Mode toggle buttons wired dynamically in render()
+  // Drag and drop on ZIP zone
+  var dz = document.getElementById('dz');
+  if(dz){
+    dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('dov'); });
+    dz.addEventListener('dragleave', function(){ dz.classList.remove('dov'); });
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); dz.classList.remove('dov');
+      var f = e.dataTransfer.files[0];
+      if(f){ document.getElementById('zf').files = e.dataTransfer.files; fileSel(document.getElementById('zf')); }
+    });
+  }
 });
 
 function fileSel(i){
   document.getElementById('fn').textContent = i.files[0]?'✓ '+i.files[0].name:'';
 }
 
-var dz=document.getElementById('dz');
-dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dov')});
-dz.addEventListener('dragleave',()=>dz.classList.remove('dov'));
-dz.addEventListener('drop',e=>{
-  e.preventDefault();dz.classList.remove('dov');
-  var f=e.dataTransfer.files[0];
-  if(f){document.getElementById('zf').files=e.dataTransfer.files;fileSel(document.getElementById('zf'));}
-});
+// drag/drop wired in DOMContentLoaded below
 
 function showErr(m){var e=document.getElementById('eb');e.textContent=m;e.classList.add('vis');}
 function hideErr(){document.getElementById('eb').classList.remove('vis');}
