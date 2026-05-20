@@ -237,7 +237,7 @@ def run_analysis_part2():
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
-HTML = r"""<!DOCTYPE html>
+HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -388,19 +388,19 @@ input:focus{border-color:var(--pu)}
 <div id="fs">
   <p style="font-size:13px;font-weight:500;margin-bottom:.65rem">How do you want to share your project?</p>
   <div class="mg">
-    <div class="mc sel" onclick="selMethod('github',this)">
+    <div class="mc sel" data-method="github" id="mc-github">
       <div class="mc-icon"><i class="ti ti-brand-github"></i></div>
       <div class="mc-title">GitHub URL</div>
       <div class="mc-desc">Paste your repo link. Works for Lovable, Replit, any GitHub project.</div>
       <span class="mbadge" style="background:var(--grl);color:var(--grt)">Most complete</span>
     </div>
-    <div class="mc" onclick="selMethod('zip',this)">
+    <div class="mc" data-method="zip" id="mc-zip">
       <div class="mc-icon"><i class="ti ti-file-zip"></i></div>
       <div class="mc-title">Upload ZIP</div>
       <div class="mc-desc">Export from Lovable or Replit and upload here. No GitHub account needed.</div>
       <span class="mbadge" style="background:var(--pul);color:var(--put)">No GitHub needed</span>
     </div>
-    <div class="mc" onclick="selMethod('url',this)">
+    <div class="mc" data-method="url" id="mc-url">
       <div class="mc-icon"><i class="ti ti-world"></i></div>
       <div class="mc-title">Live URL</div>
       <div class="mc-desc">Paste your published app link. Surface scan — libraries and services only.</div>
@@ -439,7 +439,7 @@ input:focus{border-color:var(--pu)}
   </div>
 
   <div class="erbox" id="eb"></div>
-  <button class="btn-main" id="ab" onclick="go()"><i class="ti ti-search"></i>Analyse my app</button>
+  <button class="btn-main" id="ab"><i class="ti ti-search"></i>Analyse my app</button>
 </div>
 
 <!-- ── LOADING ─────────────────────────────────── -->
@@ -457,7 +457,7 @@ input:focus{border-color:var(--pu)}
       <span style="font-size:13px;font-weight:500;color:var(--pu)">Verilay</span>
       <span style="font-size:11px;color:var(--mut)">Report ready</span>
     </div>
-    <button onclick="reset()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:12px;font-weight:500;border:none;cursor:pointer">
+    <button id="btn-new-top" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:12px;font-weight:500;border:none;cursor:pointer">
       <i class="ti ti-plus" style="font-size:13px"></i> New analysis
     </button>
   </div>
@@ -471,10 +471,10 @@ input:focus{border-color:var(--pu)}
         <div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete — ready for the deep analysis?</div>
         <div style="font-size:12px;color:var(--put);line-height:1.55;margin-bottom:.85rem">You've seen your stack, layers, and findings. Part 2 goes deeper — <strong>fix list with effort estimates</strong>, <strong>second opinion prompts</strong> to verify in Claude or ChatGPT, and your full <strong>security checklist</strong>. Takes another 15–20 seconds.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="loadPart2()" id="part2-btn" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
+          <button id="part2-btn" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
             <i class="ti ti-chevron-right" style="font-size:13px"></i> Yes, run Part 2
           </button>
-          <button onclick="document.getElementById('part2-banner').style.display='none'" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:12px;cursor:pointer">
+          <button id="btn-skip-p2" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:12px;cursor:pointer">
             Skip for now
           </button>
         </div>
@@ -494,7 +494,7 @@ input:focus{border-color:var(--pu)}
   <div style="margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center">
     <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
     <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Run Verilay on any GitHub repo, ZIP file, or live URL</div>
-    <button onclick="reset()" style="display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
+    <button id="btn-new-bottom" style="display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
       <i class="ti ti-search" style="font-size:14px"></i> Analyse another app
     </button>
   </div>
@@ -505,13 +505,43 @@ input:focus{border-color:var(--pu)}
 <script>
 var method='github', layers={}, activeLayer=null, mode='expert';
 
-function selMethod(m,card){
+function selMethod(m){
   method=m;
   document.querySelectorAll('.mc').forEach(c=>c.classList.remove('sel'));
-  card.classList.add('sel');
+  var mc = document.getElementById('mc-'+m);
+  if(mc) mc.classList.add('sel');
   document.querySelectorAll('.ip').forEach(p=>p.classList.remove('vis'));
-  document.getElementById('p-'+m).classList.add('vis');
+  var ip = document.getElementById('p-'+m);
+  if(ip) ip.classList.add('vis');
 }
+
+// Wire up all buttons via event listeners (no inline onclick needed)
+document.addEventListener('DOMContentLoaded', function(){
+  // Method cards
+  ['github','zip','url'].forEach(function(m){
+    var el = document.getElementById('mc-'+m);
+    if(el) el.addEventListener('click', function(){ selMethod(m); });
+  });
+  // Analyse button
+  var ab = document.getElementById('ab');
+  if(ab) ab.addEventListener('click', go);
+  // Reset buttons
+  var nb1 = document.getElementById('btn-new-top');
+  if(nb1) nb1.addEventListener('click', reset);
+  var nb2 = document.getElementById('btn-new-bottom');
+  if(nb2) nb2.addEventListener('click', reset);
+  // Part 2 buttons
+  var p2btn = document.getElementById('part2-btn');
+  if(p2btn) p2btn.addEventListener('click', loadPart2);
+  var skipBtn = document.getElementById('btn-skip-p2');
+  if(skipBtn) skipBtn.addEventListener('click', function(){
+    document.getElementById('part2-banner').style.display='none';
+  });
+  // File input
+  var zf = document.getElementById('zf');
+  if(zf) zf.addEventListener('change', function(){ fileSel(this); });
+  // Mode toggle buttons wired dynamically in render()
+});
 
 function fileSel(i){
   document.getElementById('fn').textContent = i.files[0]?'✓ '+i.files[0].name:'';
