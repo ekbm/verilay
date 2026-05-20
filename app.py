@@ -59,13 +59,17 @@ def read_from_github(repo_url):
     all_files = [i["path"] for i in tr.json().get("tree",[]) if i["type"]=="blob"]
 
     def fetch(p):
-        r = requests.get(f"{base}/contents/{p}", headers=hdrs)
-        if r.status_code != 200: return None
-        d = r.json()
-        if d.get("encoding")=="base64":
-            try: return base64.b64decode(d["content"]).decode("utf-8","replace")[:MAX_FILE_SIZE]
-            except: return None
-        return None
+        try:
+            r = requests.get(f"{base}/contents/{p}", headers=hdrs)
+            if r.status_code != 200: return None
+            d = r.json()
+            if isinstance(d, list): return None  # directory listing not a file
+            if not isinstance(d, dict): return None
+            if d.get("encoding")=="base64":
+                try: return base64.b64decode(d["content"]).decode("utf-8","replace")[:MAX_FILE_SIZE]
+                except: return None
+            return None
+        except Exception: return None
 
     files = {}
     for p in PRIORITY_FILES:
@@ -208,7 +212,7 @@ Be thorough and genuinely useful. The learner sections should teach real underst
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-        json={"model":"claude-sonnet-4-20250514","max_tokens":5000,"messages":[{"role":"user","content":prompt}]}
+        json={"model":"claude-sonnet-4-5","max_tokens":5000,"messages":[{"role":"user","content":prompt}]}
     )
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
@@ -466,8 +470,24 @@ input:focus{border-color:var(--pu)}
 
 <!-- ── REPORT ──────────────────────────────────── -->
 <div class="rpt" id="rpt">
-  <button class="btn-new" onclick="reset()"><i class="ti ti-arrow-left" style="font-size:13px"></i>Analyse another app</button>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;padding:.65rem .9rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);position:sticky;top:0;z-index:10">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-topology-star" style="font-size:16px;color:var(--pu)"></i>
+      <span style="font-size:13px;font-weight:500;color:var(--pu)">Verilay</span>
+      <span style="font-size:11px;color:var(--mut)">Report ready</span>
+    </div>
+    <button onclick="reset()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:12px;font-weight:500;border:none;cursor:pointer">
+      <i class="ti ti-plus" style="font-size:13px"></i> New analysis
+    </button>
+  </div>
   <div id="rc"></div>
+  <div style="margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center">
+    <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
+    <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Run Verilay on any GitHub repo, ZIP file, or live URL</div>
+    <button onclick="reset()" style="display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
+      <i class="ti ti-search" style="font-size:14px"></i> Analyse another app
+    </button>
+  </div>
 </div>
 
 </div><!-- /wrap -->
@@ -765,4 +785,4 @@ if __name__ == "__main__":
     if not ANTHROPIC_API_KEY:
         print("\n⚠️  No ANTHROPIC_API_KEY in .env — get one at console.anthropic.com\n")
     print("🔍 Verilay v2 running at http://localhost:5000\n")
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(debug=True, port=5000)
