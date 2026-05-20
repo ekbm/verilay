@@ -647,14 +647,153 @@ input:focus{border-color:var(--pu)}
 <body>
 <div class="wrap">
 
-<div class="logo">
-  <i class="ti ti-topology-star" style="font-size:24px;color:var(--pu)"></i>
-  <span class="logo-text">Verilay</span>
-  <span style="font-size:11px;color:var(--mut);font-weight:400;margin-left:2px">verification layer</span>
+<!-- ── Nav ─────────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem">
+  <div style="display:flex;align-items:center;gap:8px">
+    <i class="ti ti-topology-star" style="font-size:20px;color:var(--pu)"></i>
+    <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
+    <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
+      <i class="ti ti-brand-github" style="font-size:13px"></i> GitHub
+    </a>
+    <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500">
+      Analyse my app
+    </button>
+  </div>
 </div>
-<p class="tagline">Verilay reads your AI-built app and explains every layer in plain English — verify what was built, learn how it works, get a second opinion before you ship.</p>
 
-<div id="form-section">
+<!-- ── Hero ────────────────────────────────────────────────── -->
+<div id="hero-section">
+  <div style="text-align:center;padding:2rem 0 1.5rem">
+    <div style="display:inline-flex;align-items:center;gap:6px;background:var(--pul);color:var(--put);font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;margin-bottom:1.25rem">
+      <i class="ti ti-sparkles" style="font-size:12px"></i>
+      Free &amp; open source — built for non-developers
+    </div>
+    <h1 style="font-size:clamp(1.75rem,4vw,2.75rem);font-weight:700;line-height:1.2;margin-bottom:.85rem;letter-spacing:-.02em">
+      Understand what your<br>
+      <span style="color:var(--pu)">AI-built app</span> is made of
+    </h1>
+    <p style="font-size:15px;color:var(--mut);max-width:520px;margin:0 auto 2rem;line-height:1.65">
+      You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
+    </p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
+      <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
+        <i class="ti ti-search" style="font-size:15px"></i> Analyse my app — it's free
+      </button>
+      <button id="btn-hero-demo" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:transparent;color:var(--txt);font-size:14px;font-weight:500;border:1.5px solid var(--bdr);cursor:pointer">
+        <i class="ti ti-player-play" style="font-size:15px"></i> See a sample report
+      </button>
+    </div>
+  </div>
+
+  <!-- Problem → Solution strip -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:2.5rem">
+    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+      <div style="font-size:22px;margin-bottom:.5rem">🤖</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">AI built your app</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Lovable, Replit, Bolt, v0, Cursor — powerful tools that generate real code fast.</div>
+    </div>
+    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+      <div style="font-size:22px;margin-bottom:.5rem">❓</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">But can you trust it?</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Is your login secure? Are your database credentials exposed? Is it ready for real users?</div>
+    </div>
+    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+      <div style="font-size:22px;margin-bottom:.5rem">🔍</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">Verilay answers that</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Reads every layer of your app. Explains it in plain English. Flags issues. Gives you a second opinion.</div>
+    </div>
+    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+      <div style="font-size:22px;margin-bottom:.5rem">✅</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">Ship with confidence</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Know exactly what you built and whether it's ready. No developer needed to understand the results.</div>
+    </div>
+  </div>
+
+  <!-- What you get -->
+  <div style="margin-bottom:2.5rem">
+    <div style="text-align:center;font-size:13px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.1rem">What Verilay gives you</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-stack-2" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Tech stack map</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Every library and framework detected and explained in plain English.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-layers-difference" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Layer map</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Auth, Database, API, Frontend — each layer explained with expert and learner views.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-shield-check" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Security check</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Exposed secrets, auth issues, outdated libraries — flagged before they become problems.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-rocket" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Production verdict</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Green, amber, or red — is your app ready to ship to real users?</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-school" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Learner mode</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Understand what each part of your app does with real-world analogies and quizzes.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-message-check" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Second opinion</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Copy-ready prompts to verify findings in Claude, ChatGPT, or with a developer.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Platforms -->
+  <div style="text-align:center;margin-bottom:2.5rem">
+    <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Works with apps built on</div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px">
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🔷 Lovable</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🟢 Replit</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">⚡ Bolt</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🔲 v0</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🌀 Cursor</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🌊 Windsurf</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🚀 Emergent</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">+ any GitHub repo</span>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
+    <div style="font-size:17px;font-weight:600;margin-bottom:.4rem">Ready to see what's inside your app?</div>
+    <div style="font-size:13px;color:var(--mut);margin-bottom:1.1rem">Free. Takes 30 seconds. No account needed.</div>
+    <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
+      <i class="ti ti-search" style="font-size:15px"></i> Analyse my app
+    </button>
+  </div>
+</div>
+
+<!-- ── Analysis form (hidden until user clicks analyse) ──── -->
+<div id="form-section" style="display:none">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:1.25rem">
+    <button id="btn-back-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">
+      <i class="ti ti-arrow-left" style="font-size:13px"></i> Back
+    </button>
+    <span style="font-size:14px;font-weight:500">Analyse your app</span>
+  </div>
   <p class="label">How do you want to share your project?</p>
   <div class="mg">
     <div class="mc sel" id="mc-github">
@@ -890,6 +1029,81 @@ input:focus{border-color:var(--pu)}
   </div>
 </div>
 
+<!-- ── Sample report modal ──────────────────────────────── -->
+<div id="sample-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;overflow-y:auto;padding:1.5rem">
+  <div style="max-width:680px;margin:0 auto;background:var(--sur);border-radius:var(--r);padding:1.5rem;position:relative">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+      <div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:2px">Sample Verilay Report</div>
+        <div style="font-size:12px;color:var(--mut)">A real analysis of a Lovable-built app — this is what you get</div>
+      </div>
+      <button id="btn-close-modal" style="padding:6px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;cursor:pointer;font-size:12px;color:var(--mut)">Close</button>
+    </div>
+
+    <!-- Production verdict -->
+    <div style="background:var(--orl);border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:10px;display:flex;align-items:center;gap:12px">
+      <i class="ti ti-alert-triangle" style="font-size:24px;color:var(--ort)"></i>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--ort)">Needs work before going live</div>
+        <div style="font-size:12px;color:var(--mut)">2 critical security issues found that should be fixed before sharing with real users</div>
+      </div>
+    </div>
+
+    <!-- Stack pills -->
+    <div style="background:var(--bg);border-radius:var(--r);padding:1rem;margin-bottom:10px">
+      <div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Stack detected</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--pul);color:var(--put)">React 18</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--grl);color:var(--grt)">Supabase</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--orl);color:var(--ort)">Vite</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--bll);color:var(--blt)">TypeScript</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:#F1EFE8;color:#444441">Tailwind CSS</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--pul);color:var(--put)">shadcn/ui</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem">
+        <div style="background:var(--rdl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--rdt)">2</div><div style="font-size:10px;color:var(--rdt)">critical</div></div>
+        <div style="background:var(--orl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--ort)">3</div><div style="font-size:10px;color:var(--ort)">warnings</div></div>
+        <div style="background:var(--grl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--grt)">6</div><div style="font-size:10px;color:var(--grt)">passing</div></div>
+        <div style="background:var(--bll);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--blt)">C</div><div style="font-size:10px;color:var(--blt)">score</div></div>
+      </div>
+    </div>
+
+    <!-- Sample layer -->
+    <div style="background:var(--bg);border-radius:var(--r);padding:1rem;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:.65rem;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-shield" style="color:var(--rdt)"></i> Auth layer — 2 issues found
+      </div>
+      <!-- Expert finding -->
+      <div style="background:var(--rdl);border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px;font-size:12px">
+        <i class="ti ti-alert-circle" style="color:var(--rdt);font-size:15px;flex-shrink:0;margin-top:1px"></i>
+        <div>
+          <div style="font-weight:500;margin-bottom:2px;color:var(--rdt)">.env file committed to public GitHub repo</div>
+          <div style="color:var(--mut)">Your Supabase credentials are visible to anyone who finds your repo. Rotate your keys immediately in the Supabase dashboard.</div>
+        </div>
+      </div>
+      <div style="background:var(--orl);border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px;font-size:12px">
+        <i class="ti ti-alert-triangle" style="color:var(--ort);font-size:15px;flex-shrink:0;margin-top:1px"></i>
+        <div>
+          <div style="font-weight:500;margin-bottom:2px;color:var(--ort)">JWT tokens have no expiry set</div>
+          <div style="color:var(--mut)">Login tokens last forever. A stolen token would give permanent access to any account.</div>
+        </div>
+      </div>
+      <!-- Learner view toggle sample -->
+      <div style="background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:12px;color:var(--put)">
+        <strong>Think of Auth like this:</strong> It's the bouncer at your app's door — checks who you are before letting you in. Right now the bouncer is letting people in with a pass that never expires.
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div style="text-align:center;padding:.75rem 0 0">
+      <div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">This is what Verilay finds in your app — in 30 seconds</div>
+      <button id="btn-modal-cta" style="display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
+        <i class="ti ti-search"></i> Analyse my app now
+      </button>
+    </div>
+  </div>
+</div>
+
 </div>
 
 <script>
@@ -939,6 +1153,52 @@ function init() {
   if (zf) zf.addEventListener('change', function() {
     var name = this.files[0] ? this.files[0].name : '';
     document.getElementById('fn').textContent = name ? '✓ ' + name : '';
+  });
+
+  // Hero buttons — show form
+  function showForm() {
+    document.getElementById('hero-section').style.display = 'none';
+    document.getElementById('form-section').style.display = 'block';
+    window.scrollTo(0,0);
+  }
+  function showHero() {
+    document.getElementById('hero-section').style.display = 'block';
+    document.getElementById('form-section').style.display = 'none';
+    window.scrollTo(0,0);
+  }
+
+  ['btn-start-hero','btn-hero-analyse','btn-hero-cta'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', showForm);
+  });
+
+  var backBtn = document.getElementById('btn-back-hero');
+  if (backBtn) backBtn.addEventListener('click', showHero);
+
+  // Sample modal
+  var btnDemo = document.getElementById('btn-hero-demo');
+  if (btnDemo) btnDemo.addEventListener('click', function() {
+    document.getElementById('sample-modal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+  });
+  var btnClose = document.getElementById('btn-close-modal');
+  if (btnClose) btnClose.addEventListener('click', function() {
+    document.getElementById('sample-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  });
+  var btnModalCta = document.getElementById('btn-modal-cta');
+  if (btnModalCta) btnModalCta.addEventListener('click', function() {
+    document.getElementById('sample-modal').style.display = 'none';
+    document.body.style.overflow = '';
+    showForm();
+  });
+  // Close modal on backdrop click
+  var modal = document.getElementById('sample-modal');
+  if (modal) modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
   });
 
   // Drag and drop
@@ -1203,7 +1463,8 @@ function updateStepsLabel(msg) {
 
 function resetForm() {
   document.getElementById('rpt').classList.remove('vis');
-  document.getElementById('form-section').style.display = 'block';
+  document.getElementById('hero-section').style.display = 'block';
+  document.getElementById('form-section').style.display = 'none';
   document.getElementById('p2-banner').style.display = 'none';
   document.getElementById('p2-loading').style.display = 'none';
   document.getElementById('p2-results').innerHTML = '';
