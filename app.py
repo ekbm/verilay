@@ -258,6 +258,117 @@ def files_for(files, keys):
     return out
 
 
+def call_claude_text(prompt, max_tokens=800):
+    """Call Claude expecting plain text key:value response."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("No ANTHROPIC_API_KEY set.")
+    if _HAS_SDK:
+        client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
+        raw = ""
+        with client.messages.stream(
+            model="claude-sonnet-4-5",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": str(prompt)}]
+        ) as stream:
+            for text in stream.text_stream:
+                raw += text
+        return raw.strip()
+    else:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
+            json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"stream":True,
+                  "messages":[{"role":"user","content":str(prompt)}]},
+            stream=True, timeout=90
+        )
+        if not resp.ok:
+            raise ValueError(f"Claude API {resp.status_code}: {resp.text[:200]}")
+        raw = ""
+        for line in resp.iter_lines():
+            if not line: continue
+            line = line.decode("utf-8") if isinstance(line, bytes) else line
+            if not line.startswith("data: "): continue
+            data = line[6:]
+            if data.strip() == "[DONE]": break
+            try:
+                evt = json.loads(data)
+                if evt.get("type") == "content_block_delta":
+                    delta = evt.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        raw += delta.get("text", "")
+            except: continue
+        return raw.strip()
+
+
+def parse_flat_response(text, layer_names):
+    """Parse flat key:value Claude response into layer structure."""
+    kv = {}
+    for line in text.strip().split("\n"):
+        if ":" in line:
+            key, _, val = line.partition(":")
+            kv[key.strip().upper()] = val.strip()
+
+    layers = []
+    for name in layer_names:
+        p = name.upper().replace(" ", "_").replace("-", "_")
+        status = kv.get(f"{p}_STATUS", "passing").lower()
+        if status not in ("critical", "warning", "passing"):
+            status = "passing"
+
+        findings_expert = []
+        findings_learner = []
+        for i in range(1, 4):
+            title = kv.get(f"{p}_F{i}_TITLE", "")
+            if not title or title.lower() in ("finding title", "finding", "next", ""):
+                break
+            sev = kv.get(f"{p}_F{i}_SEV", "passing").lower()
+            if sev not in ("critical", "warning", "passing", "info"):
+                sev = "passing"
+            findings_expert.append({
+                "severity": sev,
+                "title": title,
+                "detail": kv.get(f"{p}_F{i}_DETAIL", ""),
+                "file": kv.get(f"{p}_F{i}_FILE", ""),
+                "why_it_matters": kv.get(f"{p}_F{i}_WHY", "")
+            })
+            findings_learner.append({
+                "severity": sev,
+                "plain_title": title,
+                "plain_detail": kv.get(f"{p}_F{i}_PLAIN", kv.get(f"{p}_F{i}_DETAIL", "")),
+                "real_world_impact": kv.get(f"{p}_F{i}_IMPACT", ""),
+                "action": kv.get(f"{p}_F{i}_ACTION", "")
+            })
+
+        if not findings_expert:
+            findings_expert = [{"severity":"passing","title":"No issues found",
+                "detail":"Layer appears healthy","file":"","why_it_matters":""}]
+            findings_learner = [{"severity":"passing","plain_title":"No issues found",
+                "plain_detail":"This layer looks good","real_world_impact":"","action":""}]
+
+        layers.append({
+            "name": name,
+            "status": status,
+            "expert": {
+                "summary": kv.get(f"{p}_SUMMARY", f"{name} layer analysis."),
+                "findings": findings_expert
+            },
+            "learner": {
+                "what_is_it": kv.get(f"{p}_WHAT", f"The {name} layer handles related functionality."),
+                "analogy": kv.get(f"{p}_ANALOGY", ""),
+                "what_it_does_in_your_app": kv.get(f"{p}_DOES", ""),
+                "how_it_connects": kv.get(f"{p}_CONNECTS", ""),
+                "key_concept": kv.get(f"{p}_CONCEPT", ""),
+                "findings_plain": findings_learner
+            },
+            "quiz": [{
+                "question": kv.get(f"{p}_Q", ""),
+                "answer": kv.get(f"{p}_A", ""),
+                "why": kv.get(f"{p}_QWHY", "")
+            }]
+        })
+    return {"layers": layers}
+
+
 def analyse_step1(files, tree, repo_name, method):
     tree_str = "\n".join(tree[:60]) if tree else "Not available"
     stack_keys = [k for k in files if any(sf in k for sf in
