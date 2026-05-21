@@ -490,620 +490,14 @@ def build_markdown(data):
 @app.route("/")
 def index(): return render_template_string(HTML)
 
+@app.route("/static/app.js")
+def serve_js():
+    from flask import Response
+    return Response(APP_JS, mimetype="application/javascript")
 
 
-HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Verilay - Understand your AI-built app</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
-<style>
-:root{
-  --bg:#f8f8f7;--sur:#fff;--bdr:#e8e6e0;--txt:#1a1917;--mut:#6b6966;--r:10px;
-  --pu:#534AB7;--pul:#EEEDFE;--put:#3C3489;
-  --gr:#1D9E75;--grl:#E1F5EE;--grt:#085041;
-  --or:#EF9F27;--orl:#FAEEDA;--ort:#633806;
-  --rd:#E24B4A;--rdl:#FCEBEB;--rdt:#A32D2D;
-  --bll:#E6F1FB;--blt:#0C447C;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
-.wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
-.logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
-.logo-text{font-size:22px;font-weight:600;color:var(--pu)}
-.tagline{font-size:13px;color:var(--mut);margin-bottom:2rem}
-.label{font-size:13px;font-weight:500;margin-bottom:.65rem}
-.mg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1.25rem}
-.mc{border:1.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem;cursor:pointer;background:var(--sur);transition:all .15s;user-select:none}
-.mc:hover{border-color:#aaa8ff}
-.mc.sel{border-color:var(--pu);background:var(--pul)}
-.mc-icon{font-size:20px;margin-bottom:.4rem}
-.mc-title{font-size:13px;font-weight:500;margin-bottom:2px}
-.mc-desc{font-size:11px;color:var(--mut);line-height:1.4}
-.mbadge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px;margin-top:5px;display:inline-block}
-.ip{display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:1rem}
-.ip.vis{display:block}
-.lbl{font-size:12px;font-weight:500;margin-bottom:.4rem;display:block}
-.sub{font-size:11px;color:var(--mut);margin-bottom:.6rem;line-height:1.45}
-input[type=url],input[type=text]{width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:13px;background:var(--bg);color:var(--txt);outline:none}
-input:focus{border-color:var(--pu)}
-.hint{background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:12px;color:var(--put);margin-top:.65rem;line-height:1.5}
-.hint ol{margin-top:.35rem;padding-left:1.1rem}
-.hint li{margin-bottom:2px}
-.fd{border:1.5px dashed var(--bdr);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;position:relative;transition:all .15s;background:var(--bg)}
-.fd:hover{border-color:var(--pu);background:var(--pul)}
-.fd input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.erbox{background:var(--rdl);border-radius:var(--r);padding:1rem;color:var(--rdt);font-size:13px;margin-bottom:1rem;display:none}
-.erbox.vis{display:block}
-.btn{width:100%;padding:12px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
-.btn:hover{opacity:.9}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.ld{display:none;text-align:center;padding:2.5rem}
-.ld.vis{display:block}
-.spin{width:36px;height:36px;border:3px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 1rem}
-@keyframes sp{to{transform:rotate(360deg)}}
-.rpt{display:none}
-.rpt.vis{display:block}
-.sticky-bar{display:flex;align-items:center;justify-content:space-between;padding:.65rem .9rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);position:sticky;top:0;z-index:10;margin-bottom:1rem}
-.btn-sm{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:12px;font-weight:500;border:none;cursor:pointer}
-.prod-banner{border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:10px;display:flex;align-items:center;gap:12px}
-.rh{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.1rem;margin-bottom:10px}
-.pill{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;display:inline-block;margin:2px}
-.hg{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem}
-.hc{border-radius:8px;padding:.55rem;text-align:center}
-.tabs{display:flex;gap:5px;margin-bottom:1rem;flex-wrap:wrap}
-.tab{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
-.tab.on{background:var(--pu);color:#fff;border-color:transparent}
-.panel{display:none}.panel.on{display:block}
-.ll{display:grid;grid-template-columns:175px 1fr;gap:12px}
-.lnav{display:flex;flex-direction:column;gap:5px}
-.lb{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;border:0.5px solid transparent;background:var(--bg);width:100%;text-align:left;font-size:12px;font-weight:500}
-.lb:hover,.lb.act{background:var(--sur);border-color:var(--bdr)}
-.ldot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-left:auto}
-.lico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
-.ca{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem;min-height:280px}
-.mt{display:flex;gap:4px;margin-bottom:.85rem;flex-wrap:wrap}
-.mb{font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
-.mb.on{background:var(--pu);color:#fff;border-color:transparent}
-.finding{border-radius:8px;padding:.65rem .85rem;margin-bottom:7px;display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5}
-.lc{background:var(--bg);border-left:2px solid var(--pu);border-radius:0 8px 8px 0;padding:.65rem .85rem;margin-bottom:7px}
-.lc-title{font-size:12px;font-weight:500;margin-bottom:3px}
-.lc-body{font-size:12px;color:var(--mut);line-height:1.5}
-.analogy{background:var(--pul);border-radius:8px;padding:.65rem .85rem;margin-bottom:8px;font-size:12px;color:var(--put);line-height:1.5}
-.qcard{background:var(--pul);border-radius:8px;padding:.75rem .9rem;margin-bottom:7px}
-.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px}
-.sc{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.7rem .85rem}
-.fc{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
-.si{border-radius:8px;padding:.6rem .85rem;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500}
-.so-card{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
-.p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
-.bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
-@media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
-/* Accessibility: underline links inside text blocks */
-.hint a,.scope-notice a,.next-steps a,p a{text-decoration:underline;text-underline-offset:2px}
-#hero-section a,#report-content a{text-decoration:underline;text-underline-offset:2px}
-@media(min-width:900px){
-  .ll{grid-template-columns:200px 1fr;gap:16px}
-  .mg{grid-template-columns:repeat(3,1fr)}
-  .hg{grid-template-columns:repeat(4,1fr)}
-}
-@media(min-width:1200px){
-  .ll{grid-template-columns:220px 1fr;gap:20px}
-}
-@media print{
-  .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner{display:none!important}
-  .rpt{display:block!important}
-  body{background:white;padding:0}
-  .wrap{max-width:100%;padding:1rem}
-  .ca{min-height:auto}
-}
-</style>
-</head>
-<body>
-<main><div class="wrap">
 
-<!-- ── Nav ─────────────────────────────────────────────────── -->
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem">
-  <div style="display:flex;align-items:center;gap:8px">
-    <i class="ti ti-topology-star" style="font-size:20px;color:var(--pu)"></i>
-    <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
-    <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
-  </div>
-  <div style="display:flex;gap:8px">
-    <a href="https://github.com/ekbm/verilay" target="_blank" aria-label="View Verilay on GitHub" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
-      <i class="ti ti-brand-github" style="font-size:13px" aria-hidden="true"></i> GitHub
-    </a>
-    <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500">
-      Analyse my app
-    </button>
-  </div>
-</div>
-
-<!-- ── Hero ────────────────────────────────────────────────── -->
-<div id="hero-section">
-  <div style="text-align:center;padding:2rem 0 1.5rem">
-    <div style="display:inline-flex;align-items:center;gap:6px;background:var(--pul);color:var(--put);font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;margin-bottom:1.25rem">
-      <i class="ti ti-sparkles" style="font-size:12px"></i>
-      Free &amp; open source — built for non-developers
-    </div>
-    <h1 style="font-size:clamp(1.75rem,4vw,3rem);font-weight:700;line-height:1.2;margin-bottom:.85rem;letter-spacing:-.02em">
-      Understand what your<br>
-      <span style="color:var(--pu)">AI-built app</span> is made of
-    </h1>
-    <p style="font-size:15px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
-      You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
-    </p>
-    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
-      <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
-        <i class="ti ti-search" style="font-size:15px"></i> Analyse my app — it's free
-      </button>
-      <button id="btn-hero-demo" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:transparent;color:var(--txt);font-size:14px;font-weight:500;border:1.5px solid var(--bdr);cursor:pointer">
-        <i class="ti ti-player-play" style="font-size:15px"></i> See a sample report
-      </button>
-    </div>
-  </div>
-
-  <!-- Problem → Solution strip -->
-  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:2.5rem">
-    <div style="background:var(--sur);padding:1.25rem 1.4rem">
-      <div style="font-size:22px;margin-bottom:.5rem">🤖</div>
-      <div style="font-size:13px;font-weight:500;margin-bottom:4px">AI built your app</div>
-      <div style="font-size:12px;color:var(--mut);line-height:1.5">Lovable, Replit, Bolt, v0, Cursor — powerful tools that generate real code fast.</div>
-    </div>
-    <div style="background:var(--sur);padding:1.25rem 1.4rem">
-      <div style="font-size:22px;margin-bottom:.5rem">❓</div>
-      <div style="font-size:13px;font-weight:500;margin-bottom:4px">But can you trust it?</div>
-      <div style="font-size:12px;color:var(--mut);line-height:1.5">Is your login secure? Are your database credentials exposed? Is it ready for real users?</div>
-    </div>
-    <div style="background:var(--sur);padding:1.25rem 1.4rem">
-      <div style="font-size:22px;margin-bottom:.5rem">🔍</div>
-      <div style="font-size:13px;font-weight:500;margin-bottom:4px">Verilay answers that</div>
-      <div style="font-size:12px;color:var(--mut);line-height:1.5">Reads every layer of your app. Explains it in plain English. Flags issues. Gives you a second opinion.</div>
-    </div>
-    <div style="background:var(--sur);padding:1.25rem 1.4rem">
-      <div style="font-size:22px;margin-bottom:.5rem">✅</div>
-      <div style="font-size:13px;font-weight:500;margin-bottom:4px">Ship with confidence</div>
-      <div style="font-size:12px;color:var(--mut);line-height:1.5">Know exactly what you built and whether it's ready. No developer needed to understand the results.</div>
-    </div>
-  </div>
-
-  <!-- What you get -->
-  <div style="margin-bottom:2.5rem">
-    <div style="text-align:center;font-size:13px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.1rem">What Verilay gives you</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
-          <i class="ti ti-stack-2" style="font-size:16px;color:var(--pu)"></i>
-          <span style="font-size:12px;font-weight:500">Tech stack map</span>
-        </div>
-        <div style="font-size:11px;color:var(--mut);line-height:1.45">Every library and framework detected and explained in plain English.</div>
-      </div>
-      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
-          <i class="ti ti-layers-difference" style="font-size:16px;color:var(--pu)"></i>
-          <span style="font-size:12px;font-weight:500">Layer map</span>
-        </div>
-        <div style="font-size:11px;color:var(--mut);line-height:1.45">Auth, Database, API, Frontend — each layer explained with expert and learner views.</div>
-      </div>
-      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
-          <i class="ti ti-shield-check" style="font-size:16px;color:var(--pu)"></i>
-          <span style="font-size:12px;font-weight:500">Security check</span>
-        </div>
-        <div style="font-size:11px;color:var(--mut);line-height:1.45">Exposed secrets, auth issues, outdated libraries — flagged before they become problems.</div>
-      </div>
-      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
-          <i class="ti ti-rocket" style="font-size:16px;color:var(--pu)"></i>
-          <span style="font-size:12px;font-weight:500">Production verdict</span>
-        </div>
-        <div style="font-size:11px;color:var(--mut);line-height:1.45">Green, amber, or red — is your app ready to ship to real users?</div>
-      </div>
-      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
-          <i class="ti ti-school" style="font-size:16px;color:var(--pu)"></i>
-          <span style="font-size:12px;font-weight:500">Learner mode</span>
-        </div>
-        <div style="font-size:11px;color:var(--mut);line-height:1.45">Understand what each part of your app does with real-world analogies and quizzes.</div>
-      </div>
-      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
-          <i class="ti ti-message-check" style="font-size:16px;color:var(--pu)"></i>
-          <span style="font-size:12px;font-weight:500">Second opinion</span>
-        </div>
-        <div style="font-size:11px;color:var(--mut);line-height:1.45">Copy-ready prompts to verify findings in Claude, ChatGPT, or with a developer.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Honest scope statement -->
-  <div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem;margin-bottom:2rem;display:flex;align-items:flex-start;gap:10px">
-    <i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>
-    <div style="font-size:12px;color:var(--mut);line-height:1.6">
-      <strong style="color:var(--txt)">What Verilay is — and isn't.</strong>
-      Verilay gives you a plain-English first-pass overview of your AI-built app. It highlights obvious issues, explains your tech stack, and helps you understand what was built.
-      It is <em>not</em> a full penetration test or a replacement for a professional security audit.
-      For apps going live with real user data or payments, we always recommend a deeper review from
-      <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a>,
-      <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a>,
-      or a developer before launch. The second opinion prompts in every report make this easy.
-    </div>
-  </div>
-
-  <!-- Platforms -->
-  <div style="text-align:center;margin-bottom:2.5rem">
-    <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Works with apps built on</div>
-    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px">
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🔷 Lovable</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🟢 Replit</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">⚡ Bolt</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🔲 v0</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🌀 Cursor</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🌊 Windsurf</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🚀 Emergent</span>
-      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">+ any GitHub repo</span>
-    </div>
-  </div>
-
-  <!-- CTA -->
-  <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
-    <div style="font-size:17px;font-weight:600;margin-bottom:.4rem">Ready to see what's inside your app?</div>
-    <div style="font-size:13px;color:var(--mut);margin-bottom:1.1rem">Free. Takes 30 seconds. No account needed.</div>
-    <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
-      <i class="ti ti-search" style="font-size:15px"></i> Analyse my app
-    </button>
-  </div>
-</div>
-
-<!-- ── Analysis form (hidden until user clicks analyse) ──── -->
-<div id="form-section" style="display:none">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:1.25rem">
-    <button id="btn-back-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">
-      <i class="ti ti-arrow-left" style="font-size:13px"></i> Back
-    </button>
-    <span style="font-size:14px;font-weight:500">Analyse your app</span>
-  </div>
-  <p class="label">How do you want to share your project?</p>
-  <div class="mg">
-    <div class="mc sel" id="mc-github">
-      <div class="mc-icon"><i class="ti ti-brand-github"></i></div>
-      <div class="mc-title">GitHub URL</div>
-      <div class="mc-desc">Paste your repo link. Works for Lovable, Replit, any GitHub project.</div>
-      <span class="mbadge" style="background:var(--grl);color:var(--grt)">Most complete</span>
-    </div>
-    <div class="mc" id="mc-zip">
-      <div class="mc-icon"><i class="ti ti-file-zip"></i></div>
-      <div class="mc-title">Upload ZIP</div>
-      <div class="mc-desc">Export from Lovable or Replit and upload here. No GitHub account needed.</div>
-      <span class="mbadge" style="background:var(--pul);color:var(--put)">No GitHub needed</span>
-    </div>
-    <div class="mc" id="mc-url">
-      <div class="mc-icon"><i class="ti ti-world"></i></div>
-      <div class="mc-title">Live URL</div>
-      <div class="mc-desc">Paste your published app link. Surface scan only.</div>
-      <span class="mbadge" style="background:var(--orl);color:var(--ort)">Quick scan</span>
-    </div>
-  </div>
-
-  <div class="ip vis" id="p-github">
-    <label class="lbl">Repository URL</label>
-    <p class="sub">Works with GitHub, GitLab, Bitbucket, and Azure DevOps</p>
-    <input type="url" id="gh-url" placeholder="https://github.com/username/project">
-    <div class="hint" style="background:var(--bg);border:0.5px solid var(--bdr)">
-      <div style="font-size:11px;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.5rem">How to find your repo URL</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:11px;color:var(--mut)">
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔷 Lovable</div>
-          Open project → click GitHub icon top-right → copy the URL shown
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🟢 Replit</div>
-          Open your Repl → Version Control tab (left sidebar) → Connect to GitHub → copy URL
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">⚡ Bolt</div>
-          Open project → click GitHub in the top toolbar → Push to GitHub → copy repo URL
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔲 v0 by Vercel</div>
-          Open project → click the GitHub icon → Create repository → copy URL shown
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🌀 Cursor</div>
-          Source Control panel (Ctrl+Shift+G) → Publish to GitHub → copy the repo URL
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🌊 Windsurf</div>
-          Source Control panel → Publish to GitHub → copy the repo URL
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔵 GitLab</div>
-          Paste your GitLab URL directly e.g. https://gitlab.com/user/project
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🟠 Bitbucket</div>
-          Paste your Bitbucket URL e.g. https://bitbucket.org/user/project
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔷 Azure DevOps</div>
-          Repos → select repo → Clone → HTTPS URL → paste above
-        </div>
-      </div>
-      <div style="margin-top:.65rem;font-size:11px;color:var(--mut)">
-        <strong style="color:var(--txt)">Note:</strong> Repo must be public for Verilay to read it, or connect with a personal access token in your .env file.
-      </div>
-    </div>
-  </div>
-
-  <div class="ip" id="p-zip">
-    <label class="lbl">Upload your project ZIP</label>
-    <p class="sub">Export your project as a ZIP from your AI builder — no GitHub account needed</p>
-    <div class="fd" id="dz">
-      <input type="file" id="zf" accept=".zip">
-      <div style="font-size:24px;color:var(--mut);margin-bottom:.4rem"><i class="ti ti-upload"></i></div>
-      <div style="font-size:13px;color:var(--mut)">Drop ZIP here or click to browse</div>
-      <div id="fn" style="font-size:12px;color:var(--gr);margin-top:.4rem;font-weight:500"></div>
-    </div>
-    <div class="hint" style="background:var(--bg);border:0.5px solid var(--bdr);margin-top:.75rem">
-      <div style="font-size:11px;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.5rem">How to export a ZIP from your builder</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:11px;color:var(--mut)">
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔷 Lovable</div>
-          Open project → click the three-dot menu (···) top-right → Export project → Download ZIP
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🟢 Replit</div>
-          Open your Repl → click the three-dot menu → Download as ZIP
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">⚡ Bolt</div>
-          Open project → Files panel → Download Project (ZIP icon at top of file tree)
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔲 v0 by Vercel</div>
-          Open project → three-dot menu → Download → Download as ZIP
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🌀 Cursor / Windsurf</div>
-          These are desktop apps — your files are already on your computer. Zip the project folder and upload here.
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🚀 Emergent</div>
-          Open project → Settings → Export → Download ZIP
-        </div>
-        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
-          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🤖 Any AI assistant</div>
-          If your AI generated files in a chat (Claude, ChatGPT etc) — save all files into a folder, select all, right-click → Send to → Compressed folder
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="ip" id="p-url">
-    <label class="lbl">Live app URL</label>
-    <p class="sub">e.g. https://yourapp.lovable.app — surface scan only.</p>
-    <input type="url" id="lu" placeholder="https://yourapp.lovable.app">
-    <div class="hint" style="background:var(--orl);color:var(--ort)">
-      Surface scan only — libraries and services detected but not security config or DB structure.
-    </div>
-  </div>
-
-  <div class="erbox" id="eb"></div>
-  <button class="btn" id="btn-analyse">
-    <i class="ti ti-search"></i> Analyse my app
-  </button>
-</div>
-
-<div class="ld" id="ld">
-  <div style="max-width:420px;margin:0 auto">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.1rem">
-      <div class="spin" style="flex-shrink:0"></div>
-      <div>
-        <div class="ld-msg" id="lm">Reading your project files...</div>
-        <div style="font-size:11px;color:var(--mut);margin-top:2px" id="ls">Fetching from GitHub API</div>
-      </div>
-    </div>
-    <div style="background:var(--bdr);border-radius:20px;height:6px;overflow:hidden;margin-bottom:.65rem">
-      <div id="prog-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,var(--pu),#8B7FE8);width:0%;transition:width 0.6s ease"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:1.25rem">
-      <span style="font-size:10px;color:var(--mut)" id="prog-pct">0%</span>
-      <span style="font-size:10px;color:var(--mut)" id="prog-eta">~30 seconds</span>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:6px" id="step-list">
-      <div class="step-item" id="step-0" data-step="0">
-        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
-          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">1</div>
-          <span>Reading project files</span>
-        </div>
-      </div>
-      <div class="step-item" id="step-1" data-step="1">
-        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
-          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">2</div>
-          <span>Detecting tech stack</span>
-        </div>
-      </div>
-      <div class="step-item" id="step-2" data-step="2">
-        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
-          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">3</div>
-          <span>Analysing layers (Auth, DB, API...)</span>
-        </div>
-      </div>
-      <div class="step-item" id="step-3" data-step="3">
-        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
-          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">4</div>
-          <span>Running security checks</span>
-        </div>
-      </div>
-      <div class="step-item" id="step-4" data-step="4">
-        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
-          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">5</div>
-          <span>Writing plain-English explanations</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="rpt" id="rpt">
-  <div class="sticky-bar">
-    <div style="display:flex;align-items:center;gap:8px">
-      <i class="ti ti-topology-star" style="font-size:16px;color:var(--pu)"></i>
-      <span style="font-size:13px;font-weight:500;color:var(--pu)">Verilay</span>
-      <span style="font-size:11px;color:var(--mut)" id="report-status">Report ready</span>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button id="btn-save-report" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
-        <i class="ti ti-link" style="font-size:12px"></i> Share link
-      </button>
-      <button id="btn-export-md" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
-        <i class="ti ti-download" style="font-size:12px"></i> Export .md
-      </button>
-      <button id="btn-print" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
-        <i class="ti ti-printer" style="font-size:12px"></i> Print / PDF
-      </button>
-      <button class="btn-sm" id="btn-new">
-        <i class="ti ti-plus" style="font-size:13px"></i> New analysis
-      </button>
-    </div>
-  </div>
-  <!-- Share link banner — auto-shown after analysis -->
-  <div id="share-banner" style="display:none;background:var(--grl);border:0.5px solid var(--grt);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;flex-direction:column;gap:8px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <i class="ti ti-check" style="color:var(--grt);font-size:16px;flex-shrink:0"></i>
-      <div style="font-size:12px;font-weight:500;color:var(--grt)">Report saved — share it with anyone</div>
-    </div>
-    <div style="display:flex;gap:6px;align-items:center">
-      <input id="share-url" type="text" readonly style="flex:1;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:11px;font-family:var(--mono);background:white;color:var(--txt)">
-      <button id="btn-copy-share" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer;flex-shrink:0">Copy link</button>
-    </div>
-    <div id="badge-section" style="display:none;margin-top:4px">
-      <div style="font-size:11px;color:var(--grt);margin-bottom:4px;font-weight:500">Add this badge to your GitHub README:</div>
-      <input id="badge-code" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:10px;font-family:var(--mono);background:white;color:var(--mut)">
-    </div>
-  </div>
-
-  <div id="report-content"></div>
-
-  <!-- Steps 2+3 loading banner — shown while layers load in background -->
-  <div id="steps23-loading" style="display:none;align-items:center;gap:10px;background:var(--pul);border-radius:var(--r);padding:.75rem 1rem;margin-top:.75rem;margin-bottom:.75rem">
-    <div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>
-    <div style="font-size:12px;color:var(--put);font-weight:500" id="steps23-msg">Analysing Auth, Config, Database layers...</div>
-  </div>
-
-  <!-- Layers injected here by appendLayers -->
-  <div id="layers-container"></div>
-
-  <div class="p2-banner" id="p2-banner">
-    <div style="display:flex;align-items:flex-start;gap:12px">
-      <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for the deep analysis?</div>
-        <div style="font-size:12px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
-          <button id="btn-skip" style="padding:7px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:12px;cursor:pointer">Skip for now</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="p2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
-    <div class="spin" style="width:28px;height:28px;border-width:2.5px;margin-bottom:.75rem"></div>
-    <div style="font-size:13px;color:var(--mut)">Running deep analysis...</div>
-  </div>
-
-  <div id="p2-results"></div>
-
-  <div class="bottom-cta">
-    <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
-    <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Run Verilay on any GitHub repo, ZIP file, or live URL</div>
-    <button class="btn-sm" id="btn-new2">
-      <i class="ti ti-search" style="font-size:13px"></i> Analyse another app
-    </button>
-  </div>
-</div>
-
-<!-- ── Sample report modal ──────────────────────────────── -->
-<div id="sample-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;overflow-y:auto;padding:1.5rem">
-  <div style="max-width:680px;margin:0 auto;background:var(--sur);border-radius:var(--r);padding:1.5rem;position:relative">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
-      <div>
-        <div style="font-size:16px;font-weight:600;margin-bottom:2px">Sample Verilay Report</div>
-        <div style="font-size:12px;color:var(--mut)">A real analysis of a Lovable-built app — this is what you get</div>
-      </div>
-      <button id="btn-close-modal" style="padding:6px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;cursor:pointer;font-size:12px;color:var(--mut)">Close</button>
-    </div>
-
-    <!-- Production verdict -->
-    <div style="background:var(--orl);border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:10px;display:flex;align-items:center;gap:12px">
-      <i class="ti ti-alert-triangle" style="font-size:24px;color:var(--ort)"></i>
-      <div>
-        <div style="font-size:14px;font-weight:600;color:var(--ort)">Needs work before going live</div>
-        <div style="font-size:12px;color:var(--mut)">2 critical security issues found that should be fixed before sharing with real users</div>
-      </div>
-    </div>
-
-    <!-- Stack pills -->
-    <div style="background:var(--bg);border-radius:var(--r);padding:1rem;margin-bottom:10px">
-      <div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Stack detected</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px">
-        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--pul);color:var(--put)">React 18</span>
-        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--grl);color:var(--grt)">Supabase</span>
-        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--orl);color:var(--ort)">Vite</span>
-        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--bll);color:var(--blt)">TypeScript</span>
-        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:#F1EFE8;color:#444441">Tailwind CSS</span>
-        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--pul);color:var(--put)">shadcn/ui</span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem">
-        <div style="background:var(--rdl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--rdt)">2</div><div style="font-size:10px;color:var(--rdt)">critical</div></div>
-        <div style="background:var(--orl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--ort)">3</div><div style="font-size:10px;color:var(--ort)">warnings</div></div>
-        <div style="background:var(--grl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--grt)">6</div><div style="font-size:10px;color:var(--grt)">passing</div></div>
-        <div style="background:var(--bll);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--blt)">C</div><div style="font-size:10px;color:var(--blt)">score</div></div>
-      </div>
-    </div>
-
-    <!-- Sample layer -->
-    <div style="background:var(--bg);border-radius:var(--r);padding:1rem;margin-bottom:10px">
-      <div style="font-size:12px;font-weight:600;margin-bottom:.65rem;display:flex;align-items:center;gap:6px">
-        <i class="ti ti-shield" style="color:var(--rdt)"></i> Auth layer — 2 issues found
-      </div>
-      <!-- Expert finding -->
-      <div style="background:var(--rdl);border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px;font-size:12px">
-        <i class="ti ti-alert-circle" style="color:var(--rdt);font-size:15px;flex-shrink:0;margin-top:1px"></i>
-        <div>
-          <div style="font-weight:500;margin-bottom:2px;color:var(--rdt)">.env file committed to public GitHub repo</div>
-          <div style="color:var(--mut)">Your Supabase credentials are visible to anyone who finds your repo. Rotate your keys immediately in the Supabase dashboard.</div>
-        </div>
-      </div>
-      <div style="background:var(--orl);border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px;font-size:12px">
-        <i class="ti ti-alert-triangle" style="color:var(--ort);font-size:15px;flex-shrink:0;margin-top:1px"></i>
-        <div>
-          <div style="font-weight:500;margin-bottom:2px;color:var(--ort)">JWT tokens have no expiry set</div>
-          <div style="color:var(--mut)">Login tokens last forever. A stolen token would give permanent access to any account.</div>
-        </div>
-      </div>
-      <!-- Learner view toggle sample -->
-      <div style="background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:12px;color:var(--put)">
-        <strong>Think of Auth like this:</strong> It's the bouncer at your app's door — checks who you are before letting you in. Right now the bouncer is letting people in with a pass that never expires.
-      </div>
-    </div>
-
-    <!-- CTA -->
-    <div style="text-align:center;padding:.75rem 0 0">
-      <div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">This is what Verilay finds in your app — in 30 seconds</div>
-      <button id="btn-modal-cta" style="display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
-        <i class="ti ti-search"></i> Analyse my app now
-      </button>
-    </div>
-  </div>
-</div>
-
-</div></main>
-
-<script>
+APP_JS = """
 var currentMethod = 'github';
 var currentReport = null;
 var currentFilesSample = '';
@@ -2044,7 +1438,620 @@ function renderPart2(data) {
 
 // Start everything when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
-</script>
+"""
+
+HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verilay - Understand your AI-built app</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#f8f8f7;--sur:#fff;--bdr:#e8e6e0;--txt:#1a1917;--mut:#6b6966;--r:10px;
+  --pu:#534AB7;--pul:#EEEDFE;--put:#3C3489;
+  --gr:#1D9E75;--grl:#E1F5EE;--grt:#085041;
+  --or:#EF9F27;--orl:#FAEEDA;--ort:#633806;
+  --rd:#E24B4A;--rdl:#FCEBEB;--rdt:#A32D2D;
+  --bll:#E6F1FB;--blt:#0C447C;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
+.logo-text{font-size:22px;font-weight:600;color:var(--pu)}
+.tagline{font-size:13px;color:var(--mut);margin-bottom:2rem}
+.label{font-size:13px;font-weight:500;margin-bottom:.65rem}
+.mg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1.25rem}
+.mc{border:1.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem;cursor:pointer;background:var(--sur);transition:all .15s;user-select:none}
+.mc:hover{border-color:#aaa8ff}
+.mc.sel{border-color:var(--pu);background:var(--pul)}
+.mc-icon{font-size:20px;margin-bottom:.4rem}
+.mc-title{font-size:13px;font-weight:500;margin-bottom:2px}
+.mc-desc{font-size:11px;color:var(--mut);line-height:1.4}
+.mbadge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px;margin-top:5px;display:inline-block}
+.ip{display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:1rem}
+.ip.vis{display:block}
+.lbl{font-size:12px;font-weight:500;margin-bottom:.4rem;display:block}
+.sub{font-size:11px;color:var(--mut);margin-bottom:.6rem;line-height:1.45}
+input[type=url],input[type=text]{width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:13px;background:var(--bg);color:var(--txt);outline:none}
+input:focus{border-color:var(--pu)}
+.hint{background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:12px;color:var(--put);margin-top:.65rem;line-height:1.5}
+.hint ol{margin-top:.35rem;padding-left:1.1rem}
+.hint li{margin-bottom:2px}
+.fd{border:1.5px dashed var(--bdr);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;position:relative;transition:all .15s;background:var(--bg)}
+.fd:hover{border-color:var(--pu);background:var(--pul)}
+.fd input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.erbox{background:var(--rdl);border-radius:var(--r);padding:1rem;color:var(--rdt);font-size:13px;margin-bottom:1rem;display:none}
+.erbox.vis{display:block}
+.btn{width:100%;padding:12px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.ld{display:none;text-align:center;padding:2.5rem}
+.ld.vis{display:block}
+.spin{width:36px;height:36px;border:3px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 1rem}
+@keyframes sp{to{transform:rotate(360deg)}}
+.rpt{display:none}
+.rpt.vis{display:block}
+.sticky-bar{display:flex;align-items:center;justify-content:space-between;padding:.65rem .9rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);position:sticky;top:0;z-index:10;margin-bottom:1rem}
+.btn-sm{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:12px;font-weight:500;border:none;cursor:pointer}
+.prod-banner{border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.rh{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.1rem;margin-bottom:10px}
+.pill{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;display:inline-block;margin:2px}
+.hg{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem}
+.hc{border-radius:8px;padding:.55rem;text-align:center}
+.tabs{display:flex;gap:5px;margin-bottom:1rem;flex-wrap:wrap}
+.tab{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
+.tab.on{background:var(--pu);color:#fff;border-color:transparent}
+.panel{display:none}.panel.on{display:block}
+.ll{display:grid;grid-template-columns:175px 1fr;gap:12px}
+.lnav{display:flex;flex-direction:column;gap:5px}
+.lb{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;border:0.5px solid transparent;background:var(--bg);width:100%;text-align:left;font-size:12px;font-weight:500}
+.lb:hover,.lb.act{background:var(--sur);border-color:var(--bdr)}
+.ldot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-left:auto}
+.lico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.ca{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem;min-height:280px}
+.mt{display:flex;gap:4px;margin-bottom:.85rem;flex-wrap:wrap}
+.mb{font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
+.mb.on{background:var(--pu);color:#fff;border-color:transparent}
+.finding{border-radius:8px;padding:.65rem .85rem;margin-bottom:7px;display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5}
+.lc{background:var(--bg);border-left:2px solid var(--pu);border-radius:0 8px 8px 0;padding:.65rem .85rem;margin-bottom:7px}
+.lc-title{font-size:12px;font-weight:500;margin-bottom:3px}
+.lc-body{font-size:12px;color:var(--mut);line-height:1.5}
+.analogy{background:var(--pul);border-radius:8px;padding:.65rem .85rem;margin-bottom:8px;font-size:12px;color:var(--put);line-height:1.5}
+.qcard{background:var(--pul);border-radius:8px;padding:.75rem .9rem;margin-bottom:7px}
+.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px}
+.sc{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.7rem .85rem}
+.fc{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
+.si{border-radius:8px;padding:.6rem .85rem;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500}
+.so-card{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
+.p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
+.bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
+@media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
+/* Accessibility: underline links inside text blocks */
+.hint a,.scope-notice a,.next-steps a,p a{text-decoration:underline;text-underline-offset:2px}
+#hero-section a,#report-content a{text-decoration:underline;text-underline-offset:2px}
+@media(min-width:900px){
+  .ll{grid-template-columns:200px 1fr;gap:16px}
+  .mg{grid-template-columns:repeat(3,1fr)}
+  .hg{grid-template-columns:repeat(4,1fr)}
+}
+@media(min-width:1200px){
+  .ll{grid-template-columns:220px 1fr;gap:20px}
+}
+@media print{
+  .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner{display:none!important}
+  .rpt{display:block!important}
+  body{background:white;padding:0}
+  .wrap{max-width:100%;padding:1rem}
+  .ca{min-height:auto}
+}
+</style>
+</head>
+<body>
+<main><div class="wrap">
+
+<!-- ── Nav ─────────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem">
+  <div style="display:flex;align-items:center;gap:8px">
+    <i class="ti ti-topology-star" style="font-size:20px;color:var(--pu)"></i>
+    <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
+    <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="https://github.com/ekbm/verilay" target="_blank" aria-label="View Verilay on GitHub" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
+      <i class="ti ti-brand-github" style="font-size:13px" aria-hidden="true"></i> GitHub
+    </a>
+    <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500">
+      Analyse my app
+    </button>
+  </div>
+</div>
+
+<!-- ── Hero ────────────────────────────────────────────────── -->
+<div id="hero-section">
+  <div style="text-align:center;padding:2rem 0 1.5rem">
+    <div style="display:inline-flex;align-items:center;gap:6px;background:var(--pul);color:var(--put);font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;margin-bottom:1.25rem">
+      <i class="ti ti-sparkles" style="font-size:12px"></i>
+      Free &amp; open source — built for non-developers
+    </div>
+    <h1 style="font-size:clamp(1.75rem,4vw,3rem);font-weight:700;line-height:1.2;margin-bottom:.85rem;letter-spacing:-.02em">
+      Understand what your<br>
+      <span style="color:var(--pu)">AI-built app</span> is made of
+    </h1>
+    <p style="font-size:15px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
+      You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
+    </p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
+      <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
+        <i class="ti ti-search" style="font-size:15px"></i> Analyse my app — it's free
+      </button>
+      <button id="btn-hero-demo" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:transparent;color:var(--txt);font-size:14px;font-weight:500;border:1.5px solid var(--bdr);cursor:pointer">
+        <i class="ti ti-player-play" style="font-size:15px"></i> See a sample report
+      </button>
+    </div>
+  </div>
+
+  <!-- Problem → Solution strip -->
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:2.5rem">
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
+      <div style="font-size:22px;margin-bottom:.5rem">🤖</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">AI built your app</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Lovable, Replit, Bolt, v0, Cursor — powerful tools that generate real code fast.</div>
+    </div>
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
+      <div style="font-size:22px;margin-bottom:.5rem">❓</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">But can you trust it?</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Is your login secure? Are your database credentials exposed? Is it ready for real users?</div>
+    </div>
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
+      <div style="font-size:22px;margin-bottom:.5rem">🔍</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">Verilay answers that</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Reads every layer of your app. Explains it in plain English. Flags issues. Gives you a second opinion.</div>
+    </div>
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
+      <div style="font-size:22px;margin-bottom:.5rem">✅</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">Ship with confidence</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.5">Know exactly what you built and whether it's ready. No developer needed to understand the results.</div>
+    </div>
+  </div>
+
+  <!-- What you get -->
+  <div style="margin-bottom:2.5rem">
+    <div style="text-align:center;font-size:13px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.1rem">What Verilay gives you</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-stack-2" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Tech stack map</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Every library and framework detected and explained in plain English.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-layers-difference" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Layer map</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Auth, Database, API, Frontend — each layer explained with expert and learner views.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-shield-check" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Security check</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Exposed secrets, auth issues, outdated libraries — flagged before they become problems.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-rocket" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Production verdict</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Green, amber, or red — is your app ready to ship to real users?</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-school" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Learner mode</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Understand what each part of your app does with real-world analogies and quizzes.</div>
+      </div>
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-message-check" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:12px;font-weight:500">Second opinion</span>
+        </div>
+        <div style="font-size:11px;color:var(--mut);line-height:1.45">Copy-ready prompts to verify findings in Claude, ChatGPT, or with a developer.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Honest scope statement -->
+  <div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem;margin-bottom:2rem;display:flex;align-items:flex-start;gap:10px">
+    <i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>
+    <div style="font-size:12px;color:var(--mut);line-height:1.6">
+      <strong style="color:var(--txt)">What Verilay is — and isn't.</strong>
+      Verilay gives you a plain-English first-pass overview of your AI-built app. It highlights obvious issues, explains your tech stack, and helps you understand what was built.
+      It is <em>not</em> a full penetration test or a replacement for a professional security audit.
+      For apps going live with real user data or payments, we always recommend a deeper review from
+      <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a>,
+      <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a>,
+      or a developer before launch. The second opinion prompts in every report make this easy.
+    </div>
+  </div>
+
+  <!-- Platforms -->
+  <div style="text-align:center;margin-bottom:2.5rem">
+    <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Works with apps built on</div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px">
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🔷 Lovable</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🟢 Replit</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">⚡ Bolt</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🔲 v0</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🌀 Cursor</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🌊 Windsurf</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">🚀 Emergent</span>
+      <span style="font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:var(--sur)">+ any GitHub repo</span>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
+    <div style="font-size:17px;font-weight:600;margin-bottom:.4rem">Ready to see what's inside your app?</div>
+    <div style="font-size:13px;color:var(--mut);margin-bottom:1.1rem">Free. Takes 30 seconds. No account needed.</div>
+    <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
+      <i class="ti ti-search" style="font-size:15px"></i> Analyse my app
+    </button>
+  </div>
+</div>
+
+<!-- ── Analysis form (hidden until user clicks analyse) ──── -->
+<div id="form-section" style="display:none">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:1.25rem">
+    <button id="btn-back-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">
+      <i class="ti ti-arrow-left" style="font-size:13px"></i> Back
+    </button>
+    <span style="font-size:14px;font-weight:500">Analyse your app</span>
+  </div>
+  <p class="label">How do you want to share your project?</p>
+  <div class="mg">
+    <div class="mc sel" id="mc-github">
+      <div class="mc-icon"><i class="ti ti-brand-github"></i></div>
+      <div class="mc-title">GitHub URL</div>
+      <div class="mc-desc">Paste your repo link. Works for Lovable, Replit, any GitHub project.</div>
+      <span class="mbadge" style="background:var(--grl);color:var(--grt)">Most complete</span>
+    </div>
+    <div class="mc" id="mc-zip">
+      <div class="mc-icon"><i class="ti ti-file-zip"></i></div>
+      <div class="mc-title">Upload ZIP</div>
+      <div class="mc-desc">Export from Lovable or Replit and upload here. No GitHub account needed.</div>
+      <span class="mbadge" style="background:var(--pul);color:var(--put)">No GitHub needed</span>
+    </div>
+    <div class="mc" id="mc-url">
+      <div class="mc-icon"><i class="ti ti-world"></i></div>
+      <div class="mc-title">Live URL</div>
+      <div class="mc-desc">Paste your published app link. Surface scan only.</div>
+      <span class="mbadge" style="background:var(--orl);color:var(--ort)">Quick scan</span>
+    </div>
+  </div>
+
+  <div class="ip vis" id="p-github">
+    <label class="lbl">Repository URL</label>
+    <p class="sub">Works with GitHub, GitLab, Bitbucket, and Azure DevOps</p>
+    <input type="url" id="gh-url" placeholder="https://github.com/username/project">
+    <div class="hint" style="background:var(--bg);border:0.5px solid var(--bdr)">
+      <div style="font-size:11px;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.5rem">How to find your repo URL</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:11px;color:var(--mut)">
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔷 Lovable</div>
+          Open project → click GitHub icon top-right → copy the URL shown
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🟢 Replit</div>
+          Open your Repl → Version Control tab (left sidebar) → Connect to GitHub → copy URL
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">⚡ Bolt</div>
+          Open project → click GitHub in the top toolbar → Push to GitHub → copy repo URL
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔲 v0 by Vercel</div>
+          Open project → click the GitHub icon → Create repository → copy URL shown
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🌀 Cursor</div>
+          Source Control panel (Ctrl+Shift+G) → Publish to GitHub → copy the repo URL
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🌊 Windsurf</div>
+          Source Control panel → Publish to GitHub → copy the repo URL
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔵 GitLab</div>
+          Paste your GitLab URL directly e.g. https://gitlab.com/user/project
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🟠 Bitbucket</div>
+          Paste your Bitbucket URL e.g. https://bitbucket.org/user/project
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔷 Azure DevOps</div>
+          Repos → select repo → Clone → HTTPS URL → paste above
+        </div>
+      </div>
+      <div style="margin-top:.65rem;font-size:11px;color:var(--mut)">
+        <strong style="color:var(--txt)">Note:</strong> Repo must be public for Verilay to read it, or connect with a personal access token in your .env file.
+      </div>
+    </div>
+  </div>
+
+  <div class="ip" id="p-zip">
+    <label class="lbl">Upload your project ZIP</label>
+    <p class="sub">Export your project as a ZIP from your AI builder — no GitHub account needed</p>
+    <div class="fd" id="dz">
+      <input type="file" id="zf" accept=".zip">
+      <div style="font-size:24px;color:var(--mut);margin-bottom:.4rem"><i class="ti ti-upload"></i></div>
+      <div style="font-size:13px;color:var(--mut)">Drop ZIP here or click to browse</div>
+      <div id="fn" style="font-size:12px;color:var(--gr);margin-top:.4rem;font-weight:500"></div>
+    </div>
+    <div class="hint" style="background:var(--bg);border:0.5px solid var(--bdr);margin-top:.75rem">
+      <div style="font-size:11px;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.5rem">How to export a ZIP from your builder</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:11px;color:var(--mut)">
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔷 Lovable</div>
+          Open project → click the three-dot menu (···) top-right → Export project → Download ZIP
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🟢 Replit</div>
+          Open your Repl → click the three-dot menu → Download as ZIP
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">⚡ Bolt</div>
+          Open project → Files panel → Download Project (ZIP icon at top of file tree)
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🔲 v0 by Vercel</div>
+          Open project → three-dot menu → Download → Download as ZIP
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🌀 Cursor / Windsurf</div>
+          These are desktop apps — your files are already on your computer. Zip the project folder and upload here.
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🚀 Emergent</div>
+          Open project → Settings → Export → Download ZIP
+        </div>
+        <div style="background:var(--sur);border-radius:6px;padding:.5rem .65rem">
+          <div style="font-weight:600;color:var(--txt);margin-bottom:3px">🤖 Any AI assistant</div>
+          If your AI generated files in a chat (Claude, ChatGPT etc) — save all files into a folder, select all, right-click → Send to → Compressed folder
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ip" id="p-url">
+    <label class="lbl">Live app URL</label>
+    <p class="sub">e.g. https://yourapp.lovable.app — surface scan only.</p>
+    <input type="url" id="lu" placeholder="https://yourapp.lovable.app">
+    <div class="hint" style="background:var(--orl);color:var(--ort)">
+      Surface scan only — libraries and services detected but not security config or DB structure.
+    </div>
+  </div>
+
+  <div class="erbox" id="eb"></div>
+  <button class="btn" id="btn-analyse">
+    <i class="ti ti-search"></i> Analyse my app
+  </button>
+</div>
+
+<div class="ld" id="ld">
+  <div style="max-width:420px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.1rem">
+      <div class="spin" style="flex-shrink:0"></div>
+      <div>
+        <div class="ld-msg" id="lm">Reading your project files...</div>
+        <div style="font-size:11px;color:var(--mut);margin-top:2px" id="ls">Fetching from GitHub API</div>
+      </div>
+    </div>
+    <div style="background:var(--bdr);border-radius:20px;height:6px;overflow:hidden;margin-bottom:.65rem">
+      <div id="prog-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,var(--pu),#8B7FE8);width:0%;transition:width 0.6s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:1.25rem">
+      <span style="font-size:10px;color:var(--mut)" id="prog-pct">0%</span>
+      <span style="font-size:10px;color:var(--mut)" id="prog-eta">~30 seconds</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px" id="step-list">
+      <div class="step-item" id="step-0" data-step="0">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
+          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">1</div>
+          <span>Reading project files</span>
+        </div>
+      </div>
+      <div class="step-item" id="step-1" data-step="1">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
+          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">2</div>
+          <span>Detecting tech stack</span>
+        </div>
+      </div>
+      <div class="step-item" id="step-2" data-step="2">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
+          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">3</div>
+          <span>Analysing layers (Auth, DB, API...)</span>
+        </div>
+      </div>
+      <div class="step-item" id="step-3" data-step="3">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
+          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">4</div>
+          <span>Running security checks</span>
+        </div>
+      </div>
+      <div class="step-item" id="step-4" data-step="4">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)">
+          <div class="step-icon" style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">5</div>
+          <span>Writing plain-English explanations</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="rpt" id="rpt">
+  <div class="sticky-bar">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-topology-star" style="font-size:16px;color:var(--pu)"></i>
+      <span style="font-size:13px;font-weight:500;color:var(--pu)">Verilay</span>
+      <span style="font-size:11px;color:var(--mut)" id="report-status">Report ready</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="btn-save-report" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
+        <i class="ti ti-link" style="font-size:12px"></i> Share link
+      </button>
+      <button id="btn-export-md" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
+        <i class="ti ti-download" style="font-size:12px"></i> Export .md
+      </button>
+      <button id="btn-print" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:11px;cursor:pointer">
+        <i class="ti ti-printer" style="font-size:12px"></i> Print / PDF
+      </button>
+      <button class="btn-sm" id="btn-new">
+        <i class="ti ti-plus" style="font-size:13px"></i> New analysis
+      </button>
+    </div>
+  </div>
+  <!-- Share link banner — auto-shown after analysis -->
+  <div id="share-banner" style="display:none;background:var(--grl);border:0.5px solid var(--grt);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-check" style="color:var(--grt);font-size:16px;flex-shrink:0"></i>
+      <div style="font-size:12px;font-weight:500;color:var(--grt)">Report saved — share it with anyone</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input id="share-url" type="text" readonly style="flex:1;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:11px;font-family:var(--mono);background:white;color:var(--txt)">
+      <button id="btn-copy-share" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer;flex-shrink:0">Copy link</button>
+    </div>
+    <div id="badge-section" style="display:none;margin-top:4px">
+      <div style="font-size:11px;color:var(--grt);margin-bottom:4px;font-weight:500">Add this badge to your GitHub README:</div>
+      <input id="badge-code" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:10px;font-family:var(--mono);background:white;color:var(--mut)">
+    </div>
+  </div>
+
+  <div id="report-content"></div>
+
+  <!-- Steps 2+3 loading banner — shown while layers load in background -->
+  <div id="steps23-loading" style="display:none;align-items:center;gap:10px;background:var(--pul);border-radius:var(--r);padding:.75rem 1rem;margin-top:.75rem;margin-bottom:.75rem">
+    <div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>
+    <div style="font-size:12px;color:var(--put);font-weight:500" id="steps23-msg">Analysing Auth, Config, Database layers...</div>
+  </div>
+
+  <!-- Layers injected here by appendLayers -->
+  <div id="layers-container"></div>
+
+  <div class="p2-banner" id="p2-banner">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for the deep analysis?</div>
+        <div style="font-size:12px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
+          <button id="btn-skip" style="padding:7px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:12px;cursor:pointer">Skip for now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="p2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
+    <div class="spin" style="width:28px;height:28px;border-width:2.5px;margin-bottom:.75rem"></div>
+    <div style="font-size:13px;color:var(--mut)">Running deep analysis...</div>
+  </div>
+
+  <div id="p2-results"></div>
+
+  <div class="bottom-cta">
+    <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
+    <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Run Verilay on any GitHub repo, ZIP file, or live URL</div>
+    <button class="btn-sm" id="btn-new2">
+      <i class="ti ti-search" style="font-size:13px"></i> Analyse another app
+    </button>
+  </div>
+</div>
+
+<!-- ── Sample report modal ──────────────────────────────── -->
+<div id="sample-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;overflow-y:auto;padding:1.5rem">
+  <div style="max-width:680px;margin:0 auto;background:var(--sur);border-radius:var(--r);padding:1.5rem;position:relative">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+      <div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:2px">Sample Verilay Report</div>
+        <div style="font-size:12px;color:var(--mut)">A real analysis of a Lovable-built app — this is what you get</div>
+      </div>
+      <button id="btn-close-modal" style="padding:6px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;cursor:pointer;font-size:12px;color:var(--mut)">Close</button>
+    </div>
+
+    <!-- Production verdict -->
+    <div style="background:var(--orl);border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:10px;display:flex;align-items:center;gap:12px">
+      <i class="ti ti-alert-triangle" style="font-size:24px;color:var(--ort)"></i>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--ort)">Needs work before going live</div>
+        <div style="font-size:12px;color:var(--mut)">2 critical security issues found that should be fixed before sharing with real users</div>
+      </div>
+    </div>
+
+    <!-- Stack pills -->
+    <div style="background:var(--bg);border-radius:var(--r);padding:1rem;margin-bottom:10px">
+      <div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Stack detected</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--pul);color:var(--put)">React 18</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--grl);color:var(--grt)">Supabase</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--orl);color:var(--ort)">Vite</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--bll);color:var(--blt)">TypeScript</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:#F1EFE8;color:#444441">Tailwind CSS</span>
+        <span style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--pul);color:var(--put)">shadcn/ui</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem">
+        <div style="background:var(--rdl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--rdt)">2</div><div style="font-size:10px;color:var(--rdt)">critical</div></div>
+        <div style="background:var(--orl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--ort)">3</div><div style="font-size:10px;color:var(--ort)">warnings</div></div>
+        <div style="background:var(--grl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--grt)">6</div><div style="font-size:10px;color:var(--grt)">passing</div></div>
+        <div style="background:var(--bll);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--blt)">C</div><div style="font-size:10px;color:var(--blt)">score</div></div>
+      </div>
+    </div>
+
+    <!-- Sample layer -->
+    <div style="background:var(--bg);border-radius:var(--r);padding:1rem;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:.65rem;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-shield" style="color:var(--rdt)"></i> Auth layer — 2 issues found
+      </div>
+      <!-- Expert finding -->
+      <div style="background:var(--rdl);border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px;font-size:12px">
+        <i class="ti ti-alert-circle" style="color:var(--rdt);font-size:15px;flex-shrink:0;margin-top:1px"></i>
+        <div>
+          <div style="font-weight:500;margin-bottom:2px;color:var(--rdt)">.env file committed to public GitHub repo</div>
+          <div style="color:var(--mut)">Your Supabase credentials are visible to anyone who finds your repo. Rotate your keys immediately in the Supabase dashboard.</div>
+        </div>
+      </div>
+      <div style="background:var(--orl);border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px;font-size:12px">
+        <i class="ti ti-alert-triangle" style="color:var(--ort);font-size:15px;flex-shrink:0;margin-top:1px"></i>
+        <div>
+          <div style="font-weight:500;margin-bottom:2px;color:var(--ort)">JWT tokens have no expiry set</div>
+          <div style="color:var(--mut)">Login tokens last forever. A stolen token would give permanent access to any account.</div>
+        </div>
+      </div>
+      <!-- Learner view toggle sample -->
+      <div style="background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:12px;color:var(--put)">
+        <strong>Think of Auth like this:</strong> It's the bouncer at your app's door — checks who you are before letting you in. Right now the bouncer is letting people in with a pass that never expires.
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div style="text-align:center;padding:.75rem 0 0">
+      <div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">This is what Verilay finds in your app — in 30 seconds</div>
+      <button id="btn-modal-cta" style="display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer">
+        <i class="ti ti-search"></i> Analyse my app now
+      </button>
+    </div>
+  </div>
+</div>
+
+</div></main>
+
+<script src="/static/app.js"></script>
 </body>
 </html>"""
 
