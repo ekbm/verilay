@@ -8,6 +8,11 @@ import os, json, base64, zipfile, io, requests, time, secrets as _secrets, uuid 
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
+try:
+    import anthropic as _anthropic
+    _HAS_SDK = True
+except ImportError:
+    _HAS_SDK = False
 
 load_dotenv()
 
@@ -160,51 +165,76 @@ def fetch_url(live_url):
 
 # ── Claude API ─────────────────────────────────────────────────────────────────
 def call_claude(prompt, max_tokens=2500):
+    """Call Claude. Uses official SDK with auto-retry if available, raw requests otherwise."""
     if not ANTHROPIC_API_KEY:
         raise ValueError("No ANTHROPIC_API_KEY set.")
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-        json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"messages":[{"role":"user","content":prompt}]},
-        timeout=20
-    )
-    if not resp.ok:
-        raise ValueError(f"Claude API {resp.status_code}: {resp.text[:200]}")
-    resp.raise_for_status()
-    raw = resp.json()["content"][0]["text"].strip()
+
+    # ── Anthropic SDK path (preferred) ────────────────────────────────
+    if _HAS_SDK:
+        client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
+        raw = ""
+        with client.messages.stream(
+            model="claude-sonnet-4-5",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}]
+        ) as stream:
+            for text in stream.text_stream:
+                raw += text
+
+    # ── Fallback: raw requests streaming ──────────────────────────────
+    else:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model": "claude-sonnet-4-5",
+                "max_tokens": max_tokens,
+                "stream": True,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            stream=True,
+            timeout=90
+        )
+        if not resp.ok:
+            raise ValueError(f"Claude API {resp.status_code}: {resp.text[:300]}")
+        raw = ""
+        for line in resp.iter_lines():
+            if not line: continue
+            line = line.decode("utf-8") if isinstance(line, bytes) else line
+            if not line.startswith("data: "): continue
+            data = line[6:]
+            if data.strip() == "[DONE]": break
+            try:
+                evt = json.loads(data)
+                if evt.get("type") == "content_block_delta":
+                    delta = evt.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        raw += delta.get("text", "")
+            except: continue
+
+    # ── Parse JSON response ────────────────────────────────────────────
+    raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"): raw = raw[4:]
-    if raw.endswith("```"): raw = raw.rsplit("```",1)[0]
+    if raw.endswith("```"):
+        raw = raw.rsplit("```", 1)[0]
     raw = raw.strip()
-    try: return json.loads(raw)
+
+    try:
+        return json.loads(raw)
     except json.JSONDecodeError:
         for i in range(len(raw)-1, 0, -1):
-            if raw[i] == '}':
+            if raw[i] == "}":
                 try: return json.loads(raw[:i+1])
                 except: continue
         raise ValueError("Could not parse Claude response. Please try again.")
 
-def sanitise_for_prompt(content):
-    """Truncate long lines to reduce prompt injection risk."""
-    return "\n".join(l[:500] if len(l) > 500 else l for l in content.split("\n"))
 
-def files_for(files, keys):
-    out = ""
-    total = 0
-    for k in keys:
-        if k in files and total < 10000:
-            # Remove null bytes and control chars that break JSON
-            content = files[k]
-            content = content.replace("\x00", "").replace("\r", "")
-            content = "".join(c for c in content if ord(c) >= 32 or c in "\n\t")
-            content = sanitise_for_prompt(content)
-            chunk = "\n\n=== " + k + " ===\n" + content
-            out += chunk
-            total += len(chunk)
-    return out
-
-# ── Analysis functions ─────────────────────────────────────────────────────────
 def analyse_step1(files, tree, repo_name, method):
     tree_str = "\n".join(tree[:80]) if tree else "Not available"
     stack_keys = [k for k in files if any(sf in k for sf in ["package.json","requirements","Procfile","vite","tsconfig",".gitignore"])]
