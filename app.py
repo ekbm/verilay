@@ -234,7 +234,9 @@ def call_claude(prompt, max_tokens=2500):
             if raw[i] == "}":
                 try: return json.loads(raw[:i+1])
                 except: continue
-        raise ValueError("Could not parse Claude response. Please try again.")
+        # Log what we got for debugging
+        preview = raw[:500] if raw else "(empty)"
+        raise ValueError(f"Parse failed. Response preview: {preview}")
 
 
 def sanitise_for_prompt(content):
@@ -1168,10 +1170,7 @@ function renderReport(data) {
   var firstLayer = document.querySelector('#layer-nav .lb');
   if (firstLayer) firstLayer.click();
 
-  // Show Part 2 banner
-  if (!isSurf) {
-    document.getElementById('p2-banner').style.display = 'block';
-  }
+  // Part 2 banner only shown after layers_complete event fires
 }
 
 function renderLayer() {
