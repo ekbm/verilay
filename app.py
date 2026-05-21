@@ -655,7 +655,7 @@ function init() {
     document.getElementById('fn').textContent = name ? '✓ ' + name : '';
   });
 
-  // Hero buttons — show form
+  // Hero buttons - show form
   function showForm() {
     document.getElementById('hero-section').style.display = 'none';
     document.getElementById('form-section').style.display = 'block';
@@ -1022,11 +1022,11 @@ function renderReport(data) {
   html += '<div><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + pb[3] + '</div>';
   html += '<div style="font-size:12px;opacity:.85">' + esc(pr.reason||'') + '</div></div></div>';
 
-  // Scope notice — always shown, sets honest expectations
+  // Scope notice - always shown, sets honest expectations
   html += '<div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
   html += '<i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>';
   html += '<div style="font-size:12px;color:var(--mut);line-height:1.55">';
-  html += '<strong style="color:var(--txt)">What Verilay covers:</strong> This is a first-pass overview of your codebase — great for understanding what was built and catching obvious issues. ';
+  html += '<strong style="color:var(--txt)">What Verilay covers:</strong> This is a first-pass overview of your codebase - great for understanding what was built and catching obvious issues. ';
   html += 'For apps handling real users or sensitive data, we recommend a deeper review: ';
   html += '<a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a> for dependency vulnerabilities, ';
   html += '<a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a> for code review, ';
@@ -1047,7 +1047,7 @@ function renderReport(data) {
 
   html += '<div class="rh">';
   html += '<div style="font-size:16px;font-weight:600;margin-bottom:3px">' + esc(data.repo||'') + '</div>';
-  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + ' &nbsp;·&nbsp; ' + (data.files_read||0) + ' files &nbsp;·&nbsp; ' + (data.generated_at||'') + '</div>';
+  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
   html += '<div class="hg">' + hcards + '</div></div>';
 
@@ -1085,7 +1085,7 @@ function renderReport(data) {
   html += '<div id="layer-content" style="padding:.75rem 0">';
   html += '<div style="font-size:12px;color:var(--mut);display:flex;align-items:center;gap:8px">';
   html += '<div style="width:16px;height:16px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
-  html += 'Analysing your codebase — layers will appear shortly...</div>';
+  html += 'Analysing your codebase - layers will appear shortly...</div>';
   html += '</div>';
   html += '</div></div></div>';
 
@@ -1414,9 +1414,9 @@ function renderPart2(data) {
   html += '<div style="background:var(--pul);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0;border-left:3px solid var(--pu)">';
   html += '<div style="font-size:12px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
   html += '<div style="font-size:12px;color:var(--put);line-height:1.6">';
-  html += 'Verilay gives you a first-pass overview — good for understanding and catching obvious issues. For production apps we recommend going further:<br>';
-  html += '• <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency and vulnerability scanning (connects to GitHub)<br>';
-  html += '• <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> — AI code review on every pull request (free for open source)<br>';
+  html += 'Verilay gives you a first-pass overview - good for understanding and catching obvious issues. For production apps we recommend going further:<br>';
+  html += '• <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> - free dependency and vulnerability scanning (connects to GitHub)<br>';
+  html += '• <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> - AI code review on every pull request (free for open source)<br>';
   html += '• Share the second opinion prompts below with a developer for a human review<br>';
   html += '• Fix all critical issues before going live with real users or payments';
   html += '</div></div>';
