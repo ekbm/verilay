@@ -2053,7 +2053,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 # ── Badge generator ──────────────────────────────────────────────────────────
 
-@app.route("/badge/<path:repo>")
+
 def badge(repo):
     """Generate an SVG score badge for a repo."""
 
