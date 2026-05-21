@@ -235,6 +235,25 @@ def call_claude(prompt, max_tokens=2500):
         raise ValueError("Could not parse Claude response. Please try again.")
 
 
+def sanitise_for_prompt(content):
+    """Strip control characters that break JSON payloads."""
+    content = content.replace("\x00", "").replace("\r", "")
+    return "".join(c for c in content if ord(c) >= 32 or c in "\n\t")
+
+
+def files_for(files, keys):
+    """Build file text block from selected keys, capped at 10KB total."""
+    out = ""
+    total = 0
+    for k in keys:
+        if k in files and total < 10000:
+            content = sanitise_for_prompt(files[k])
+            chunk = "\n\n=== " + k + " ===\n" + content
+            out += chunk
+            total += len(chunk)
+    return out
+
+
 def analyse_step1(files, tree, repo_name, method):
     tree_str = "\n".join(tree[:80]) if tree else "Not available"
     stack_keys = [k for k in files if any(sf in k for sf in ["package.json","requirements","Procfile","vite","tsconfig",".gitignore"])]
