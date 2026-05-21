@@ -168,6 +168,8 @@ def call_claude(prompt, max_tokens=2500):
         json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"messages":[{"role":"user","content":prompt}]},
         timeout=20
     )
+    if not resp.ok:
+        raise ValueError(f"Claude API {resp.status_code}: {resp.text[:200]}")
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
     if raw.startswith("```"):
@@ -192,7 +194,12 @@ def files_for(files, keys):
     total = 0
     for k in keys:
         if k in files and total < 10000:
-            chunk = f"\n\n=== {k} ===\n{sanitise_for_prompt(files[k])}"
+            # Remove null bytes and control chars that break JSON
+            content = files[k]
+            content = content.replace("\x00", "").replace("\r", "")
+            content = "".join(c for c in content if ord(c) >= 32 or c in "\n\t")
+            content = sanitise_for_prompt(content)
+            chunk = "\n\n=== " + k + " ===\n" + content
             out += chunk
             total += len(chunk)
     return out
@@ -222,58 +229,39 @@ def analyse_step1(files, tree, repo_name, method):
 
 def analyse_step2(files, repo_name):
     sec_keys = [k for k in files if any(w in k.lower() for w in
-        ["auth","login",".env","config","secret","supabase","database","db","schema","prisma","password","token"])][:8]
+        ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
     ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
-    prompt = (
-        "Analyse security of: " + repo_name + "\n\n"
-        "Check for: hardcoded secrets, exposed .env, weak auth, missing RLS, SSRF, SQL injection.\n\n"
-        "FILES:\n" + ftext[:8000] + "\n\n"
-        "Return ONLY valid JSON with 3 layers (Auth, Config, Database). "
-        "Max 2 findings each. All text max 1 sentence:\n"
-        '{"layers":['
-        '{"name":"Auth","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
-        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
-        '"quiz":[{"question":"","answer":"","why":""}]},'
-        '{"name":"Config","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
-        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
-        '"quiz":[{"question":"","answer":"","why":""}]},'
-        '{"name":"Database","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
-        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
-        '"quiz":[{"question":"","answer":"","why":""}]}'
-        "]}"
-    )
+    ftext = ftext[:6000]
+    prompt = """Analyse the security of this codebase: """ + repo_name + """
+
+""" + ftext + """
+
+Return ONLY this exact JSON structure with your findings (1 sentence max per field, 2 findings max per layer):
+{"layers":[
+{"name":"Auth","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
+{"name":"Config","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
+{"name":"Database","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]}
+]}"""
     return call_claude([{"role":"user","content":prompt}], max_tokens=1200)
 
 
 def analyse_step3(files, repo_name):
     api_keys = [k for k in files if any(w in k.lower() for w in
-        ["route","api","app.py","main.py","server","app.tsx","app.jsx","router","package.json"])][:8]
+        ["route","api","app.py","main.py","server","app.tsx","app.jsx","package.json"])][:6]
     if "package.json" in files and "package.json" not in api_keys:
         api_keys.insert(0, "package.json")
     ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:3])
-    prompt = (
-        "Analyse API, Frontend, Libraries of: " + repo_name + "\n\n"
-        "FILES:\n" + ftext[:8000] + "\n\n"
-        "Return ONLY valid JSON with 3 layers (API, Frontend, Libraries). "
-        "Max 2 findings each. All text max 1 sentence:\n"
-        '{"layers":['
-        '{"name":"API","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
-        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
-        '"quiz":[{"question":"","answer":"","why":""}]},'
-        '{"name":"Frontend","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
-        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
-        '"quiz":[{"question":"","answer":"","why":""}]},'
-        '{"name":"Libraries","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
-        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
-        '"quiz":[{"question":"","answer":"","why":""}]}'
-        "]}"
-    )
+    ftext = ftext[:6000]
+    prompt = """Analyse the API, Frontend and Libraries of: """ + repo_name + """
+
+""" + ftext + """
+
+Return ONLY this exact JSON structure with your findings (1 sentence max per field, 2 findings max per layer):
+{"layers":[
+{"name":"API","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
+{"name":"Frontend","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
+{"name":"Libraries","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]}
+]}"""
     return call_claude([{"role":"user","content":prompt}], max_tokens=1200)
 
 
