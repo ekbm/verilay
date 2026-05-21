@@ -1050,6 +1050,101 @@ function exportMarkdown() {
   window.location.href = '/export/markdown/' + savedReportId;
 }
 
+// ── Analysis History (localStorage) ──────────────────────────────────────────
+var HISTORY_KEY = 'verilay_history';
+var MAX_HISTORY = 10;
+
+function saveToHistory(report) {
+  try {
+    var history = getHistory();
+    var entry = {
+      id: savedReportId || '',
+      repo: report.repo || 'Unknown',
+      score: (report.health || {}).score || '?',
+      verdict: (report.prod_ready || {}).verdict || 'needs_work',
+      summary: report.summary || '',
+      built_with: report.built_with || '',
+      critical: (report.health || {}).critical || 0,
+      warnings: (report.health || {}).warnings || 0,
+      timestamp: new Date().toISOString(),
+      method: report.input_method || 'github'
+    };
+    // Remove duplicate if same repo
+    history = history.filter(function(h) { return h.repo !== entry.repo; });
+    history.unshift(entry);
+    if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    renderHistory();
+  } catch(e) {
+    console.log('History save failed:', e);
+  }
+}
+
+function getHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch(e) { return []; }
+}
+
+function clearHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistory();
+}
+
+function renderHistory() {
+  var history = getHistory();
+  var section = document.getElementById('history-section');
+  var list = document.getElementById('history-list');
+  if (!section || !list) return;
+
+  if (history.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  var verdictColors = {
+    ready: 'var(--grl):var(--grt)',
+    needs_work: 'var(--orl):var(--ort)',
+    not_ready: 'var(--rdl):var(--rdt)'
+  };
+  var scoreColors = {A:'#1D9E75',B:'#4A90D9',C:'#EF9F27',D:'#E24B4A',F:'#A32D2D'};
+
+  list.innerHTML = history.map(function(h, idx) {
+    var vc = (verdictColors[h.verdict] || verdictColors.needs_work).split(':');
+    var sc = scoreColors[h.score] || '#999';
+    var date = new Date(h.timestamp);
+    var timeStr = date.toLocaleDateString('en-AU', {day:'numeric',month:'short'}) +
+                  ' ' + date.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'});
+    return '<div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.65rem .9rem;display:flex;align-items:center;gap:10px;cursor:pointer" ' +
+           'onclick="rerunFromHistory(' + idx + ')" title="Run again">' +
+           '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
+           '<div style="flex:1;min-width:0">' +
+           '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(h.repo) + '</div>' +
+           '<div style="font-size:11px;color:var(--mut)">' + timeStr + ' &nbsp;·&nbsp; ' + h.critical + ' critical, ' + h.warnings + ' warnings</div>' +
+           '</div>' +
+           '<div style="display:flex;gap:6px;flex-shrink:0">' +
+           (h.id ? '<a href="/report/' + h.id + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none" title="View saved report">View</a>' : '') +
+           '<button onclick="event.stopPropagation();rerunFromHistory(' + idx + ')" style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Re-run</button>' +
+           '</div>' +
+           '</div>';
+  }).join('');
+}
+
+function rerunFromHistory(idx) {
+  var history = getHistory();
+  var entry = history[idx];
+  if (!entry) return;
+  // Pre-fill the form with the previous repo
+  showForm();
+  if (entry.method === 'github') {
+    selMethod('github');
+    var input = document.getElementById('gh-url');
+    if (input) input.value = 'https://github.com/' + entry.repo;
+  }
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
 function init() {
   // Method cards
   ['github','zip','url'].forEach(function(m) {
@@ -1066,15 +1161,20 @@ function init() {
     }
   });
 
+  // History
+  renderHistory();
+  var btnClearHistory = document.getElementById('btn-clear-history');
+  if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
+
   // Analyse button
   var btnAnalyse = document.getElementById('btn-analyse');
   if (btnAnalyse) btnAnalyse.addEventListener('click', runAnalysis);
 
   // New analysis buttons
   var btnNew = document.getElementById('btn-new');
-  if (btnNew) btnNew.addEventListener('click', resetForm);
+  if (btnNew) btnNew.addEventListener('click', function() { resetForm(true); });
   var btnNew2 = document.getElementById('btn-new2');
-  if (btnNew2) btnNew2.addEventListener('click', resetForm);
+  if (btnNew2) btnNew2.addEventListener('click', function() { resetForm(false); });
 
   // Save report / share link
   var btnSave = document.getElementById('btn-save-report');
@@ -1117,6 +1217,7 @@ function init() {
   function showForm() {
     document.getElementById('hero-section').style.display = 'none';
     document.getElementById('form-section').style.display = 'block';
+    renderHistory();
     window.scrollTo(0,0);
   }
   function showHero() {
@@ -1366,6 +1467,7 @@ function handleStreamEvent(evt) {
       document.getElementById('ld').classList.remove('vis');
       currentReport = evt.data;
       renderReport(evt.data);
+      saveToHistory(evt.data);
       break;
     case 'step2':
     case 'step3':
@@ -1416,10 +1518,19 @@ function updateStepsLabel(msg) {
   if (el) el.textContent = msg;
 }
 
-function resetForm() {
+function resetForm(goToForm) {
+  // Clear the report
   document.getElementById('rpt').classList.remove('vis');
-  document.getElementById('hero-section').style.display = 'block';
-  document.getElementById('form-section').style.display = 'none';
+  document.getElementById('report-content').innerHTML = '';
+  // If called from within report, go straight to form
+  // If called from bottom CTA, go to hero
+  if (goToForm) {
+    document.getElementById('hero-section').style.display = 'none';
+    document.getElementById('form-section').style.display = 'block';
+  } else {
+    document.getElementById('hero-section').style.display = 'block';
+    document.getElementById('form-section').style.display = 'none';
+  }
   document.getElementById('p2-banner').style.display = 'none';
   document.getElementById('p2-loading').style.display = 'none';
   document.getElementById('p2-results').innerHTML = '';
@@ -2146,6 +2257,53 @@ input:focus{border-color:var(--pu)}
     </div>
   </div>
 
+  <!-- Learner mode highlight -->
+  <div style="margin-bottom:2.5rem">
+    <div style="text-align:center;margin-bottom:1.25rem">
+      <div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;margin-bottom:.4rem">What makes Verilay different</div>
+      <div style="font-size:20px;font-weight:700;letter-spacing:-.01em;margin-bottom:.4rem">Built for people who <span style="color:var(--pu)">didn't write the code</span></div>
+      <div style="font-size:13px;color:var(--mut);max-width:480px;margin:0 auto">Every finding comes in two modes. Switch between them any time.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <!-- Developer mode -->
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.1rem;opacity:.7">
+        <div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.75rem;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-code" style="font-size:13px"></i> Expert mode
+        </div>
+        <div style="background:var(--rdl);border-radius:8px;padding:.65rem .85rem;font-size:12px;color:var(--rdt);line-height:1.5">
+          <div style="font-weight:500;margin-bottom:3px">JWT tokens have no expiry configured</div>
+          <div style="font-size:11px;opacity:.85">Supabase auth.session.expires_in not set. Tokens are valid indefinitely, creating persistent session hijacking risk. CWE-613.</div>
+        </div>
+      </div>
+      <!-- Learner mode -->
+      <div style="background:var(--sur);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem;position:relative">
+        <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--pu);color:#fff;font-size:10px;font-weight:600;padding:2px 10px;border-radius:20px;white-space:nowrap">Your view</div>
+        <div style="font-size:10px;font-weight:600;color:var(--put);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.75rem;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-school" style="font-size:13px"></i> Learner mode
+        </div>
+        <div style="background:var(--pul);border-radius:8px;padding:.55rem .75rem;font-size:12px;color:var(--put);margin-bottom:.5rem;line-height:1.5">
+          <i class="ti ti-bulb" style="font-size:12px;margin-right:4px"></i>
+          <strong>Think of it like this:</strong> Login tokens are like hotel key cards. Right now yours never expire - a stolen key card works forever.
+        </div>
+        <div style="background:var(--rdl);border-radius:8px;padding:.55rem .75rem;font-size:12px;color:var(--rdt);line-height:1.5;margin-bottom:.5rem">
+          <div style="font-weight:500;margin-bottom:2px">Login sessions never expire</div>
+          <div style="font-size:11px">If someone steals a login token, they have permanent access to that account - even after the user changes their password.</div>
+        </div>
+        <div style="background:var(--grl);border-radius:8px;padding:.55rem .75rem;font-size:11px;color:var(--grt);line-height:1.5">
+          <strong>Fix in Lovable:</strong> "Add a 24-hour session expiry to my Supabase auth configuration"
+        </div>
+      </div>
+    </div>
+    <!-- Quiz teaser -->
+    <div style="margin-top:10px;background:var(--pul);border-radius:var(--r);padding:.85rem 1rem;display:flex;align-items:center;gap:12px">
+      <i class="ti ti-brain" style="font-size:22px;color:var(--pu);flex-shrink:0"></i>
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--put);margin-bottom:2px">Test your understanding with optional quizzes</div>
+        <div style="font-size:12px;color:var(--put);opacity:.85">Every layer includes a quiz question so you actually learn what was built - not just what was wrong.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Platforms -->
   <div style="text-align:center;margin-bottom:2.5rem">
     <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Works with apps built on</div>
@@ -2169,6 +2327,17 @@ input:focus{border-color:var(--pu)}
       <i class="ti ti-search" style="font-size:15px"></i> Analyse my app
     </button>
   </div>
+</div>
+
+<!-- ── Analysis history ─────────────────────────────────── -->
+<div id="history-section" style="display:none;margin-bottom:1.5rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem">
+    <div style="font-size:12px;font-weight:500;color:var(--mut);display:flex;align-items:center;gap:6px">
+      <i class="ti ti-history" style="font-size:14px"></i> Recent analyses
+    </div>
+    <button id="btn-clear-history" style="font-size:11px;padding:3px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">Clear</button>
+  </div>
+  <div id="history-list" style="display:flex;flex-direction:column;gap:6px"></div>
 </div>
 
 <!-- ── Analysis form (hidden until user clicks analyse) ──── -->
