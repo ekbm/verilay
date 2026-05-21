@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Verilay — Verification Layer for AI-built apps
-4-step analysis with server-side file caching
+Verilay v5 — Verification Layer for AI-built apps
+Single-request streaming architecture — no inter-request cache dependency
 """
 
-import os, json, base64, zipfile, io, requests, time
+import os, json, base64, zipfile, io, requests, time, secrets as _secrets, uuid as _uuid, threading
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify, session
+from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,138 +15,66 @@ GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
-import secrets as _secrets
 app.secret_key = os.getenv("SECRET_KEY", _secrets.token_hex(32))
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
-# ── File cache (in-memory, keyed by session) ──────────────────────────────────
-# Stores: {cache_key: {"files": {}, "tree": [], "fetched_at": timestamp}}
-_file_cache = {}
-CACHE_TTL = 1800  # 30 minutes
+# ── Report storage ─────────────────────────────────────────────────────────────
+_reports = {}
+REPORT_TTL = 86400
 
-# ── Rate limiting (no auth needed, just abuse prevention) ─────────────────────
-# Stores: {ip: [timestamp, timestamp, ...]}
+def save_report_data(data):
+    report_id = _uuid.uuid4().hex[:12]
+    _reports[report_id] = {"data": data, "saved_at": time.time()}
+    expired = [k for k,v in _reports.items() if time.time()-v["saved_at"] > REPORT_TTL]
+    for k in expired: del _reports[k]
+    return report_id
+
+# ── Rate limiting ──────────────────────────────────────────────────────────────
 _rate_limit = {}
-RATE_LIMIT_MAX  = 10    # max analyses per IP
-RATE_LIMIT_WINDOW = 3600  # per hour
 
 def check_rate_limit(ip):
-    """Returns (allowed, remaining, reset_in_seconds)."""
     now = time.time()
-    hits = _rate_limit.get(ip, [])
-    # Remove hits outside the window
-    hits = [t for t in hits if now - t < RATE_LIMIT_WINDOW]
+    hits = [t for t in _rate_limit.get(ip, []) if now - t < 3600]
     _rate_limit[ip] = hits
-    if len(hits) >= RATE_LIMIT_MAX:
-        oldest = min(hits)
-        reset_in = int(RATE_LIMIT_WINDOW - (now - oldest))
-        return False, 0, reset_in
+    if len(hits) >= 10:
+        return False, int(3600 - (now - min(hits)))
     hits.append(now)
     _rate_limit[ip] = hits
-    return True, RATE_LIMIT_MAX - len(hits), 0
+    return True, 0
 
-def get_client_ip():
-    """Get real IP, accounting for proxies (Railway sits behind one)."""
-    forwarded = request.headers.get("X-Forwarded-For","")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.remote_addr or "unknown"
+def get_ip():
+    fwd = request.headers.get("X-Forwarded-For","")
+    return fwd.split(",")[0].strip() if fwd else request.remote_addr or "unknown"
 
-def cache_set(key, files, tree):
-    _file_cache[key] = {"files": files, "tree": tree, "fetched_at": time.time()}
-    # Clean expired entries
-    expired = [k for k, v in _file_cache.items() if time.time() - v["fetched_at"] > CACHE_TTL]
-    for k in expired:
-        del _file_cache[k]
-
-def cache_get(key):
-    entry = _file_cache.get(key)
-    if entry and time.time() - entry["fetched_at"] < CACHE_TTL:
-        return entry["files"], entry["tree"]
-    return None, None
-
-# ── Priority file lists per step ──────────────────────────────────────────────
-
-# Step 1 — stack detection only (tiny files)
-STACK_FILES = [
-    "package.json", "requirements.txt", "pyproject.toml", "Pipfile",
-    "composer.json", "go.mod", "Gemfile", "build.gradle",
-    "vite.config.ts", "vite.config.js", "next.config.js", "next.config.ts",
-    "tsconfig.json", ".gitignore", "Procfile", "Dockerfile",
-    "supabase/config.toml",
+# ── File readers ───────────────────────────────────────────────────────────────
+PRIORITY_FILES = [
+    "package.json","requirements.txt","pyproject.toml",".env",".env.example",
+    "vite.config.ts","vite.config.js","supabase/config.toml",
+    "src/lib/supabase.ts","src/lib/supabase.js",
+    "src/integrations/supabase/client.ts",
+    "lib/db.ts","lib/database.ts","database.py","prisma/schema.prisma",
+    "src/auth.ts","auth.py","middleware/auth.ts","lib/auth.ts",
+    "app.py","main.py","index.js","server.js",
+    "src/App.tsx","src/App.jsx","src/main.tsx",
+    "src/router.tsx","src/routes.tsx",".gitignore","Procfile",
 ]
+KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
+MAX_FILE_CHARS = 5000
+MAX_FILES = 25
 
-# Step 2 — security critical files (auth + config + database)
-SECURITY_FILES = [
-    ".env", ".env.example", ".env.sample", ".env.local",
-    "src/lib/supabase.ts", "src/lib/supabase.js",
-    "src/integrations/supabase/client.ts", "src/integrations/supabase/client.js",
-    "lib/db.ts", "lib/database.ts", "database.py", "db.py",
-    "prisma/schema.prisma",
-    "src/auth.ts", "src/auth.js", "auth.py", "auth.js",
-    "middleware/auth.ts", "middleware/auth.js",
-    "lib/auth.ts", "lib/auth.js",
-    "src/lib/auth.ts", "src/lib/auth.js",
-    "config/database.py", "config/auth.py",
-    "src/config.ts", "src/config.js", "config.py",
-    "src/middleware.ts", "middleware.py",
-]
-
-# Step 3 — api + frontend + libraries
-API_FILES = [
-    "app.py", "main.py", "server.py", "index.js", "server.js",
-    "src/App.tsx", "src/App.jsx", "src/App.ts", "src/App.js",
-    "src/main.tsx", "src/main.jsx",
-    "src/router.tsx", "src/routes.tsx", "src/routes.js",
-    "routes/api.py", "routes/auth.py",
-    "pages/api/auth.ts", "pages/api/auth.js",
-    "src/pages/Index.tsx", "src/pages/Home.tsx",
-    "src/hooks/useAuth.ts", "src/hooks/useAuth.js",
-    "src/context/AuthContext.tsx",
-    "src/lib/api.ts", "src/lib/api.js",
-]
-
-KEYWORDS_SECURITY = ["auth", "login", "signup", "password", "token", "session",
-                     "database", "db", "model", "schema", "migrate", "supabase",
-                     "env", "config", "secret", "key"]
-KEYWORDS_API      = ["route", "api", "endpoint", "controller", "handler",
-                     "hook", "context", "store", "service", "util"]
-
-MAX_FILES_PER_STEP = 12
-FILE_CHAR_LIMIT    = 6000   # 6KB per file — enough for full small files
-
-
-# ── Readers ───────────────────────────────────────────────────────────────────
-
-def fetch_github_files(repo_url):
-    """Fetch all priority files from GitHub. Returns (files_dict, file_tree, cache_key)."""
+def fetch_github(repo_url):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
-
-    platform = parts[0]
-    if "gitlab.com" in platform:
-        raise ValueError("GitLab support coming soon. Please use the ZIP upload method.")
-    if "bitbucket.org" in platform:
-        raise ValueError("Bitbucket support coming soon. Please use the ZIP upload method.")
-    if "dev.azure.com" in platform or "azure.com" in platform:
-        raise ValueError("Azure DevOps support coming soon. Please use the ZIP upload method.")
-
+    for blocked in ["gitlab.com","bitbucket.org","dev.azure.com"]:
+        if blocked in parts[0]:
+            raise ValueError(f"{blocked.split('.')[0].title()} support coming soon. Use ZIP upload instead.")
     owner = parts[1] if parts[0]=="github.com" else parts[0]
-    repo  = parts[2] if parts[0]=="github.com" else parts[1]
-    repo  = repo.replace(".git","")
-    cache_key = owner + "/" + repo
+    repo  = (parts[2] if parts[0]=="github.com" else parts[1]).replace(".git","")
+    base  = f"https://api.github.com/repos/{owner}/{repo}"
+    hdrs  = {"Accept":"application/vnd.github.v3+json"}
+    if GITHUB_TOKEN: hdrs["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
-    # Check cache first
-    cached_files, cached_tree = cache_get(cache_key)
-    if cached_files:
-        return cached_files, cached_tree, cache_key
-
-    base = "https://api.github.com/repos/" + owner + "/" + repo
-    hdrs = {"Accept":"application/vnd.github.v3+json"}
-    if GITHUB_TOKEN:
-        hdrs["Authorization"] = "Bearer " + GITHUB_TOKEN
-
-    tr = requests.get(base + "/git/trees/HEAD?recursive=1", headers=hdrs, timeout=15)
+    tr = requests.get(f"{base}/git/trees/HEAD?recursive=1", headers=hdrs, timeout=15)
     if tr.status_code == 404: raise ValueError("Repo not found or private. Make it public or use ZIP upload.")
     if tr.status_code == 403: raise ValueError("GitHub rate limit hit. Add a GITHUB_TOKEN to .env.")
     tr.raise_for_status()
@@ -154,512 +82,413 @@ def fetch_github_files(repo_url):
 
     def fetch_file(path):
         try:
-            r = requests.get(base + "/contents/" + path, headers=hdrs, timeout=10)
+            r = requests.get(f"{base}/contents/{path}", headers=hdrs, timeout=10)
             if r.status_code != 200: return None
             d = r.json()
             if isinstance(d, list): return None
-            if not isinstance(d, dict): return None
             if d.get("encoding") == "base64":
-                return base64.b64decode(d["content"]).decode("utf-8","replace")[:FILE_CHAR_LIMIT]
+                return base64.b64decode(d["content"]).decode("utf-8","replace")[:MAX_FILE_CHARS]
             return None
-        except:
-            return None
+        except: return None
 
-    # Fetch all useful files in one pass
-    all_priority = list(dict.fromkeys(STACK_FILES + SECURITY_FILES + API_FILES))
     files = {}
-    for p in all_priority:
+    for p in PRIORITY_FILES:
         if p in all_files:
             c = fetch_file(p)
             if c: files[p] = c
-
-    # Keyword scan for additional files
     for path in all_files:
-        if len(files) >= 40: break
+        if len(files) >= MAX_FILES: break
         if path in files: continue
         fname = path.lower().split("/")[-1]
         for ext in [".ts",".js",".py",".json",".prisma"]: fname = fname.replace(ext,"")
-        all_kw = KEYWORDS_SECURITY + KEYWORDS_API
-        if any(k in fname for k in all_kw):
+        if any(k in fname for k in KEYWORDS):
             c = fetch_file(path)
             if c: files[path] = c
 
-    cache_set(cache_key, files, all_files)
-    return files, all_files, cache_key
+    return files, all_files, f"{owner}/{repo}"
 
-
-def read_from_zip(zip_bytes, original_filename):
-    """Extract files from ZIP. Returns (files_dict, project_name, cache_key)."""
-    project_name = original_filename.replace(".zip","")
-    cache_key = "zip_" + project_name
+def fetch_zip(zip_bytes, filename):
+    project_name = filename.replace(".zip","")
     files = {}
-
     with zipfile.ZipFile(zip_bytes) as zf:
         all_names = zf.namelist()
         prefix = ""
         if all_names and "/" in all_names[0]:
             candidate = all_names[0].split("/")[0] + "/"
-            if all(n.startswith(candidate) for n in all_names[:5]):
-                prefix = candidate
-
+            if all(n.startswith(candidate) for n in all_names[:5]): prefix = candidate
         def strip(p): return p[len(prefix):] if p.startswith(prefix) else p
         name_map = {strip(n): n for n in all_names}
-
         def read_zip(rel):
             if rel not in name_map: return None
-            try: return zf.read(name_map[rel]).decode("utf-8","replace")[:FILE_CHAR_LIMIT]
+            try: return zf.read(name_map[rel]).decode("utf-8","replace")[:MAX_FILE_CHARS]
             except: return None
-
-        all_priority = list(dict.fromkeys(STACK_FILES + SECURITY_FILES + API_FILES))
-        for p in all_priority:
+        for p in PRIORITY_FILES:
             if p in name_map:
                 c = read_zip(p)
                 if c: files[p] = c
-
-        all_kw = KEYWORDS_SECURITY + KEYWORDS_API
         for rel in name_map:
-            if len(files) >= 40: break
+            if len(files) >= MAX_FILES: break
             if rel in files: continue
             fname = rel.lower().split("/")[-1]
             for ext in [".ts",".js",".py",".json"]: fname = fname.replace(ext,"")
-            if any(k in fname for k in all_kw):
+            if any(k in fname for k in KEYWORDS):
                 c = read_zip(rel)
                 if c: files[rel] = c
+    return files, list(name_map.keys()), project_name
 
-    cache_set(cache_key, files, list(name_map.keys()))
-    return files, list(name_map.keys()), cache_key
-
-
-def read_from_url(live_url):
-    """Surface scan a live URL — with SSRF protection."""
-    import ipaddress
+def fetch_url(live_url):
     from urllib.parse import urlparse
-
-    # SSRF protection — block internal/private URLs
+    import ipaddress
     parsed = urlparse(live_url)
-    hostname = parsed.hostname or ""
-
-    # Block private IP ranges, localhost, metadata endpoints
-    blocked_hosts = ["localhost","127.0.0.1","0.0.0.0","169.254.169.254"]
-    if hostname in blocked_hosts:
-        raise ValueError("Cannot scan internal or localhost URLs.")
+    host = parsed.hostname or ""
+    if host in ["localhost","127.0.0.1","0.0.0.0","169.254.169.254"]:
+        raise ValueError("Cannot scan internal URLs.")
     try:
-        ip = ipaddress.ip_address(hostname)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
             raise ValueError("Cannot scan internal IP addresses.")
     except ValueError as e:
         if "Cannot scan" in str(e): raise
-        pass  # hostname is a domain name, not an IP — fine
-
-    # Only allow http/https
     if parsed.scheme not in ("http","https"):
-        raise ValueError("Only http:// and https:// URLs are supported.")
-
+        raise ValueError("Only http:// and https:// URLs supported.")
     r = requests.get(live_url, timeout=10, headers={"User-Agent":"Verilay/1.0"})
     r.raise_for_status()
     domain = live_url.split("/")[2]
-    project_name = domain.replace(".lovable.app","").replace(".replit.app","")
-    cache_key = "url_" + project_name
-    files = {
-        "index.html": r.text[:20000],
-        "_meta.txt": "LIVE URL SCAN: " + live_url
-    }
-    cache_set(cache_key, files, [])
-    return files, [], cache_key
+    name = domain.replace(".lovable.app","").replace(".replit.app","")
+    files = {"index.html": r.text[:20000], "_meta.txt": f"LIVE URL SCAN: {live_url}"}
+    return files, [], name
 
-
-# ── Claude API ────────────────────────────────────────────────────────────────
-
-def call_claude(prompt, max_tokens=2000):
-    """Call Claude API and return parsed JSON."""
+# ── Claude API ─────────────────────────────────────────────────────────────────
+def call_claude(prompt, max_tokens=2500):
     if not ANTHROPIC_API_KEY:
-        raise ValueError("No ANTHROPIC_API_KEY set. Add it to your .env file.")
-
+        raise ValueError("No ANTHROPIC_API_KEY set.")
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01"
-        },
-        json={
-            "model": "claude-sonnet-4-5",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}]
-        },
-        timeout=25  # Under Railway's 30s request timeout
+        headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
+        json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"messages":[{"role":"user","content":prompt}]},
+        timeout=25
     )
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
-
-    # Strip markdown fences
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"): raw = raw[4:]
-    if raw.endswith("```"):
-        raw = raw.rsplit("```",1)[0]
+    if raw.endswith("```"): raw = raw.rsplit("```",1)[0]
     raw = raw.strip()
-
-    # Try clean parse
-    try:
-        return json.loads(raw)
+    try: return json.loads(raw)
     except json.JSONDecodeError:
-        pass
-
-    # Recovery: walk back to last valid closing brace
-    for i in range(len(raw)-1, 0, -1):
-        if raw[i] == '}':
-            try:
-                return json.loads(raw[:i+1])
-            except json.JSONDecodeError:
-                continue
-
-    raise ValueError("Could not parse Claude response. Please try again.")
-
+        for i in range(len(raw)-1, 0, -1):
+            if raw[i] == '}':
+                try: return json.loads(raw[:i+1])
+                except: continue
+        raise ValueError("Could not parse Claude response. Please try again.")
 
 def sanitise_for_prompt(content):
-    """Remove common prompt injection patterns from file content."""
-    # Truncate very long lines that might be injection attempts
-    lines = content.split("\n")
-    cleaned = []
-    for line in lines:
-        # Flag but keep lines that look like injection attempts
-        if len(line) > 500:
-            line = line[:500] + " [truncated]"
-        cleaned.append(line)
-    return "\n".join(cleaned)
+    """Truncate long lines to reduce prompt injection risk."""
+    return "\n".join(l[:500] if len(l) > 500 else l for l in content.split("\n"))
 
-def files_text(files, keys):
-    """Build a files text block from selected keys only."""
+def files_for(files, keys):
     out = ""
+    total = 0
     for k in keys:
-        if k in files:
-            out += "\n\n=== " + k + " ===\n" + sanitise_for_prompt(files[k])
+        if k in files and total < 20000:
+            chunk = f"\n\n=== {k} ===\n{sanitise_for_prompt(files[k])}"
+            out += chunk
+            total += len(chunk)
     return out
 
+# ── Analysis functions ─────────────────────────────────────────────────────────
+def analyse_step1(files, tree, repo_name, method):
+    tree_str = "\n".join(tree[:80]) if tree else "Not available"
+    stack_keys = [k for k in files if any(sf in k for sf in ["package.json","requirements","Procfile","vite","tsconfig",".gitignore"])]
+    ftext = files_for(files, stack_keys) or files_for(files, list(files.keys())[:3])
+    is_surface = method == "url"
 
-# ── 4 Analysis Steps ─────────────────────────────────────────────────────────
+    prompt = (
+        f"You are Verilay, a codebase analyser for non-developers.\n"
+        f"Repo: {repo_name} | Input: {method}\n\n"
+        f"FILE TREE:\n{tree_str}\n\nKEY FILES:\n{ftext}\n\n"
+        "Return ONLY valid JSON:\n"
+        '{"repo":"' + repo_name + '","input_method":"' + method + '",'
+        '"analysis_depth":"' + ("surface" if is_surface else "full") + '",'
+        '"summary":"one sentence what this app does",'
+        '"built_with":"which AI platform built this and why",'
+        '"prod_ready":{"verdict":"ready|needs_work|not_ready","confidence":"high|medium|low","reason":"one sentence"},'
+        '"health":{"critical":0,"warnings":0,"passing":0,"score":"A|B|C|D|F"},'
+        '"stack":[{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"one sentence"}]}'
+        "\n\nBe accurate. Honest score — A means genuinely production-ready. Most AI apps score B or C."
+    )
+    return call_claude(prompt, max_tokens=1500)
 
-def step1_stack(files, file_tree, repo_name, input_method):
-    """Step 1: Stack detection + overview. Fast, small input."""
-    tree_sample = "\n".join(file_tree[:100]) if file_tree else "Not available"
-    ftext = files_text(files, [k for k in STACK_FILES if k in files])
+def analyse_step2(files, repo_name):
+    sec_keys = [k for k in files if any(w in k.lower() for w in
+        ["auth","login",".env","config","secret","supabase","database","db","schema","prisma","password","token"])][:12]
+    ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:4])
 
-    # If no stack files found, use first few available files
-    if not ftext and files:
-        ftext = files_text(files, list(files.keys())[:5])
-
-    surface = " SURFACE SCAN - live URL only." if input_method=="url" else ""
-    is_surface = input_method == "url"
-
-    prompt = f"""You are Verilay, a codebase analysis tool for non-developers.
-Repo: {repo_name} | Method: {input_method}{surface}
-
-FILE TREE (first 100 entries):
-{tree_sample}
-
-KEY FILES:
-{ftext}
-
-Return ONLY valid compact JSON identifying the tech stack and overview.
-Every text field must be ONE sentence maximum:
-
-{{"repo":"{repo_name}","input_method":"{input_method}","analysis_depth":"{"surface" if is_surface else "full"}",
-"summary":"one sentence what this app does",
-"built_with":"which AI platform built this and why you think so",
-"prod_ready":{{"verdict":"ready|needs_work|not_ready","confidence":"high|medium|low","reason":"one sentence"}},
-"health":{{"critical":0,"warnings":0,"passing":0,"score":"A|B|C|D|F"}},
-"stack":[{{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"one sentence"}}]
-}}
-
-Identify ALL libraries/frameworks found. Be accurate and concise. Give HONEST health scores — do not inflate. A score means genuinely production-ready. Most AI-generated apps score B or C. If you find hardcoded secrets, fallback secret keys, or SSRF risks — mark health as critical."""
-
-    return call_claude(prompt, max_tokens=2000)
-
-
-def step2_security(files, repo_name):
-    """Step 2: Auth + Config + Database layers. Full file content, focused."""
-    # Select security-relevant files
-    sec_keys = [k for k in files if any(
-        sf.lower() in k.lower() for sf in [
-            "auth","login","signup","password","token","session",
-            ".env","config","secret","supabase","database","db","schema","prisma"
-        ]
-    )][:MAX_FILES_PER_STEP]
-
-    ftext = files_text(files, sec_keys)
-    if not ftext:
-        ftext = files_text(files, list(files.keys())[:4])
-
-    prompt = f"""You are Verilay, a rigorous security analyst reviewing: {repo_name}
-
-You MUST check for these specific issues in every analysis:
-CRITICAL SECURITY CHECKS:
-- Hardcoded secrets, API keys, passwords anywhere in code (not just .env)
-- Fallback/default values for secret keys that ship as defaults (e.g. "change-me-in-production")
-- .env files committed to the repo
-- SSRF vulnerabilities — URLs from user input passed directly to requests.get()
-- SQL injection — user input concatenated into queries
-- Prompt injection — user/file content interpolated directly into AI prompts without sanitisation
-- Authentication bypass possibilities
-- Exposed admin routes without auth
-- JWT tokens with no expiry or weak secrets
-- Supabase RLS policies missing or too permissive
-- Session fixation or CSRF vulnerabilities
-
-FILES (auth, config, database — read carefully):
-{ftext}
-
-Be a skeptical security reviewer. Assume the worst until proven safe. Give a REAL score — do not be generous.
-Return ONLY valid JSON. ALL text fields 1-2 sentences max. Max 4 findings per layer. 1 quiz per layer:
-
-{{"layers":[
-  {{"name":"Auth","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences — be specific about what auth mechanism is used and its real security posture","findings":[{{"severity":"critical|warning|info|passing","title":"specific issue name","detail":"exact code reference if possible, 1-2 sentences","file":"filename","why_it_matters":"concrete attack scenario, 1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence no jargon","real_world_impact":"what could a real attacker do, 1 sentence","action":"specific step to fix, 1 sentence"}}]}},
-    "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}},
-  {{"name":"Config","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}}]}},
-    "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}},
-  {{"name":"Database","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}}]}},
-    "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}}
-]}}
-
-IMPORTANT: If you find a critical issue, mark status as "critical". Do NOT mark everything as "passing" to seem safe. A generous false A score is worse than an honest C score."""
-
+    prompt = (
+        f"You are Verilay analysing security layers of: {repo_name}\n\n"
+        "Check specifically for: hardcoded secrets, exposed .env files, fallback secret keys that ship as defaults, "
+        "SSRF via user-supplied URLs, prompt injection, missing auth, weak JWT config, Supabase RLS issues.\n\n"
+        f"FILES:\n{ftext}\n\n"
+        "Return ONLY valid JSON with exactly 3 layers. 1-2 sentences max per field. Max 3 findings per layer:\n"
+        '{"layers":['
+        '{"name":"Auth","status":"critical|warning|passing",'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
+        '"quiz":[{"question":"","answer":"","why":""}]},'
+        '{"name":"Config","status":"critical|warning|passing",'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
+        '"quiz":[{"question":"","answer":"","why":""}]},'
+        '{"name":"Database","status":"critical|warning|passing",'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
+        '"quiz":[{"question":"","answer":"","why":""}]}'
+        ']}'
+        "\n\nBe rigorous. Mark critical issues as critical. Do not give false passing scores."
+    )
     return call_claude(prompt, max_tokens=2500)
 
-
-def step3_api_frontend(files, repo_name):
-    """Step 3: API + Frontend + Libraries layers."""
-    api_keys = [k for k in files if any(
-        kw in k.lower() for kw in [
-            "route","api","app.py","main.py","server","index.js","app.tsx",
-            "app.jsx","router","hook","context","service","component"
-        ]
-    )][:MAX_FILES_PER_STEP]
-
-    # Always include package.json for library analysis
+def analyse_step3(files, repo_name):
+    api_keys = [k for k in files if any(w in k.lower() for w in
+        ["route","api","app.py","main.py","server","app.tsx","app.jsx","router","hook","component","package.json"])][:12]
     if "package.json" in files and "package.json" not in api_keys:
         api_keys.insert(0, "package.json")
+    ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:4])
 
-    ftext = files_text(files, api_keys)
-    if not ftext:
-        ftext = files_text(files, list(files.keys())[:4])
-
-    prompt = f"""You are Verilay analysing API, frontend, and library layers of: {repo_name}
-
-FILES (routes, main app, packages):
-{ftext}
-
-Analyse these 3 layers. Return ONLY valid JSON.
-ALL text fields 1-2 sentences maximum. Max 3 findings per layer. 1 quiz per layer:
-
-{{"layers":[
-  {{"name":"API","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"1 sentence","file":"","why_it_matters":"1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence","real_world_impact":"1 sentence","action":"1 sentence"}}]}},
-    "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}},
-  {{"name":"Frontend","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"1 sentence","file":"","why_it_matters":"1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence","real_world_impact":"1 sentence","action":"1 sentence"}}]}},
-    "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}},
-  {{"name":"Libraries","status":"critical|warning|passing",
-    "expert":{{"summary":"2 sentences","findings":[{{"severity":"critical|warning|info|passing","title":"","detail":"1 sentence","file":"","why_it_matters":"1 sentence"}}]}},
-    "learner":{{"what_is_it":"2 sentences","analogy":"1 sentence","what_it_does_in_your_app":"2 sentences","how_it_connects":"1 sentence","key_concept":"1 sentence","findings_plain":[{{"severity":"critical|warning|passing","plain_title":"","plain_detail":"1 sentence","real_world_impact":"1 sentence","action":"1 sentence"}}]}},
-    "quiz":[{{"question":"","answer":"1 sentence","why":"1 sentence"}}]}}
-]}}"""
-
+    prompt = (
+        f"You are Verilay analysing API, Frontend and Libraries layers of: {repo_name}\n\n"
+        f"FILES:\n{ftext}\n\n"
+        "Return ONLY valid JSON with exactly 3 layers. 1-2 sentences max per field. Max 3 findings per layer:\n"
+        '{"layers":['
+        '{"name":"API","status":"critical|warning|passing",'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
+        '"quiz":[{"question":"","answer":"","why":""}]},'
+        '{"name":"Frontend","status":"critical|warning|passing",'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
+        '"quiz":[{"question":"","answer":"","why":""}]},'
+        '{"name":"Libraries","status":"critical|warning|passing",'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
+        '"quiz":[{"question":"","answer":"","why":""}]}'
+        ']}'
+    )
     return call_claude(prompt, max_tokens=2500)
 
+def analyse_step4(repo_name, built_with, findings_summary):
+    is_lovable = "lovable" in built_with.lower()
+    is_replit  = "replit" in built_with.lower()
+    platform   = "Lovable" if is_lovable else ("Replit" if is_replit else "your AI builder")
 
-def step4_fixes(repo_name, all_findings_summary):
-    """Step 4: Fix list + security score + second opinion prompts. No files needed."""
-    prompt = f"""You are Verilay completing analysis of: {repo_name}
+    prompt = (
+        f"You are Verilay completing analysis of: {repo_name} (built with {built_with})\n\n"
+        f"Findings summary:\n{findings_summary}\n\n"
+        "Return ONLY valid JSON:\n"
+        '{"top_fixes":['
+        '{"priority":1,"title":"","why_it_matters":"1 sentence","how_to_fix":"2-3 steps",'
+        '"estimated_effort":"5 minutes|30 minutes|1 hour|1 day",'
+        f'"lovable_prompt":"Ready-to-paste prompt for {platform} AI chat to fix this. Start: In my {platform} app, [specific actionable fix]",'
+        '"general_prompt":"Ready-to-paste prompt for any AI to fix this issue"}'
+        '],'
+        '"security_score":{"env_secrets_exposed":false,"auth_properly_configured":true,"rls_likely_configured":true,"dependencies_current":true,"no_hardcoded_secrets":true},'
+        '"second_opinion":{'
+        f'"summary_prompt":"Complete prompt to paste into any AI to verify Verilay findings about {repo_name}",'
+        '"security_prompt":"Complete prompt to verify security findings",'
+        f'"prod_checklist_prompt":"Complete prompt: is {repo_name} production ready? Include context."'
+        '}}'
+        "\n\n3-5 fixes by severity. Make lovable_prompt specific enough to produce an immediate fix."
+    )
+    return call_claude(prompt, max_tokens=2500)
 
-Findings from previous steps:
-{all_findings_summary}
-
-Return ONLY valid JSON. All text 1-2 sentences max:
-
-{{"top_fixes":[
-  {{"priority":1,"title":"","why_it_matters":"1 sentence","how_to_fix":"2-3 specific steps","estimated_effort":"5 minutes|30 minutes|1 hour|1 day","code_to_copy":""}}
-],
-"security_score":{{"env_secrets_exposed":false,"auth_properly_configured":true,"rls_likely_configured":true,"dependencies_current":true,"no_hardcoded_secrets":true}},
-"second_opinion":{{
-  "summary_prompt":"Complete self-contained prompt to paste into any AI to verify findings about {repo_name}. Include what was found.",
-  "security_prompt":"Complete prompt to verify the security findings specifically.",
-  "prod_checklist_prompt":"Complete prompt asking: is {repo_name} ready for production? Include context from findings."
-}}}}
-
-3-5 fixes. Prioritise by severity."""
-
-    return call_claude(prompt, max_tokens=2000)
-
-
-def build_findings_summary(step1, step2_layers, step3_layers):
-    """Build a concise findings summary for step 4."""
-    h = step1.get("health", {})
-    summary = f"Health: {h.get('critical',0)} critical, {h.get('warnings',0)} warnings, score {h.get('score','?')}. "
-    summary += f"Stack: {', '.join(s['name'] for s in step1.get('stack',[])[:6])}. "
-
-    all_layers = step2_layers + step3_layers
-    for layer in all_layers:
-        findings = layer.get("expert",{}).get("findings",[])
-        critical = [f for f in findings if f.get("severity")=="critical"]
-        warnings = [f for f in findings if f.get("severity")=="warning"]
-        if critical or warnings:
-            summary += f"\n{layer['name']} ({layer['status']}): "
-            for f in (critical + warnings)[:2]:
-                summary += f"{f.get('title','')}. "
-
-    return summary[:3000]
-
-
-# ── Flask Routes ──────────────────────────────────────────────────────────────
-
-@app.route("/")
-def index():
-    return render_template_string(HTML)
-
-
-# ── Railway timeout protection ───────────────────────────────────────────────
-# Railway terminates requests after 30s. We use a thread + timeout pattern.
-import threading
-
-def run_with_timeout(func, args=(), kwargs={}, timeout_seconds=28):
-    """Run a function with a timeout. Returns (result, error)."""
-    result = [None]
-    error = [None]
-    def target():
-        try:
-            result[0] = func(*args, **kwargs)
-        except Exception as e:
-            error[0] = str(e)
-    t = threading.Thread(target=target, daemon=True)
-    t.start()
-    t.join(timeout_seconds)
-    if t.is_alive():
-        return None, "Analysis timed out. The repo may be too large. Try using ZIP upload with fewer files."
-    return result[0], error[0]
-
-
-@app.route("/fetch", methods=["POST"])
-def fetch_files():
-    """Fetch and cache files. Called first before any analysis step."""
-    # Rate limit check
-    ip = get_client_ip()
-    allowed, remaining, reset_in = check_rate_limit(ip)
+# ── Main analysis route — streams results as JSON events ───────────────────────
+@app.route("/analyse-stream", methods=["POST"])
+def analyse_stream():
+    """Stream analysis results as newline-delimited JSON events."""
+    ip = get_ip()
+    allowed, reset_in = check_rate_limit(ip)
     if not allowed:
-        mins = reset_in // 60
-        return jsonify({"error": f"You have reached the limit of {RATE_LIMIT_MAX} free analyses per hour. Please try again in {mins} minutes. Want unlimited analyses? Star the repo on GitHub and let us know."}), 429
+        def blocked():
+            yield json.dumps({"event":"error","data":f"Rate limit reached. Try again in {reset_in//60} minutes."}) + "\n"
+        return Response(stream_with_context(blocked()), mimetype="application/x-ndjson")
 
     method = request.form.get("method","github")
-    try:
-        if method == "github":
-            url = request.form.get("github_url","").strip()
-            if not url: return jsonify({"error":"Please enter a GitHub URL"}), 400
-            files, tree, cache_key = fetch_github_files(url)
-        elif method == "zip":
-            f = request.files.get("zip_file")
-            if not f: return jsonify({"error":"Please select a ZIP file"}), 400
-            files, tree, cache_key = read_from_zip(io.BytesIO(f.read()), f.filename)
-        elif method == "url":
-            url = request.form.get("live_url","").strip()
-            if not url: return jsonify({"error":"Please enter a URL"}), 400
-            files, tree, cache_key = read_from_url(url)
-        else:
-            return jsonify({"error":"Unknown method"}), 400
 
-        if not files:
-            return jsonify({"error":"No readable files found. Try ZIP upload instead."}), 400
+    def generate():
+        try:
+            # ── Fetch files ────────────────────────────────────────────
+            yield json.dumps({"event":"status","data":"Reading your project files..."}) + "\n"
 
-        return jsonify({
-            "cache_key": cache_key,
-            "files_count": len(files),
-            "file_list": list(files.keys())[:20]
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            if method == "github":
+                url = request.form.get("github_url","").strip()
+                if not url:
+                    yield json.dumps({"event":"error","data":"Please enter a GitHub URL"}) + "\n"; return
+                files, tree, repo_name = fetch_github(url)
+            elif method == "zip":
+                f = request.files.get("zip_file")
+                if not f:
+                    yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
+                files, tree, repo_name = fetch_zip(io.BytesIO(f.read()), f.filename)
+            elif method == "url":
+                url = request.form.get("live_url","").strip()
+                if not url:
+                    yield json.dumps({"event":"error","data":"Please enter a URL"}) + "\n"; return
+                files, tree, repo_name = fetch_url(url)
+            else:
+                yield json.dumps({"event":"error","data":"Unknown method"}) + "\n"; return
 
+            if not files:
+                yield json.dumps({"event":"error","data":"No readable files found. Try ZIP upload."}) + "\n"; return
 
-@app.route("/step1", methods=["POST"])
-def run_step1():
-    """Step 1: Stack + overview."""
-    try:
-        data = request.get_json()
-        cache_key = data.get("cache_key","")
-        input_method = data.get("input_method","github")
-        files, tree = cache_get(cache_key)
-        if not files:
-            return jsonify({"error":"Session expired. Please start a new analysis."}), 400
+            yield json.dumps({"event":"status","data":f"Found {len(files)} files — detecting stack..."}) + "\n"
 
-        repo_name = cache_key.replace("zip_","").replace("url_","")
-        result = step1_stack(files, tree, repo_name, input_method)
-        result["cache_key"] = cache_key
-        result["files_read"] = len(files)
-        result["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            # ── Step 1: Stack + overview ────────────────────────────────
+            s1 = analyse_step1(files, tree, repo_name, method)
+            s1["files_read"] = len(files)
+            s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
+            yield json.dumps({"event":"step1","data":s1}) + "\n"
 
+            # ── Step 2: Auth + Config + Database ───────────────────────
+            yield json.dumps({"event":"status","data":"Analysing Auth, Config, Database layers..."}) + "\n"
+            try:
+                s2 = analyse_step2(files, repo_name)
+                yield json.dumps({"event":"step2","data":s2}) + "\n"
+            except Exception as e:
+                yield json.dumps({"event":"step2_error","data":str(e)}) + "\n"
+                s2 = {"layers":[]}
 
-@app.route("/step2", methods=["POST"])
-def run_step2():
-    """Step 2: Auth + Config + Database."""
-    try:
-        data = request.get_json()
-        cache_key = data.get("cache_key","")
-        files, _ = cache_get(cache_key)
-        if not files:
-            return jsonify({"error":"Session expired. Please start a new analysis."}), 400
+            # ── Step 3: API + Frontend + Libraries ─────────────────────
+            yield json.dumps({"event":"status","data":"Analysing API, Frontend, Libraries layers..."}) + "\n"
+            try:
+                s3 = analyse_step3(files, repo_name)
+                yield json.dumps({"event":"step3","data":s3}) + "\n"
+            except Exception as e:
+                yield json.dumps({"event":"step3_error","data":str(e)}) + "\n"
+                s3 = {"layers":[]}
 
-        repo_name = cache_key.replace("zip_","").replace("url_","")
-        result, err = run_with_timeout(step2_security, args=(files, repo_name))
-        if err: return jsonify({"error": err}), 500
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            # ── Auto-save partial report ────────────────────────────────
+            partial = dict(s1)
+            partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
+            report_id = save_report_data(partial)
+            yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
 
+            # ── Done with layers ────────────────────────────────────────
+            yield json.dumps({"event":"layers_complete","data":{}}) + "\n"
 
-@app.route("/step3", methods=["POST"])
-def run_step3():
-    """Step 3: API + Frontend + Libraries."""
-    try:
-        data = request.get_json()
-        cache_key = data.get("cache_key","")
-        files, _ = cache_get(cache_key)
-        if not files:
-            return jsonify({"error":"Session expired. Please start a new analysis."}), 400
+        except Exception as e:
+            yield json.dumps({"event":"error","data":str(e)}) + "\n"
 
-        repo_name = cache_key.replace("zip_","").replace("url_","")
-        result, err = run_with_timeout(step3_api_frontend, args=(files, repo_name))
-        if err: return jsonify({"error": err}), 500
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return Response(stream_with_context(generate()), mimetype="application/x-ndjson")
 
 
-@app.route("/step4", methods=["POST"])
+@app.route("/analyse-step4", methods=["POST"])
 def run_step4():
-    """Step 4: Fix list + security + second opinion."""
+    """Step 4 — triggered by user clicking Part 2."""
     try:
         data = request.get_json()
-        cache_key = data.get("cache_key","")
-        step1_data = data.get("step1",{})
-        step2_layers = data.get("step2_layers",[])
-        step3_layers = data.get("step3_layers",[])
+        repo_name      = data.get("repo_name","")
+        built_with     = data.get("built_with","")
+        findings       = data.get("findings_summary","")
+        report_id      = data.get("report_id","")
 
-        summary = build_findings_summary(step1_data, step2_layers, step3_layers)
-        repo_name = cache_key.replace("zip_","").replace("url_","")
-        result = step4_fixes(repo_name, summary)
+        result = analyse_step4(repo_name, built_with, findings)
+
+        # Update saved report with full data
+        if report_id and report_id in _reports:
+            _reports[report_id]["data"].update({
+                "top_fixes":     result.get("top_fixes",[]),
+                "security_score":result.get("security_score",{}),
+                "second_opinion":result.get("second_opinion",{}),
+            })
+
         result["part2_loaded"] = True
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/save-report", methods=["POST"])
+def save_report_route():
+    try:
+        data = request.get_json()
+        report_id = save_report_data(data)
+        return jsonify({"report_id": report_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/report/<report_id>")
+def view_report(report_id):
+    entry = _reports.get(report_id)
+    if not entry:
+        return "<h2 style='font-family:sans-serif;padding:2rem;color:#666'>Report not found or expired (reports kept 24 hours).</h2>", 404
+    saved_json = json.dumps(entry["data"])
+    extra = f"<script>window.addEventListener('load',function(){{try{{var d={saved_json};renderSavedReport(d);}}catch(e){{console.error(e);}}}});</script>"
+    return render_template_string(HTML + extra)
+
+
+@app.route("/export/markdown/<report_id>")
+def export_markdown(report_id):
+    entry = _reports.get(report_id)
+    if not entry: return "Report not found", 404
+    md = build_markdown(entry["data"])
+    return Response(md, mimetype="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename=verilay-{report_id}.md"})
+
+
+@app.route("/badge/<path:repo>")
+def badge(repo):
+    latest = None
+    for entry in _reports.values():
+        if entry["data"].get("repo","") == repo:
+            if latest is None or entry["saved_at"] > latest["saved_at"]:
+                latest = entry
+    score = latest["data"].get("health",{}).get("score","?") if latest else "?"
+    color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(score,"#999")
+    lw, vw = 58, 28
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{lw+vw}" height="20">'
+           f'<rect width="{lw}" height="20" fill="#555"/>'
+           f'<rect x="{lw}" width="{vw}" height="20" fill="{color}"/>'
+           f'<g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,sans-serif" font-size="11">'
+           f'<text x="{lw//2}" y="14">Verilay</text>'
+           f'<text x="{lw+vw//2}" y="14">{score}</text>'
+           f'</g></svg>')
+    return Response(svg, mimetype="image/svg+xml",
+        headers={"Cache-Control":"no-cache,no-store"})
+
+
+def build_markdown(data):
+    repo = data.get("repo","unknown")
+    h = data.get("health",{})
+    pr = data.get("prod_ready",{})
+    lines = [f"# Verilay Report: {repo}",
+             f"Generated: {data.get('generated_at','')}","",
+             "## Production Verdict",
+             f"**{{'ready':'Production Ready','needs_work':'Needs Work','not_ready':'Not Ready'}}.get(pr.get('verdict','needs_work'),'Needs Work')}}** ({pr.get('confidence','?')} confidence)",
+             pr.get("reason",""),"",
+             f"## Health: {h.get('score','?')} — Critical: {h.get('critical',0)}, Warnings: {h.get('warnings',0)}, Passing: {h.get('passing',0)}","",
+             "## Stack"]
+    for s in data.get("stack",[]): lines.append(f"- **{s.get('name','')} {s.get('version','')}** ({s.get('category','')}) — {s.get('plain_english','')}")
+    lines += ["","## Layers"]
+    for layer in data.get("layers",[]):
+        lines += [f"### {layer.get('name','')} — {layer.get('status','').upper()}"]
+        ex = layer.get("expert",{})
+        if ex.get("summary"): lines.append(f"**Expert:** {ex.get('summary','')}")
+        for f2 in ex.get("findings",[]):
+            lines.append(f"- **{f2.get('severity','').upper()}: {f2.get('title','')}** — {f2.get('detail','')}")
+        lines.append("")
+    for fix in data.get("top_fixes",[]):
+        lines += [f"### Fix {fix.get('priority','')}: {fix.get('title','')}", f"**Why:** {fix.get('why_it_matters','')}", f"**How:** {fix.get('how_to_fix','')}", f"**Effort:** {fix.get('estimated_effort','')}",""]
+    so = data.get("second_opinion",{})
+    if so.get("summary_prompt"):
+        lines += ["## Second Opinion","```",so.get("summary_prompt",""),"```"]
+    lines += ["---","*Generated by [Verilay](https://verilay.dev)*"]
+    return "\n".join(lines)
+
+
+@app.route("/")
+def index(): return render_template_string(HTML)
 
 
 
@@ -681,7 +510,7 @@ HTML = """<!DOCTYPE html>
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
-.wrap{max-width:780px;margin:0 auto;padding:2rem 1.25rem}
+.wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
 .logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
 .logo-text{font-size:22px;font-weight:600;color:var(--pu)}
 .tagline{font-size:13px;color:var(--mut);margin-bottom:2rem}
@@ -728,7 +557,7 @@ input:focus{border-color:var(--pu)}
 .tab{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
 .tab.on{background:var(--pu);color:#fff;border-color:transparent}
 .panel{display:none}.panel.on{display:block}
-.ll{display:grid;grid-template-columns:155px 1fr;gap:8px}
+.ll{display:grid;grid-template-columns:175px 1fr;gap:12px}
 .lnav{display:flex;flex-direction:column;gap:5px}
 .lb{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;border:0.5px solid transparent;background:var(--bg);width:100%;text-align:left;font-size:12px;font-weight:500}
 .lb:hover,.lb.act{background:var(--sur);border-color:var(--bdr)}
@@ -752,6 +581,14 @@ input:focus{border-color:var(--pu)}
 .p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
 .bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:900px){
+  .ll{grid-template-columns:200px 1fr;gap:16px}
+  .mg{grid-template-columns:repeat(3,1fr)}
+  .hg{grid-template-columns:repeat(4,1fr)}
+}
+@media(min-width:1200px){
+  .ll{grid-template-columns:220px 1fr;gap:20px}
+}
 @media print{
   .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner{display:none!important}
   .rpt{display:block!important}
@@ -788,11 +625,11 @@ input:focus{border-color:var(--pu)}
       <i class="ti ti-sparkles" style="font-size:12px"></i>
       Free &amp; open source — built for non-developers
     </div>
-    <h1 style="font-size:clamp(1.75rem,4vw,2.75rem);font-weight:700;line-height:1.2;margin-bottom:.85rem;letter-spacing:-.02em">
+    <h1 style="font-size:clamp(1.75rem,4vw,3rem);font-weight:700;line-height:1.2;margin-bottom:.85rem;letter-spacing:-.02em">
       Understand what your<br>
       <span style="color:var(--pu)">AI-built app</span> is made of
     </h1>
-    <p style="font-size:15px;color:var(--mut);max-width:520px;margin:0 auto 2rem;line-height:1.65">
+    <p style="font-size:15px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
@@ -806,23 +643,23 @@ input:focus{border-color:var(--pu)}
   </div>
 
   <!-- Problem → Solution strip -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:2.5rem">
-    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:2.5rem">
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
       <div style="font-size:22px;margin-bottom:.5rem">🤖</div>
       <div style="font-size:13px;font-weight:500;margin-bottom:4px">AI built your app</div>
       <div style="font-size:12px;color:var(--mut);line-height:1.5">Lovable, Replit, Bolt, v0, Cursor — powerful tools that generate real code fast.</div>
     </div>
-    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
       <div style="font-size:22px;margin-bottom:.5rem">❓</div>
       <div style="font-size:13px;font-weight:500;margin-bottom:4px">But can you trust it?</div>
       <div style="font-size:12px;color:var(--mut);line-height:1.5">Is your login secure? Are your database credentials exposed? Is it ready for real users?</div>
     </div>
-    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
       <div style="font-size:22px;margin-bottom:.5rem">🔍</div>
       <div style="font-size:13px;font-weight:500;margin-bottom:4px">Verilay answers that</div>
       <div style="font-size:12px;color:var(--mut);line-height:1.5">Reads every layer of your app. Explains it in plain English. Flags issues. Gives you a second opinion.</div>
     </div>
-    <div style="background:var(--sur);padding:1.1rem 1.25rem">
+    <div style="background:var(--sur);padding:1.25rem 1.4rem">
       <div style="font-size:22px;margin-bottom:.5rem">✅</div>
       <div style="font-size:13px;font-weight:500;margin-bottom:4px">Ship with confidence</div>
       <div style="font-size:12px;color:var(--mut);line-height:1.5">Know exactly what you built and whether it's ready. No developer needed to understand the results.</div>
@@ -832,7 +669,7 @@ input:focus{border-color:var(--pu)}
   <!-- What you get -->
   <div style="margin-bottom:2.5rem">
     <div style="text-align:center;font-size:13px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.1rem">What Verilay gives you</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
       <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
         <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
           <i class="ti ti-stack-2" style="font-size:16px;color:var(--pu)"></i>
@@ -1129,14 +966,20 @@ input:focus{border-color:var(--pu)}
       </button>
     </div>
   </div>
-  <!-- Share link banner -->
-  <div id="share-banner" style="display:none;background:var(--grl);border-radius:var(--r);padding:.65rem 1rem;margin-bottom:.75rem;display:none;align-items:center;gap:10px">
-    <i class="ti ti-check" style="color:var(--grt);font-size:16px;flex-shrink:0"></i>
-    <div style="flex:1">
-      <div style="font-size:12px;font-weight:500;color:var(--grt);margin-bottom:3px">Report saved — shareable link ready</div>
-      <input id="share-url" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:11px;font-family:var(--mono);background:white;color:var(--txt)">
+  <!-- Share link banner — auto-shown after analysis -->
+  <div id="share-banner" style="display:none;background:var(--grl);border:0.5px solid var(--grt);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-check" style="color:var(--grt);font-size:16px;flex-shrink:0"></i>
+      <div style="font-size:12px;font-weight:500;color:var(--grt)">Report saved — share it with anyone</div>
     </div>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('share-url').value)" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer">Copy</button>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input id="share-url" type="text" readonly style="flex:1;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:11px;font-family:var(--mono);background:white;color:var(--txt)">
+      <button id="btn-copy-share" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer;flex-shrink:0">Copy link</button>
+    </div>
+    <div id="badge-section" style="display:none;margin-top:4px">
+      <div style="font-size:11px;color:var(--grt);margin-bottom:4px;font-weight:500">Add this badge to your GitHub README:</div>
+      <input id="badge-code" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:10px;font-family:var(--mono);background:white;color:var(--mut)">
+    </div>
   </div>
 
   <div id="report-content"></div>
@@ -1267,6 +1110,40 @@ var activeMode = 'expert';
 
 var savedReportId = null;
 
+async function autoSaveReport(data) {
+  // Silently save in background and show share URL when ready
+  try {
+    var reportData = Object.assign({}, data);
+    var resp = await fetch('/save-report', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(reportData)
+    });
+    var result = await resp.json();
+    if (result.report_id) {
+      savedReportId = result.report_id;
+      var shareUrl = window.location.origin + '/report/' + result.report_id;
+      // Update status label
+      var statusEl = document.getElementById('report-status');
+      if (statusEl) statusEl.textContent = 'Report saved';
+      // Show share banner
+      var shareInput = document.getElementById('share-url');
+      var shareBanner = document.getElementById('share-banner');
+      if (shareInput) shareInput.value = shareUrl;
+      if (shareBanner) shareBanner.style.display = 'flex';
+      // Show badge if we know the repo
+      var repo = data.repo || '';
+      if (repo && document.getElementById('badge-section')) {
+        var badgeMd = '[![Verilay Score](https://verilay.dev/badge/' + repo + ')](https://verilay.dev/report/' + result.report_id + ')';
+        document.getElementById('badge-code').value = badgeMd;
+        document.getElementById('badge-section').style.display = 'block';
+      }
+    }
+  } catch(e) {
+    console.log('Auto-save failed silently:', e);
+  }
+}
+
 async function saveReport() {
   var btn = document.getElementById('btn-save-report');
   if (!btn) return;
@@ -1347,6 +1224,16 @@ function init() {
   // Save report / share link
   var btnSave = document.getElementById('btn-save-report');
   if (btnSave) btnSave.addEventListener('click', saveReport);
+
+  // Copy share URL button
+  var btnCopyShare = document.getElementById('btn-copy-share');
+  if (btnCopyShare) btnCopyShare.addEventListener('click', function() {
+    var url = document.getElementById('share-url').value;
+    navigator.clipboard.writeText(url).then(function() {
+      btnCopyShare.textContent = '✓ Copied!';
+      setTimeout(function() { btnCopyShare.textContent = 'Copy link'; }, 2000);
+    });
+  });
 
   // Export markdown
   var btnMd = document.getElementById('btn-export-md');
@@ -1566,14 +1453,16 @@ function stopMsgs() {
   }
 }
 
-var cacheKey = '';
-var step1Data = {};
+var currentReport  = null;
+var currentLayers  = {};
+var activeLayer    = null;
+var activeMode     = 'expert';
+var savedReportId  = null;
 
 async function runAnalysis() {
   hideErr();
   var fd = new FormData();
   fd.append('method', currentMethod);
-
   if (currentMethod === 'github') {
     var url = document.getElementById('gh-url').value.trim();
     if (!url) { showErr('Please enter a GitHub URL'); return; }
@@ -1587,38 +1476,28 @@ async function runAnalysis() {
     if (!url) { showErr('Please enter a URL'); return; }
     fd.append('live_url', url);
   }
-
   document.getElementById('form-section').style.display = 'none';
   document.getElementById('ld').classList.add('vis');
   startMsgs();
-
   try {
-    // ── Fetch files (cached on server) ──────────────────────────────
-    setStep(0);
-    var fetchResp = await fetch('/fetch', { method: 'POST', body: fd });
-    var fetchData = await fetchResp.json();
-    if (fetchData.error) { throw new Error(fetchData.error); }
-    cacheKey = fetchData.cache_key;
-
-    // ── Step 1: Stack + overview ────────────────────────────────────
-    setStep(1);
-    var s1resp = await fetch('/step1', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ cache_key: cacheKey, input_method: currentMethod })
-    });
-    var s1data = await s1resp.json();
-    if (s1data.error) { throw new Error(s1data.error); }
-    step1Data = s1data;
-
-    // Show partial report immediately
-    stopMsgs();
-    document.getElementById('ld').classList.remove('vis');
-    renderReport(s1data);
-
-    // ── Steps 2 + 3 run automatically in background ─────────────────
-    runSteps23();
-
+    var resp = await fetch('/analyse-stream', { method: 'POST', body: fd });
+    if (!resp.ok) { throw new Error('Server error ' + resp.status); }
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, {stream:true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        try { handleStreamEvent(JSON.parse(line)); }
+        catch(e) { console.warn('Stream parse error:', line); }
+      }
+    }
   } catch(e) {
     stopMsgs();
     document.getElementById('ld').classList.remove('vis');
@@ -1627,54 +1506,60 @@ async function runAnalysis() {
   }
 }
 
-async function runSteps23() {
-  // Show step 2+3 loading in the report
-  var loadingBanner = document.getElementById('steps23-loading');
-  if (loadingBanner) loadingBanner.style.display = 'flex';
-
-  try {
-    // ── Step 2: Auth + Config + Database ───────────────────────────
-    updateStepsLabel('Analysing Auth, Config, Database layers...');
-    var s2resp = await fetch('/step2', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ cache_key: cacheKey })
-    });
-    var s2data = await s2resp.json();
-    if (s2data.error) {
-      showLayerError('Security layer analysis timed out. Try again or use ZIP upload.');
-    } else if (s2data.layers) {
-      appendLayers(s2data.layers);
-    }
-
-    // ── Step 3: API + Frontend + Libraries ─────────────────────────
-    updateStepsLabel('Analysing API, Frontend, Libraries layers...');
-    var s3resp = await fetch('/step3', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ cache_key: cacheKey })
-    });
-    var s3data = await s3resp.json();
-    if (s3data.error) {
-      showLayerError('API layer analysis timed out. The stack map above is still accurate.');
-    } else if (s3data.layers) {
-      appendLayers(s3data.layers);
-    }
-
-    // Hide loading banner, show Part 2 prompt
-    if (loadingBanner) loadingBanner.style.display = 'none';
-    var p2banner = document.getElementById('p2-banner');
-    if (p2banner) p2banner.style.display = 'block';
-
-    // Store for step 4
-    window._step2Layers = (s2data.layers || []);
-    window._step3Layers = (s3data.layers || []);
-
-  } catch(e) {
-    if (loadingBanner) loadingBanner.style.display = 'none';
-    console.error('Steps 2/3 error:', e);
+function handleStreamEvent(evt) {
+  switch(evt.event) {
+    case 'status':
+      document.getElementById('lm').textContent = evt.data;
+      break;
+    case 'step1':
+      stopMsgs();
+      document.getElementById('ld').classList.remove('vis');
+      currentReport = evt.data;
+      renderReport(evt.data);
+      break;
+    case 'step2':
+    case 'step3':
+      if (evt.data && evt.data.layers) appendLayers(evt.data.layers);
+      break;
+    case 'step2_error':
+    case 'step3_error':
+      showLayerError('Layer analysis error: ' + evt.data);
+      break;
+    case 'saved':
+      savedReportId = evt.data.report_id;
+      var shareUrl = window.location.origin + '/report/' + savedReportId;
+      var shareInput = document.getElementById('share-url');
+      var shareBanner = document.getElementById('share-banner');
+      var statusEl = document.getElementById('report-status');
+      if (shareInput) shareInput.value = shareUrl;
+      if (shareBanner) shareBanner.style.display = 'flex';
+      if (statusEl) statusEl.textContent = 'Report saved';
+      var repo = currentReport ? currentReport.repo : '';
+      if (repo && document.getElementById('badge-section')) {
+        document.getElementById('badge-code').value =
+          '[![Verilay Score](https://verilay.dev/badge/' + repo + ')](https://verilay.dev/report/' + savedReportId + ')';
+        document.getElementById('badge-section').style.display = 'block';
+      }
+      break;
+    case 'layers_complete':
+      var lb = document.getElementById('steps23-loading');
+      if (lb) lb.style.display = 'none';
+      var p2 = document.getElementById('p2-banner');
+      if (p2) p2.style.display = 'block';
+      break;
+    case 'error':
+      stopMsgs();
+      if (document.getElementById('ld').classList.contains('vis')) {
+        document.getElementById('ld').classList.remove('vis');
+        document.getElementById('form-section').style.display = 'block';
+        showErr(evt.data);
+      } else {
+        showLayerError(evt.data);
+      }
+      break;
   }
 }
+
 
 function updateStepsLabel(msg) {
   var el = document.getElementById('steps23-msg');
@@ -1953,14 +1838,18 @@ async function runPart2() {
   document.getElementById('p2-loading').style.display = 'block';
 
   try {
-    var resp = await fetch('/step4', {
+    var h = currentReport ? (currentReport.health||{}) : {};
+    var findings = 'Score: '+h.score+', Critical: '+h.critical+', Warnings: '+h.warnings+'. ';
+    findings += 'Stack: '+(currentReport?(currentReport.stack||[]).slice(0,5).map(function(s){return s.name;}).join(', '):'') + '. ';
+    findings += 'Layers: '+Object.keys(currentLayers).map(function(n){return n+'('+currentLayers[n].status+')';}).join(', ');
+    var resp = await fetch('/analyse-step4', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        cache_key: cacheKey,
-        step1: step1Data,
-        step2_layers: window._step2Layers || [],
-        step3_layers: window._step3Layers || []
+        repo_name:  currentReport ? currentReport.repo : '',
+        built_with: currentReport ? (currentReport.built_with||'') : '',
+        findings_summary: findings,
+        report_id: savedReportId || ''
       })
     });
     var data = await resp.json();
@@ -2053,14 +1942,76 @@ function renderPart2(data) {
     html += '<div class="si" style="background:' + bg + ';color:' + clr + '"><i class="ti ' + ico + '" style="font-size:15px"></i>' + c[1] + '</div>';
   });
   html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Fix list</div>';
-  (data.top_fixes||[]).forEach(function(f) {
-    html += '<div class="fc"><div style="display:flex;gap:12px;align-items:flex-start"><div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
-    html += '<div style="flex:1"><div style="font-size:13px;font-weight:500;margin-bottom:3px">' + esc(f.title||'') + '</div>';
+  var builtWith = (currentReport && currentReport.built_with) ? currentReport.built_with.toLowerCase() : '';
+  var isLovable = builtWith.includes('lovable');
+  var isReplit  = builtWith.includes('replit');
+  var isBolt    = builtWith.includes('bolt');
+  var isV0      = builtWith.includes('v0');
+
+  (data.top_fixes||[]).forEach(function(f, fi) {
+    // Choose the right platform prompt
+    var platformPrompt = f.general_prompt || f.lovable_prompt || '';
+    var platformLabel = 'Copy AI prompt';
+    var platformIcon = 'ti-copy';
+    if (isLovable && f.lovable_prompt) {
+      platformPrompt = f.lovable_prompt;
+      platformLabel = 'Fix in Lovable';
+      platformIcon = 'ti-wand';
+    } else if (isReplit && f.replit_prompt) {
+      platformPrompt = f.replit_prompt;
+      platformLabel = 'Fix in Replit';
+      platformIcon = 'ti-terminal';
+    } else if (isBolt && f.general_prompt) {
+      platformLabel = 'Fix in Bolt';
+      platformIcon = 'ti-bolt';
+    } else if (isV0 && f.general_prompt) {
+      platformLabel = 'Fix in v0';
+      platformIcon = 'ti-code';
+    }
+
+    html += '<div class="fc"><div style="display:flex;gap:12px;align-items:flex-start">';
+    html += '<div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
+    html += '<div style="flex:1">';
+    html += '<div style="font-size:13px;font-weight:500;margin-bottom:3px">' + esc(f.title||'') + '</div>';
     html += '<div style="font-size:12px;color:var(--mut);margin-bottom:4px;line-height:1.4">' + esc(f.why_it_matters||'') + '</div>';
-    html += '<div style="font-size:11px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:5px">' + esc(f.how_to_fix||'') + '</div>';
+    html += '<div style="font-size:11px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:.5rem">' + esc(f.how_to_fix||'') + '</div>';
+    html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
     html += '<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;background:var(--pul);color:var(--put)">' + esc(f.estimated_effort||'varies') + '</span>';
+    if (platformPrompt) {
+      html += '<button id="fix-btn-' + fi + '" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">';
+      html += '<i class="ti ' + platformIcon + '" style="font-size:12px"></i> ' + platformLabel;
+      html += '</button>';
+      html += '<span id="fix-copied-' + fi + '" style="font-size:11px;color:var(--grt);display:none">✓ Copied! Paste into your AI chat</span>';
+    }
+    html += '</div>';
+    if (platformPrompt) {
+      html += '<div style="margin-top:.5rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:11px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;line-height:1.5" id="fix-prompt-' + fi + '">' + esc(platformPrompt) + '</div>';
+    }
     html += '</div></div></div>';
   });
+
+  // Wire fix buttons after render
+  setTimeout(function() {
+    (data.top_fixes||[]).forEach(function(f, fi) {
+      var btn = document.getElementById('fix-btn-' + fi);
+      var copied = document.getElementById('fix-copied-' + fi);
+      var prompt = f.general_prompt || f.lovable_prompt || '';
+      if (isLovable && f.lovable_prompt) prompt = f.lovable_prompt;
+      else if (isReplit && f.replit_prompt) prompt = f.replit_prompt;
+      if (btn && prompt) {
+        btn.addEventListener('click', function() {
+          navigator.clipboard.writeText(prompt).then(function() {
+            btn.style.background = 'var(--gr)';
+            if (copied) { copied.style.display = 'inline'; }
+            setTimeout(function() {
+              btn.style.background = 'var(--pu)';
+              if (copied) { copied.style.display = 'none'; }
+            }, 3000);
+          });
+        });
+      }
+    });
+  }, 100);
   var so = data.second_opinion || {};
   var soItems = [
     ['General second opinion', so.summary_prompt, 'ti-message-dots'],
@@ -2100,108 +2051,11 @@ document.addEventListener('DOMContentLoaded', init);
 </html>"""
 
 
-# ── Report storage & export ───────────────────────────────────────────────────
-import uuid as _uuid
-_reports = {}
-REPORT_TTL = 86400  # 24 hours
+# ── Badge generator ──────────────────────────────────────────────────────────
 
-def generate_markdown(data):
-    repo = data.get("repo","unknown")
-    h = data.get("health",{})
-    pr = data.get("prod_ready",{})
-    lines = []
-    lines.append("# Verilay Report: " + repo)
-    lines.append("Generated: " + data.get("generated_at",""))
-    lines.append("")
-    lines.append("## Production Verdict")
-    verdict_map = {"ready":"Production Ready","needs_work":"Needs Work","not_ready":"Not Production Ready"}
-    lines.append("**" + verdict_map.get(pr.get("verdict","needs_work"),"Needs Work") + "** (" + pr.get("confidence","?") + " confidence)")
-    lines.append(pr.get("reason",""))
-    lines.append("")
-    lines.append("## Health Score: " + str(h.get("score","?")))
-    lines.append("- Critical: " + str(h.get("critical",0)))
-    lines.append("- Warnings: " + str(h.get("warnings",0)))
-    lines.append("- Passing: " + str(h.get("passing",0)))
-    lines.append("")
-    lines.append("## Tech Stack")
-    for s in data.get("stack",[]):
-        lines.append("- **" + s.get("name","") + " " + s.get("version","") + "** (" + s.get("category","") + ") - " + s.get("plain_english",""))
-    lines.append("")
-    lines.append("## Layers")
-    for layer in data.get("layers",[]):
-        lines.append("### " + layer.get("name","") + " - " + layer.get("status","").upper())
-        ex = layer.get("expert",{})
-        if ex.get("summary"):
-            lines.append("**Expert:** " + ex.get("summary",""))
-        for f2 in ex.get("findings",[]):
-            sev = {"critical":"CRITICAL","warning":"WARNING","passing":"OK"}.get(f2.get("severity","info"),"INFO")
-            lines.append("**" + sev + ": " + f2.get("title","") + "** - " + f2.get("detail",""))
-        lrn = layer.get("learner",{})
-        if lrn.get("what_is_it"):
-            lines.append("**Plain English:** " + lrn.get("what_is_it",""))
-        lines.append("")
-    for fix in data.get("top_fixes",[]):
-        lines.append("### Fix " + str(fix.get("priority","")) + ": " + fix.get("title",""))
-        lines.append("**Why:** " + fix.get("why_it_matters",""))
-        lines.append("**How:** " + fix.get("how_to_fix",""))
-        lines.append("**Effort:** " + fix.get("estimated_effort",""))
-        lines.append("")
-    so = data.get("second_opinion",{})
-    if so.get("summary_prompt"):
-        lines.append("## Second Opinion Prompts")
-        lines.append("### General Review")
-        lines.append("```")
-        lines.append(so.get("summary_prompt",""))
-        lines.append("```")
-        lines.append("### Security")
-        lines.append("```")
-        lines.append(so.get("security_prompt",""))
-        lines.append("```")
-    lines.append("---")
-    lines.append("*Generated by [Verilay](https://verilay.dev)*")
-    return "\n".join(lines)
-
-
-@app.route("/save-report", methods=["POST"])
-def save_report():
-    try:
-        data = request.get_json()
-        report_id = _uuid.uuid4().hex[:12]
-        _reports[report_id] = {"data": data, "saved_at": time.time()}
-        expired = [k for k,v in _reports.items() if time.time()-v["saved_at"] > REPORT_TTL]
-        for k in expired: del _reports[k]
-        return jsonify({"report_id": report_id})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/report/<report_id>")
-def view_report(report_id):
-    entry = _reports.get(report_id)
-    if not entry:
-        return "<h2 style='font-family:sans-serif;padding:2rem;color:#666'>Report not found or expired (reports are kept for 24 hours).</h2>", 404
-    saved_data = json.dumps(entry["data"])
-    extra = "<script>window.addEventListener('load',function(){try{var d=" + saved_data + ";renderReport(d);if(d.top_fixes&&d.top_fixes.length)renderPart2(d);}catch(e){console.error(e);}});</script>"
-    return render_template_string(HTML + extra)
-
-
-@app.route("/export/markdown/<report_id>")
-def export_markdown(report_id):
-    entry = _reports.get(report_id)
-    if not entry:
-        return "Report not found", 404
-    md = generate_markdown(entry["data"])
-    from flask import Response
-    return Response(md, mimetype="text/markdown",
-        headers={"Content-Disposition": "attachment; filename=verilay-" + report_id + ".md"})
-
-
-if __name__ == "__main__":
-    if not ANTHROPIC_API_KEY:
-        print("\n⚠️  No ANTHROPIC_API_KEY in .env\n")
-    print("🔍 Verilay running at http://localhost:5000\n")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
+@app.route("/badge/<path:repo>")
+def badge(repo):
+    """Generate an SVG score badge for a repo."""
 
 if __name__ == "__main__":
     if not ANTHROPIC_API_KEY:
