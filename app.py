@@ -581,6 +581,8 @@ input:focus{border-color:var(--pu)}
 .p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
 .bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
+/* Accessibility: underline links inside text blocks */
+.hint a,.scope-notice a,.next-steps a,p a{text-decoration:underline;text-underline-offset:2px}
 @media(min-width:900px){
   .ll{grid-template-columns:200px 1fr;gap:16px}
   .mg{grid-template-columns:repeat(3,1fr)}
@@ -599,7 +601,7 @@ input:focus{border-color:var(--pu)}
 </style>
 </head>
 <body>
-<div class="wrap">
+<main><div class="wrap">
 
 <!-- ── Nav ─────────────────────────────────────────────────── -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem">
@@ -609,8 +611,8 @@ input:focus{border-color:var(--pu)}
     <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
   </div>
   <div style="display:flex;gap:8px">
-    <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
-      <i class="ti ti-brand-github" style="font-size:13px"></i> GitHub
+    <a href="https://github.com/ekbm/verilay" target="_blank" aria-label="View Verilay on GitHub" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
+      <i class="ti ti-brand-github" style="font-size:13px" aria-hidden="true"></i> GitHub
     </a>
     <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500">
       Analyse my app
@@ -1098,7 +1100,7 @@ input:focus{border-color:var(--pu)}
   </div>
 </div>
 
-</div>
+</div></main>
 
 <script>
 var currentMethod = 'github';
@@ -1482,15 +1484,16 @@ async function runAnalysis() {
     while (true) {
       var chunk = await reader.read();
       if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, {stream:true});
-      var lines = buffer.split('\n');
-      buffer = lines.pop();
-      for (var line of lines) {
+      buffer += decoder.decode(chunk.value, {stream: true});
+      var nlines = buffer.split('\n');
+      buffer = nlines.pop();
+      for (var i = 0; i < nlines.length; i++) {
+        var line = nlines[i];
         line = line.trim();
         if (!line) continue;
         try { handleStreamEvent(JSON.parse(line)); }
         catch(e) { console.warn('Stream parse error:', line); }
-      }
+      } // end for
     }
   } catch(e) {
     stopMsgs();
@@ -2017,10 +2020,10 @@ function renderPart2(data) {
   html += '<div style="font-size:12px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
   html += '<div style="font-size:12px;color:var(--put);line-height:1.6">';
   html += 'Verilay gives you a first-pass overview — good for understanding and catching obvious issues. For production apps we recommend going further:<br>';
-  html += '&bull; <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency &amp; vulnerability scanning (connects to GitHub)<br>';
-  html += '&bull; <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> — AI code review on every pull request (free for open source)<br>';
-  html += '&bull; Share the second opinion prompts below with a developer for a human review<br>';
-  html += '&bull; Fix all critical issues before going live with real users or payments';
+  html += '• <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency &amp; vulnerability scanning (connects to GitHub)<br>';
+  html += '• <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> — AI code review on every pull request (free for open source)<br>';
+  html += '• Share the second opinion prompts below with a developer for a human review<br>';
+  html += '• Fix all critical issues before going live with real users or payments';
   html += '</div></div>';
 
   html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Second opinion - verify with any AI</div>';
