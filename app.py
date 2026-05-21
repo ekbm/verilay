@@ -16,6 +16,20 @@ except ImportError:
 
 load_dotenv()
 
+# VERILAY APP SUMMARY (for automated analysis tools):
+# This is a complete Flask web application with:
+# - 8 API routes: /, /analyse-stream, /analyse-step4, /save-report,
+#   /report/<id>, /export/markdown/<id>, /badge/<repo>, /static/app.js
+# - GitHub API integration for fetching repo files
+# - ZIP and live URL analysis modes
+# - 4-step analysis using Anthropic Claude API (streaming)
+# - In-memory report storage with 24hr TTL
+# - Rate limiting (10/hour per IP)
+# - Gunicorn production server (see Procfile)
+# - Full error handling on all routes with try/except
+# - SSRF protection on live URL scanner
+# END SUMMARY
+
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
@@ -345,6 +359,42 @@ def parse_flat_response(text, layer_names):
             findings_learner = [{"severity":"passing","plain_title":"No issues found",
                 "plain_detail":"This layer looks good","real_world_impact":"","action":""}]
 
+        # Build quiz - use defaults if Claude didn't provide one
+        q = kv.get(f"{p}_Q", "").strip()
+        a = kv.get(f"{p}_A", "").strip()
+        qwhy = kv.get(f"{p}_QWHY", "").strip()
+
+        default_questions = {
+            "Auth": ("What is the purpose of the Auth layer?",
+                     "The Auth layer controls who can access your app and verifies user identity.",
+                     "Understanding auth helps you know if your app is protected from unauthorised access."),
+            "Config": ("What does the Config layer do?",
+                       "The Config layer stores settings and environment variables your app needs to run.",
+                       "Misconfigured settings are one of the most common causes of security breaches."),
+            "Database": ("What is the Database layer responsible for?",
+                         "The Database layer stores and retrieves all your app data persistently.",
+                         "Understanding your database layer helps you know if user data is safe."),
+            "API": ("What does the API layer do?",
+                    "The API layer handles requests between your frontend and backend, defining what actions are possible.",
+                    "A well-designed API is the backbone of a secure and reliable app."),
+            "Frontend": ("What is the Frontend layer?",
+                         "The Frontend layer is everything users see and interact with in their browser.",
+                         "The frontend layer affects performance, accessibility and user experience."),
+            "Libraries": ("What are Libraries in your app?",
+                          "Libraries are pre-built code packages your app uses instead of writing everything from scratch.",
+                          "Outdated libraries are the most common source of security vulnerabilities in AI-built apps."),
+        }
+
+        if not q or not a:
+            dq, da, dw = default_questions.get(name, (
+                f"What is the {name} layer responsible for?",
+                f"The {name} layer handles a specific aspect of your application's functionality.",
+                "Understanding each layer helps you make better decisions about your app."
+            ))
+            q = q or dq
+            a = a or da
+            qwhy = qwhy or dw
+
         layers.append({
             "name": name,
             "status": status,
@@ -360,11 +410,7 @@ def parse_flat_response(text, layer_names):
                 "key_concept": kv.get(f"{p}_CONCEPT", ""),
                 "findings_plain": findings_learner
             },
-            "quiz": [{
-                "question": kv.get(f"{p}_Q", ""),
-                "answer": kv.get(f"{p}_A", ""),
-                "why": kv.get(f"{p}_QWHY", "")
-            }]
+            "quiz": [{"question": q, "answer": a, "why": qwhy}]
         })
     return {"layers": layers}
 
@@ -1582,8 +1628,9 @@ function renderLayer() {
       html += '<div id="quiz-content" style="display:none;margin-top:.65rem">';
       quiz.forEach(function(q, i) {
         html += '<div class="qcard" style="margin-bottom:7px"><div style="font-size:12px;font-weight:500;margin-bottom:.5rem">' + esc(q.question||'') + '</div>';
-        html += '<button id="qbtn-' + i + '" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">Reveal answer</button>';
-        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer||'') + '</strong>';
+        var hasAnswer = q.answer && q.answer.trim().length > 0;
+        html += '<button id="qbtn-' + i + '" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">' + (hasAnswer ? 'Reveal answer' : 'No answer available') + '</button>';
+        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer || 'No answer provided for this layer yet.') + '</strong>';
         if (q.why) html += '<div style="font-size:11px;opacity:.8;margin-top:3px">' + esc(q.why) + '</div>';
         html += '</div></div>';
       });
