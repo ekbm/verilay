@@ -1453,12 +1453,6 @@ function stopMsgs() {
   }
 }
 
-var currentReport  = null;
-var currentLayers  = {};
-var activeLayer    = null;
-var activeMode     = 'expert';
-var savedReportId  = null;
-
 async function runAnalysis() {
   hideErr();
   var fd = new FormData();
@@ -2052,13 +2046,3 @@ document.addEventListener('DOMContentLoaded', init);
 
 
 # ── Badge generator ──────────────────────────────────────────────────────────
-
-
-def badge(repo):
-    """Generate an SVG score badge for a repo."""
-
-if __name__ == "__main__":
-    if not ANTHROPIC_API_KEY:
-        print("\n⚠️  No ANTHROPIC_API_KEY in .env\n")
-    print("🔍 Verilay running at http://localhost:5000\n")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
