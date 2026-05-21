@@ -866,7 +866,26 @@ def save_report_route():
 def view_report(report_id):
     entry = _reports.get(report_id)
     if not entry:
-        return "<h2 style='font-family:sans-serif;padding:2rem;color:#666'>Report not found or expired (reports kept 24 hours).</h2>", 404
+        return """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Verilay - Report Not Found</title>
+<meta http-equiv="refresh" content="5;url=https://verilay.dev">
+</head>
+<body style="font-family:-apple-system,sans-serif;padding:3rem;max-width:500px;margin:0 auto">
+<div style="font-size:24px;margin-bottom:.5rem">&#215; Verilay</div>
+<h2 style="font-weight:600;margin-bottom:.75rem">Report not found</h2>
+<p style="color:#666;line-height:1.6;margin-bottom:1rem">
+This report has expired or was cleared during a server update.
+Verilay reports are kept in memory and reset when the server restarts.
+</p>
+<p style="color:#666;line-height:1.6;margin-bottom:1.5rem">
+To get a permanent shareable report, run a new analysis and use
+<strong>Export .md</strong> to save a copy you can keep.
+</p>
+<a href="https://verilay.dev" style="background:#534AB7;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:500">
+Run a new analysis &rarr;
+</a>
+<p style="color:#aaa;font-size:12px;margin-top:1.5rem">Redirecting to verilay.dev in 5 seconds...</p>
+</body></html>""", 404
     saved_json = json.dumps(entry["data"])
     extra = f"<script>window.addEventListener('load',function(){{try{{var d={saved_json};renderSavedReport(d);}}catch(e){{console.error(e);}}}});</script>"
     return render_template_string(HTML + extra)
