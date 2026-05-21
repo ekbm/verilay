@@ -166,7 +166,7 @@ def call_claude(prompt, max_tokens=2500):
         "https://api.anthropic.com/v1/messages",
         headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
         json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"messages":[{"role":"user","content":prompt}]},
-        timeout=25
+        timeout=20
     )
     resp.raise_for_status()
     raw = resp.json()["content"][0]["text"].strip()
@@ -191,7 +191,7 @@ def files_for(files, keys):
     out = ""
     total = 0
     for k in keys:
-        if k in files and total < 20000:
+        if k in files and total < 10000:
             chunk = f"\n\n=== {k} ===\n{sanitise_for_prompt(files[k])}"
             out += chunk
             total += len(chunk)
@@ -222,60 +222,60 @@ def analyse_step1(files, tree, repo_name, method):
 
 def analyse_step2(files, repo_name):
     sec_keys = [k for k in files if any(w in k.lower() for w in
-        ["auth","login",".env","config","secret","supabase","database","db","schema","prisma","password","token"])][:12]
-    ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:4])
-
+        ["auth","login",".env","config","secret","supabase","database","db","schema","prisma","password","token"])][:8]
+    ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
     prompt = (
-        f"You are Verilay analysing security layers of: {repo_name}\n\n"
-        "Check specifically for: hardcoded secrets, exposed .env files, fallback secret keys that ship as defaults, "
-        "SSRF via user-supplied URLs, prompt injection, missing auth, weak JWT config, Supabase RLS issues.\n\n"
-        f"FILES:\n{ftext}\n\n"
-        "Return ONLY valid JSON with exactly 3 layers. 1-2 sentences max per field. Max 3 findings per layer:\n"
+        "Analyse security of: " + repo_name + "\n\n"
+        "Check for: hardcoded secrets, exposed .env, weak auth, missing RLS, SSRF, SQL injection.\n\n"
+        "FILES:\n" + ftext[:8000] + "\n\n"
+        "Return ONLY valid JSON with 3 layers (Auth, Config, Database). "
+        "Max 2 findings each. All text max 1 sentence:\n"
         '{"layers":['
         '{"name":"Auth","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
         '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
         '"quiz":[{"question":"","answer":"","why":""}]},'
         '{"name":"Config","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
         '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
         '"quiz":[{"question":"","answer":"","why":""}]},'
         '{"name":"Database","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
         '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
         '"quiz":[{"question":"","answer":"","why":""}]}'
-        ']}'
-        "\n\nBe rigorous. Mark critical issues as critical. Do not give false passing scores."
+        "]}"
     )
-    return call_claude(prompt, max_tokens=2500)
+    return call_claude([{"role":"user","content":prompt}], max_tokens=1200)
+
 
 def analyse_step3(files, repo_name):
     api_keys = [k for k in files if any(w in k.lower() for w in
-        ["route","api","app.py","main.py","server","app.tsx","app.jsx","router","hook","component","package.json"])][:12]
+        ["route","api","app.py","main.py","server","app.tsx","app.jsx","router","package.json"])][:8]
     if "package.json" in files and "package.json" not in api_keys:
         api_keys.insert(0, "package.json")
-    ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:4])
-
+    ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:3])
     prompt = (
-        f"You are Verilay analysing API, Frontend and Libraries layers of: {repo_name}\n\n"
-        f"FILES:\n{ftext}\n\n"
-        "Return ONLY valid JSON with exactly 3 layers. 1-2 sentences max per field. Max 3 findings per layer:\n"
+        "Analyse API, Frontend, Libraries of: " + repo_name + "\n\n"
+        "FILES:\n" + ftext[:8000] + "\n\n"
+        "Return ONLY valid JSON with 3 layers (API, Frontend, Libraries). "
+        "Max 2 findings each. All text max 1 sentence:\n"
         '{"layers":['
         '{"name":"API","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
         '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
         '"quiz":[{"question":"","answer":"","why":""}]},'
         '{"name":"Frontend","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
         '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
         '"quiz":[{"question":"","answer":"","why":""}]},'
         '{"name":"Libraries","status":"critical|warning|passing",'
-        '"expert":{"summary":"","findings":[{"severity":"critical|warning|info|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
+        '"expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},'
         '"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},'
         '"quiz":[{"question":"","answer":"","why":""}]}'
-        ']}'
+        "]}"
     )
-    return call_claude(prompt, max_tokens=2500)
+    return call_claude([{"role":"user","content":prompt}], max_tokens=1200)
+
 
 def analyse_step4(repo_name, built_with, findings_summary):
     is_lovable = "lovable" in built_with.lower()
@@ -300,7 +300,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         '}}'
         "\n\n3-5 fixes by severity. Make lovable_prompt specific enough to produce an immediate fix."
     )
-    return call_claude(prompt, max_tokens=2500)
+    return call_claude(prompt, max_tokens=1500)
 
 # ── Main analysis route — streams results as JSON events ───────────────────────
 @app.route("/analyse-stream", methods=["POST"])
@@ -349,23 +349,24 @@ def analyse_stream():
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             yield json.dumps({"event":"step1","data":s1}) + "\n"
 
-            # ── Step 2: Auth + Config + Database ───────────────────────
-            yield json.dumps({"event":"status","data":"Analysing Auth, Config, Database layers..."}) + "\n"
-            try:
-                s2 = analyse_step2(files, repo_name)
-                yield json.dumps({"event":"step2","data":s2}) + "\n"
-            except Exception as e:
-                yield json.dumps({"event":"step2_error","data":str(e)}) + "\n"
-                s2 = {"layers":[]}
-
-            # ── Step 3: API + Frontend + Libraries ─────────────────────
-            yield json.dumps({"event":"status","data":"Analysing API, Frontend, Libraries layers..."}) + "\n"
-            try:
-                s3 = analyse_step3(files, repo_name)
-                yield json.dumps({"event":"step3","data":s3}) + "\n"
-            except Exception as e:
-                yield json.dumps({"event":"step3_error","data":str(e)}) + "\n"
-                s3 = {"layers":[]}
+            # ── Steps 2 + 3 in parallel ────────────────────────────────
+            yield json.dumps({"event":"status","data":"Analysing layers in parallel..."}) + "\n"
+            import concurrent.futures
+            s2 = {"layers":[]}
+            s3 = {"layers":[]}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                f2 = executor.submit(analyse_step2, files, repo_name)
+                f3 = executor.submit(analyse_step3, files, repo_name)
+                try:
+                    s2 = f2.result(timeout=22)
+                    yield json.dumps({"event":"step2","data":s2}) + "\n"
+                except Exception as e:
+                    yield json.dumps({"event":"step2_error","data":str(e)}) + "\n"
+                try:
+                    s3 = f3.result(timeout=22)
+                    yield json.dumps({"event":"step3","data":s3}) + "\n"
+                except Exception as e:
+                    yield json.dumps({"event":"step3_error","data":str(e)}) + "\n"
 
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
