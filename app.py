@@ -1439,8 +1439,10 @@ document.addEventListener('DOMContentLoaded', init);
 
 @app.route("/static/app.js")
 def serve_js():
-    from flask import Response
-    return Response(APP_JS, mimetype="application/javascript")
+    from flask import send_file
+    import os
+    js_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.js')
+    return send_file(js_path, mimetype='application/javascript')
 
 
 HTML = """<!DOCTYPE html>
@@ -2054,7 +2056,7 @@ input:focus{border-color:var(--pu)}
 
 </div></main>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js" defer></script>
 </body>
 </html>"""
 
