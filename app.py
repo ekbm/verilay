@@ -490,14 +490,9 @@ def build_markdown(data):
 @app.route("/")
 def index(): return render_template_string(HTML)
 
-@app.route("/static/app.js")
-def serve_js():
-    from flask import Response
-    return Response(APP_JS, mimetype="application/javascript")
-
-
 
 APP_JS = """
+console.log("[Verilay] app.js loading...");
 var currentMethod = 'github';
 var currentReport = null;
 var currentFilesSample = '';
@@ -1439,6 +1434,14 @@ function renderPart2(data) {
 // Start everything when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
 """
+
+
+
+@app.route("/static/app.js")
+def serve_js():
+    from flask import Response
+    return Response(APP_JS, mimetype="application/javascript")
+
 
 HTML = """<!DOCTYPE html>
 <html lang="en">
