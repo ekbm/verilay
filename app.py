@@ -259,26 +259,103 @@ def files_for(files, keys):
 
 
 def analyse_step1(files, tree, repo_name, method):
-    tree_str = "\n".join(tree[:80]) if tree else "Not available"
-    stack_keys = [k for k in files if any(sf in k for sf in ["package.json","requirements","Procfile","vite","tsconfig",".gitignore"])]
+    tree_str = "\n".join(tree[:60]) if tree else "Not available"
+    stack_keys = [k for k in files if any(sf in k for sf in
+        ["package.json","requirements","Procfile","vite","tsconfig",".gitignore","Dockerfile"])]
     ftext = files_for(files, stack_keys) or files_for(files, list(files.keys())[:3])
+    ftext = ftext[:4000]
     is_surface = method == "url"
 
     prompt = (
-        f"You are Verilay, a codebase analyser for non-developers.\n"
-        f"Repo: {repo_name} | Input: {method}\n\n"
-        f"FILE TREE:\n{tree_str}\n\nKEY FILES:\n{ftext}\n\n"
-        "Return ONLY valid JSON:\n"
-        '{"repo":"' + repo_name + '","input_method":"' + method + '",'
-        '"analysis_depth":"' + ("surface" if is_surface else "full") + '",'
-        '"summary":"one sentence what this app does",'
-        '"built_with":"which AI platform built this and why",'
-        '"prod_ready":{"verdict":"ready|needs_work|not_ready","confidence":"high|medium|low","reason":"one sentence"},'
-        '"health":{"critical":0,"warnings":0,"passing":0,"score":"A|B|C|D|F"},'
-        '"stack":[{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"one sentence"}]}'
-        "\n\nBe accurate. Honest score — A means genuinely production-ready. Most AI apps score B or C."
+        "Analyse this codebase and respond ONLY with key:value pairs, one per line, no other text.\n\n"
+        "Repo: " + repo_name + "\n"
+        "File tree:\n" + tree_str + "\n\n"
+        "Key files:\n" + ftext + "\n\n"
+        "Use exactly these keys:\n\n"
+        "SUMMARY: one sentence what this app does\n"
+        "BUILT_WITH: which AI platform built this and why you think so\n"
+        "DEPTH: " + ("surface" if is_surface else "full") + "\n"
+        "VERDICT: ready|needs_work|not_ready\n"
+        "CONFIDENCE: high|medium|low\n"
+        "REASON: one sentence verdict\n"
+        "CRITICAL: number of critical issues\n"
+        "WARNINGS: number of warnings\n"
+        "PASSING: number of passing checks\n"
+        "SCORE: A|B|C|D|F\n"
+        "STACK_1_NAME: framework or library name\n"
+        "STACK_1_VERSION: version or empty\n"
+        "STACK_1_CAT: frontend|backend|database|auth|styling|build|testing|other\n"
+        "STACK_1_DESC: one sentence what it does\n"
+        "STACK_2_NAME: next item\n"
+        "STACK_2_VERSION: version\n"
+        "STACK_2_CAT: category\n"
+        "STACK_2_DESC: description\n"
+        "STACK_3_NAME: next\n"
+        "STACK_3_VERSION: version\n"
+        "STACK_3_CAT: category\n"
+        "STACK_3_DESC: description\n"
+        "STACK_4_NAME: next\n"
+        "STACK_4_VERSION: version\n"
+        "STACK_4_CAT: category\n"
+        "STACK_4_DESC: description\n"
+        "STACK_5_NAME: next\n"
+        "STACK_5_VERSION: version\n"
+        "STACK_5_CAT: category\n"
+        "STACK_5_DESC: description\n"
+        "STACK_6_NAME: next or empty\n"
+        "STACK_6_VERSION: version\n"
+        "STACK_6_CAT: category\n"
+        "STACK_6_DESC: description\n"
+        "\nBe honest. A score means truly production-ready. Most AI-built apps score B or C.\n"
+        "List all libraries/frameworks found. Leave STACK_N fields empty if fewer than N items."
     )
-    return call_claude(prompt, max_tokens=3000)
+
+    text = call_claude_text(prompt, max_tokens=600)
+    lines = {}
+    for line in text.strip().split("\n"):
+        if ":" in line:
+            key, _, val = line.partition(":")
+            lines[key.strip().upper()] = val.strip()
+
+    # Build stack array
+    stack = []
+    for i in range(1, 8):
+        name = lines.get(f"STACK_{i}_NAME", "").strip()
+        if not name or name.lower() in ("next", "next item", "next or empty", "empty"):
+            break
+        stack.append({
+            "name": name,
+            "version": lines.get(f"STACK_{i}_VERSION", ""),
+            "category": lines.get(f"STACK_{i}_CAT", "other"),
+            "plain_english": lines.get(f"STACK_{i}_DESC", "")
+        })
+
+    critical = int(lines.get("CRITICAL", "0").split()[0]) if lines.get("CRITICAL", "").split() else 0
+    warnings = int(lines.get("WARNINGS", "0").split()[0]) if lines.get("WARNINGS", "").split() else 0
+    passing  = int(lines.get("PASSING", "0").split()[0]) if lines.get("PASSING", "").split() else 0
+
+    return {
+        "repo": repo_name,
+        "input_method": method,
+        "analysis_depth": lines.get("DEPTH", "full" if not is_surface else "surface"),
+        "summary": lines.get("SUMMARY", ""),
+        "built_with": lines.get("BUILT_WITH", ""),
+        "prod_ready": {
+            "verdict": lines.get("VERDICT", "needs_work"),
+            "confidence": lines.get("CONFIDENCE", "medium"),
+            "reason": lines.get("REASON", "")
+        },
+        "health": {
+            "critical": critical,
+            "warnings": warnings,
+            "passing": passing,
+            "score": lines.get("SCORE", "C")
+        },
+        "stack": stack,
+        "files_read": len(files),
+        "generated_at": __import__("datetime").datetime.now().strftime("%d %b %Y %H:%M")
+    }
+
 
 def analyse_step2(files, repo_name):
     sec_keys = [k for k in files if any(w in k.lower() for w in
@@ -287,31 +364,67 @@ def analyse_step2(files, repo_name):
     ftext = ftext[:5000]
 
     prompt = (
-        "You are a security analyser. Analyse this codebase and return ONLY a JSON object. "
-        "No explanation, no markdown, no text before or after the JSON.\n\n"
-        "Codebase: " + repo_name + "\n\n"
-        "Files:\n" + ftext + "\n\n"
-        "Return this JSON filled with your findings. "
-        "Every text value must be ONE sentence maximum:\n\n"
-        '{"layers": ['
-        '{"name": "Auth", "status": "passing", '
-        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
-        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
-        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
-        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
-        '{"name": "Config", "status": "passing", '
-        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
-        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
-        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
-        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
-        '{"name": "Database", "status": "passing", '
-        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
-        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
-        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
-        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}'
-        ']}'
+        "Analyse the Auth, Config and Database layers of this codebase: " + repo_name + "\n\n"
+        + ftext +
+        "\n\nRespond ONLY with key:value pairs, one per line, no other text.\n"
+        "Use exactly these keys (replace values with your findings, 1 sentence each):\n\n"
+        "AUTH_STATUS: passing\n"
+        "AUTH_SUMMARY: summary of auth layer\n"
+        "AUTH_F1_SEV: critical\n"
+        "AUTH_F1_TITLE: finding title\n"
+        "AUTH_F1_DETAIL: technical detail\n"
+        "AUTH_F1_FILE: filename or empty\n"
+        "AUTH_F1_WHY: why it matters\n"
+        "AUTH_F1_PLAIN: plain english version\n"
+        "AUTH_F1_IMPACT: real world impact\n"
+        "AUTH_F1_ACTION: how to fix\n"
+        "AUTH_WHAT: what is auth in plain english\n"
+        "AUTH_ANALOGY: real world analogy\n"
+        "AUTH_DOES: what auth does in this app\n"
+        "AUTH_CONNECTS: how it connects to other layers\n"
+        "AUTH_CONCEPT: key concept to understand\n"
+        "AUTH_Q: quiz question\n"
+        "AUTH_A: quiz answer\n"
+        "AUTH_QWHY: why this matters\n"
+        "CONFIG_STATUS: passing\n"
+        "CONFIG_SUMMARY: summary\n"
+        "CONFIG_F1_SEV: warning\n"
+        "CONFIG_F1_TITLE: finding title\n"
+        "CONFIG_F1_DETAIL: detail\n"
+        "CONFIG_F1_FILE: filename\n"
+        "CONFIG_F1_WHY: why it matters\n"
+        "CONFIG_F1_PLAIN: plain english\n"
+        "CONFIG_F1_IMPACT: impact\n"
+        "CONFIG_F1_ACTION: action\n"
+        "CONFIG_WHAT: what is config\n"
+        "CONFIG_ANALOGY: analogy\n"
+        "CONFIG_DOES: what it does\n"
+        "CONFIG_CONNECTS: connections\n"
+        "CONFIG_CONCEPT: key concept\n"
+        "CONFIG_Q: quiz question\n"
+        "CONFIG_A: answer\n"
+        "CONFIG_QWHY: why\n"
+        "DATABASE_STATUS: passing\n"
+        "DATABASE_SUMMARY: summary\n"
+        "DATABASE_F1_SEV: passing\n"
+        "DATABASE_F1_TITLE: finding\n"
+        "DATABASE_F1_DETAIL: detail\n"
+        "DATABASE_F1_FILE: file\n"
+        "DATABASE_F1_WHY: why\n"
+        "DATABASE_F1_PLAIN: plain\n"
+        "DATABASE_F1_IMPACT: impact\n"
+        "DATABASE_F1_ACTION: action\n"
+        "DATABASE_WHAT: what is database\n"
+        "DATABASE_ANALOGY: analogy\n"
+        "DATABASE_DOES: what it does\n"
+        "DATABASE_CONNECTS: connections\n"
+        "DATABASE_CONCEPT: concept\n"
+        "DATABASE_Q: question\n"
+        "DATABASE_A: answer\n"
+        "DATABASE_QWHY: why\n"
     )
-    return call_claude(prompt, max_tokens=3000)
+    text = call_claude_text(prompt, max_tokens=1000)
+    return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
 def analyse_step3(files, repo_name):
@@ -323,31 +436,67 @@ def analyse_step3(files, repo_name):
     ftext = ftext[:5000]
 
     prompt = (
-        "You are a code analyser. Analyse this codebase and return ONLY a JSON object. "
-        "No explanation, no markdown, no text before or after the JSON.\n\n"
-        "Codebase: " + repo_name + "\n\n"
-        "Files:\n" + ftext + "\n\n"
-        "Return this JSON filled with your findings. "
-        "Every text value must be ONE sentence maximum:\n\n"
-        '{"layers": ['
-        '{"name": "API", "status": "passing", '
-        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
-        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
-        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
-        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
-        '{"name": "Frontend", "status": "passing", '
-        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
-        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
-        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
-        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
-        '{"name": "Libraries", "status": "passing", '
-        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
-        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
-        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
-        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}'
-        ']}'
+        "Analyse the API, Frontend and Libraries layers of: " + repo_name + "\n\n"
+        + ftext +
+        "\n\nRespond ONLY with key:value pairs, one per line, no other text.\n"
+        "Use exactly these keys (replace values with your findings, 1 sentence each):\n\n"
+        "API_STATUS: passing\n"
+        "API_SUMMARY: summary\n"
+        "API_F1_SEV: passing\n"
+        "API_F1_TITLE: finding\n"
+        "API_F1_DETAIL: detail\n"
+        "API_F1_FILE: file\n"
+        "API_F1_WHY: why\n"
+        "API_F1_PLAIN: plain\n"
+        "API_F1_IMPACT: impact\n"
+        "API_F1_ACTION: action\n"
+        "API_WHAT: what is API\n"
+        "API_ANALOGY: analogy\n"
+        "API_DOES: what it does\n"
+        "API_CONNECTS: connections\n"
+        "API_CONCEPT: concept\n"
+        "API_Q: question\n"
+        "API_A: answer\n"
+        "API_QWHY: why\n"
+        "FRONTEND_STATUS: passing\n"
+        "FRONTEND_SUMMARY: summary\n"
+        "FRONTEND_F1_SEV: passing\n"
+        "FRONTEND_F1_TITLE: finding\n"
+        "FRONTEND_F1_DETAIL: detail\n"
+        "FRONTEND_F1_FILE: file\n"
+        "FRONTEND_F1_WHY: why\n"
+        "FRONTEND_F1_PLAIN: plain\n"
+        "FRONTEND_F1_IMPACT: impact\n"
+        "FRONTEND_F1_ACTION: action\n"
+        "FRONTEND_WHAT: what is frontend\n"
+        "FRONTEND_ANALOGY: analogy\n"
+        "FRONTEND_DOES: what it does\n"
+        "FRONTEND_CONNECTS: connections\n"
+        "FRONTEND_CONCEPT: concept\n"
+        "FRONTEND_Q: question\n"
+        "FRONTEND_A: answer\n"
+        "FRONTEND_QWHY: why\n"
+        "LIBRARIES_STATUS: passing\n"
+        "LIBRARIES_SUMMARY: summary\n"
+        "LIBRARIES_F1_SEV: passing\n"
+        "LIBRARIES_F1_TITLE: finding\n"
+        "LIBRARIES_F1_DETAIL: detail\n"
+        "LIBRARIES_F1_FILE: file\n"
+        "LIBRARIES_F1_WHY: why\n"
+        "LIBRARIES_F1_PLAIN: plain\n"
+        "LIBRARIES_F1_IMPACT: impact\n"
+        "LIBRARIES_F1_ACTION: action\n"
+        "LIBRARIES_WHAT: what are libraries\n"
+        "LIBRARIES_ANALOGY: analogy\n"
+        "LIBRARIES_DOES: what they do\n"
+        "LIBRARIES_CONNECTS: connections\n"
+        "LIBRARIES_CONCEPT: concept\n"
+        "LIBRARIES_Q: question\n"
+        "LIBRARIES_A: answer\n"
+        "LIBRARIES_QWHY: why\n"
     )
-    return call_claude(prompt, max_tokens=3000)
+    text = call_claude_text(prompt, max_tokens=1000)
+    return parse_flat_response(text, ["API", "Frontend", "Libraries"])
 
 
 def analyse_step4(repo_name, built_with, findings_summary):
@@ -356,24 +505,78 @@ def analyse_step4(repo_name, built_with, findings_summary):
     platform   = "Lovable" if is_lovable else ("Replit" if is_replit else "your AI builder")
 
     prompt = (
-        f"You are Verilay completing analysis of: {repo_name} (built with {built_with})\n\n"
-        f"Findings summary:\n{findings_summary}\n\n"
-        "Return ONLY valid JSON:\n"
-        '{"top_fixes":['
-        '{"priority":1,"title":"","why_it_matters":"1 sentence","how_to_fix":"2-3 steps",'
-        '"estimated_effort":"5 minutes|30 minutes|1 hour|1 day",'
-        f'"lovable_prompt":"Ready-to-paste prompt for {platform} AI chat to fix this. Start: In my {platform} app, [specific actionable fix]",'
-        '"general_prompt":"Ready-to-paste prompt for any AI to fix this issue"}'
-        '],'
-        '"security_score":{"env_secrets_exposed":false,"auth_properly_configured":true,"rls_likely_configured":true,"dependencies_current":true,"no_hardcoded_secrets":true},'
-        '"second_opinion":{'
-        f'"summary_prompt":"Complete prompt to paste into any AI to verify Verilay findings about {repo_name}",'
-        '"security_prompt":"Complete prompt to verify security findings",'
-        f'"prod_checklist_prompt":"Complete prompt: is {repo_name} production ready? Include context."'
-        '}}'
-        "\n\n3-5 fixes by severity. Make lovable_prompt specific enough to produce an immediate fix."
+        "Based on this analysis of " + repo_name + ":\n"
+        + findings_summary +
+        "\n\nRespond ONLY with key:value pairs, one per line, no other text.\n\n"
+        "FIX_1_TITLE: most urgent fix\n"
+        "FIX_1_WHY: why it matters in one sentence\n"
+        "FIX_1_HOW: 2-3 step fix instruction\n"
+        "FIX_1_EFFORT: 5 minutes|30 minutes|1 hour|1 day\n"
+        "FIX_1_PROMPT: complete prompt to paste into " + platform + " to fix this\n"
+        "FIX_2_TITLE: second fix\n"
+        "FIX_2_WHY: why\n"
+        "FIX_2_HOW: how\n"
+        "FIX_2_EFFORT: effort\n"
+        "FIX_2_PROMPT: prompt for " + platform + "\n"
+        "FIX_3_TITLE: third fix\n"
+        "FIX_3_WHY: why\n"
+        "FIX_3_HOW: how\n"
+        "FIX_3_EFFORT: effort\n"
+        "FIX_3_PROMPT: prompt for " + platform + "\n"
+        "SEC_SECRETS: true|false (are secrets exposed in repo)\n"
+        "SEC_AUTH: true|false (is auth properly configured)\n"
+        "SEC_RLS: true|false (is row level security configured)\n"
+        "SEC_DEPS: true|false (are dependencies current)\n"
+        "SEC_HARDCODED: true|false (no hardcoded secrets in code)\n"
+        "OPINION_GENERAL: complete self-contained prompt to paste into Claude or ChatGPT to verify these findings about " + repo_name + "\n"
+        "OPINION_SECURITY: complete prompt to verify the security findings specifically\n"
+        "OPINION_PROD: complete prompt asking if " + repo_name + " is ready for production\n"
     )
-    return call_claude(prompt, max_tokens=3000)
+
+    text = call_claude_text(prompt, max_tokens=800)
+    lines = {}
+    for line in text.strip().split("\n"):
+        if ":" in line:
+            key, _, val = line.partition(":")
+            lines[key.strip().upper()] = val.strip()
+
+    def parse_bool(val, default=True):
+        if not val: return default
+        return val.lower() not in ("false", "no", "0")
+
+    fixes = []
+    for i in range(1, 5):
+        title = lines.get(f"FIX_{i}_TITLE", "")
+        if not title or title.lower() in ("next fix", ""):
+            break
+        fixes.append({
+            "priority": i,
+            "title": title,
+            "why_it_matters": lines.get(f"FIX_{i}_WHY", ""),
+            "how_to_fix": lines.get(f"FIX_{i}_HOW", ""),
+            "estimated_effort": lines.get(f"FIX_{i}_EFFORT", "30 minutes"),
+            "lovable_prompt": lines.get(f"FIX_{i}_PROMPT", ""),
+            "general_prompt": lines.get(f"FIX_{i}_PROMPT", "")
+        })
+
+    return {
+        "part2_loaded": True,
+        "top_fixes": fixes,
+        "security_score": {
+            "env_secrets_exposed":      not parse_bool(lines.get("SEC_SECRETS","false"), False),
+            "auth_properly_configured": parse_bool(lines.get("SEC_AUTH","true")),
+            "rls_likely_configured":    parse_bool(lines.get("SEC_RLS","true")),
+            "dependencies_current":     parse_bool(lines.get("SEC_DEPS","true")),
+            "no_hardcoded_secrets":     parse_bool(lines.get("SEC_HARDCODED","true"))
+        },
+        "second_opinion": {
+            "summary_prompt":       lines.get("OPINION_GENERAL", ""),
+            "security_prompt":      lines.get("OPINION_SECURITY", ""),
+            "prod_checklist_prompt":lines.get("OPINION_PROD", "")
+        }
+    }
+
+
 
 # ── Main analysis route — streams results as JSON events ───────────────────────
 @app.route("/analyse-stream", methods=["POST"])
@@ -427,19 +630,29 @@ def analyse_stream():
             import concurrent.futures
             s2 = {"layers":[]}
             s3 = {"layers":[]}
+            s2_err = None
+            s3_err = None
+            # Run in parallel, collect results, THEN yield
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f2 = executor.submit(analyse_step2, files, repo_name)
                 f3 = executor.submit(analyse_step3, files, repo_name)
                 try:
-                    s2 = f2.result(timeout=22)
-                    yield json.dumps({"event":"step2","data":s2}) + "\n"
+                    s2 = f2.result(timeout=55)
                 except Exception as e:
-                    yield json.dumps({"event":"step2_error","data":str(e)}) + "\n"
+                    s2_err = str(e)
                 try:
-                    s3 = f3.result(timeout=22)
-                    yield json.dumps({"event":"step3","data":s3}) + "\n"
+                    s3 = f3.result(timeout=55)
                 except Exception as e:
-                    yield json.dumps({"event":"step3_error","data":str(e)}) + "\n"
+                    s3_err = str(e)
+            # Now yield results from main thread
+            if s2_err:
+                yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
+            else:
+                yield json.dumps({"event":"step2","data":s2}) + "\n"
+            if s3_err:
+                yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
+            else:
+                yield json.dumps({"event":"step3","data":s3}) + "\n"
 
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
