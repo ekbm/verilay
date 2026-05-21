@@ -173,10 +173,12 @@ def call_claude(prompt, max_tokens=2500):
     if _HAS_SDK:
         client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
         raw = ""
+        # Ensure prompt is a plain string
+        prompt_str = str(prompt) if not isinstance(prompt, str) else prompt
         with client.messages.stream(
             model="claude-sonnet-4-5",
             max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt_str}]
         ) as stream:
             for text in stream.text_stream:
                 raw += text
@@ -291,7 +293,7 @@ Return ONLY this exact JSON structure with your findings (1 sentence max per fie
 {"name":"Config","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
 {"name":"Database","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]}
 ]}"""
-    return call_claude([{"role":"user","content":prompt}], max_tokens=1200)
+    return call_claude(prompt, max_tokens=1200)
 
 
 def analyse_step3(files, repo_name):
@@ -311,7 +313,7 @@ Return ONLY this exact JSON structure with your findings (1 sentence max per fie
 {"name":"Frontend","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
 {"name":"Libraries","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]}
 ]}"""
-    return call_claude([{"role":"user","content":prompt}], max_tokens=1200)
+    return call_claude(prompt, max_tokens=1200)
 
 
 def analyse_step4(repo_name, built_with, findings_summary):
