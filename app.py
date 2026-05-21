@@ -583,6 +583,7 @@ input:focus{border-color:var(--pu)}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
 /* Accessibility: underline links inside text blocks */
 .hint a,.scope-notice a,.next-steps a,p a{text-decoration:underline;text-underline-offset:2px}
+#hero-section a,#report-content a{text-decoration:underline;text-underline-offset:2px}
 @media(min-width:900px){
   .ll{grid-template-columns:200px 1fr;gap:16px}
   .mg{grid-template-columns:repeat(3,1fr)}
@@ -725,8 +726,8 @@ input:focus{border-color:var(--pu)}
       Verilay gives you a plain-English first-pass overview of your AI-built app. It highlights obvious issues, explains your tech stack, and helps you understand what was built.
       It is <em>not</em> a full penetration test or a replacement for a professional security audit.
       For apps going live with real user data or payments, we always recommend a deeper review from
-      <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:none">Snyk</a>,
-      <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:none">CodeRabbit</a>,
+      <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a>,
+      <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a>,
       or a developer before launch. The second opinion prompts in every report make this easy.
     </div>
   </div>
@@ -1633,8 +1634,8 @@ function renderReport(data) {
   html += '<div style="font-size:12px;color:var(--mut);line-height:1.55">';
   html += '<strong style="color:var(--txt)">What Verilay covers:</strong> This is a first-pass overview of your codebase — great for understanding what was built and catching obvious issues. ';
   html += 'For apps handling real users or sensitive data, we recommend a deeper review: ';
-  html += '<a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:none">Snyk</a> for dependency vulnerabilities, ';
-  html += '<a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:none">CodeRabbit</a> for code review, ';
+  html += '<a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a> for dependency vulnerabilities, ';
+  html += '<a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a> for code review, ';
   html += 'or a developer security audit before going live with real user data.';
   html += '</div></div>';
 
@@ -2020,7 +2021,7 @@ function renderPart2(data) {
   html += '<div style="font-size:12px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
   html += '<div style="font-size:12px;color:var(--put);line-height:1.6">';
   html += 'Verilay gives you a first-pass overview — good for understanding and catching obvious issues. For production apps we recommend going further:<br>';
-  html += '• <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency &amp; vulnerability scanning (connects to GitHub)<br>';
+  html += '• <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency and vulnerability scanning (connects to GitHub)<br>';
   html += '• <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> — AI code review on every pull request (free for open source)<br>';
   html += '• Share the second opinion prompts below with a developer for a human review<br>';
   html += '• Fix all critical issues before going live with real users or payments';
