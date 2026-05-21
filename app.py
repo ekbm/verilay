@@ -887,7 +887,19 @@ Run a new analysis &rarr;
 <p style="color:#aaa;font-size:12px;margin-top:1.5rem">Redirecting to verilay.dev in 5 seconds...</p>
 </body></html>""", 404
     saved_json = json.dumps(entry["data"])
-    extra = f"<script>window.addEventListener('load',function(){{try{{var d={saved_json};renderSavedReport(d);}}catch(e){{console.error(e);}}}});</script>"
+    extra = (
+        "<script>"
+        "window.addEventListener('load',function(){"
+        "try{"
+        "var d=" + saved_json + ";"
+        "document.getElementById('hero-section').style.display='none';"
+        "document.getElementById('form-section').style.display='none';"
+        "renderReport(d);"
+        "if(d.top_fixes&&d.top_fixes.length){renderPart2(d);}"
+        "}catch(e){console.error('Saved report error:',e);}"
+        "});"
+        "</script>"
+    )
     return render_template_string(HTML + extra)
 
 
