@@ -278,24 +278,40 @@ def analyse_step1(files, tree, repo_name, method):
         '"stack":[{"name":"","version":"","category":"frontend|backend|database|auth|styling|build|testing|other","plain_english":"one sentence"}]}'
         "\n\nBe accurate. Honest score — A means genuinely production-ready. Most AI apps score B or C."
     )
-    return call_claude(prompt, max_tokens=1500)
+    return call_claude(prompt, max_tokens=3000)
 
 def analyse_step2(files, repo_name):
     sec_keys = [k for k in files if any(w in k.lower() for w in
         ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
     ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:6000]
-    prompt = """Analyse the security of this codebase: """ + repo_name + """
+    ftext = ftext[:5000]
 
-""" + ftext + """
-
-Return ONLY this exact JSON structure with your findings (1 sentence max per field, 2 findings max per layer):
-{"layers":[
-{"name":"Auth","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
-{"name":"Config","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
-{"name":"Database","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]}
-]}"""
-    return call_claude(prompt, max_tokens=1200)
+    prompt = (
+        "You are a security analyser. Analyse this codebase and return ONLY a JSON object. "
+        "No explanation, no markdown, no text before or after the JSON.\n\n"
+        "Codebase: " + repo_name + "\n\n"
+        "Files:\n" + ftext + "\n\n"
+        "Return this JSON filled with your findings. "
+        "Every text value must be ONE sentence maximum:\n\n"
+        '{"layers": ['
+        '{"name": "Auth", "status": "passing", '
+        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
+        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
+        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
+        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
+        '{"name": "Config", "status": "passing", '
+        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
+        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
+        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
+        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
+        '{"name": "Database", "status": "passing", '
+        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
+        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
+        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
+        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}'
+        ']}'
+    )
+    return call_claude(prompt, max_tokens=3000)
 
 
 def analyse_step3(files, repo_name):
@@ -304,18 +320,34 @@ def analyse_step3(files, repo_name):
     if "package.json" in files and "package.json" not in api_keys:
         api_keys.insert(0, "package.json")
     ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:6000]
-    prompt = """Analyse the API, Frontend and Libraries of: """ + repo_name + """
+    ftext = ftext[:5000]
 
-""" + ftext + """
-
-Return ONLY this exact JSON structure with your findings (1 sentence max per field, 2 findings max per layer):
-{"layers":[
-{"name":"API","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
-{"name":"Frontend","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]},
-{"name":"Libraries","status":"critical|warning|passing","expert":{"summary":"","findings":[{"severity":"critical|warning|passing","title":"","detail":"","file":"","why_it_matters":""}]},"learner":{"what_is_it":"","analogy":"","what_it_does_in_your_app":"","how_it_connects":"","key_concept":"","findings_plain":[{"severity":"critical|warning|passing","plain_title":"","plain_detail":"","real_world_impact":"","action":""}]},"quiz":[{"question":"","answer":"","why":""}]}
-]}"""
-    return call_claude(prompt, max_tokens=1200)
+    prompt = (
+        "You are a code analyser. Analyse this codebase and return ONLY a JSON object. "
+        "No explanation, no markdown, no text before or after the JSON.\n\n"
+        "Codebase: " + repo_name + "\n\n"
+        "Files:\n" + ftext + "\n\n"
+        "Return this JSON filled with your findings. "
+        "Every text value must be ONE sentence maximum:\n\n"
+        '{"layers": ['
+        '{"name": "API", "status": "passing", '
+        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
+        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
+        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
+        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
+        '{"name": "Frontend", "status": "passing", '
+        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
+        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
+        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
+        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}, '
+        '{"name": "Libraries", "status": "passing", '
+        '"expert": {"summary": "fill this", "findings": [{"severity": "passing", "title": "fill", "detail": "fill", "file": "", "why_it_matters": "fill"}]}, '
+        '"learner": {"what_is_it": "fill", "analogy": "fill", "what_it_does_in_your_app": "fill", "how_it_connects": "fill", "key_concept": "fill", '
+        '"findings_plain": [{"severity": "passing", "plain_title": "fill", "plain_detail": "fill", "real_world_impact": "fill", "action": "fill"}]}, '
+        '"quiz": [{"question": "fill", "answer": "fill", "why": "fill"}]}'
+        ']}'
+    )
+    return call_claude(prompt, max_tokens=3000)
 
 
 def analyse_step4(repo_name, built_with, findings_summary):
@@ -341,7 +373,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         '}}'
         "\n\n3-5 fixes by severity. Make lovable_prompt specific enough to produce an immediate fix."
     )
-    return call_claude(prompt, max_tokens=1500)
+    return call_claude(prompt, max_tokens=3000)
 
 # ── Main analysis route — streams results as JSON events ───────────────────────
 @app.route("/analyse-stream", methods=["POST"])
