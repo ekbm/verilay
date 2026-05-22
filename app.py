@@ -13,6 +13,15 @@ try:
     _HAS_SDK = True
 except ImportError:
     _HAS_SDK = False
+try:
+    from supabase import create_client as _supabase_create
+    _SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    _SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+    _sb = _supabase_create(_SUPABASE_URL, _SUPABASE_KEY) if _SUPABASE_URL and _SUPABASE_KEY else None
+    _HAS_SUPABASE = _sb is not None
+except Exception:
+    _sb = None
+    _HAS_SUPABASE = False
 
 load_dotenv()
 
@@ -42,7 +51,6 @@ _reports = {}
 REPORT_TTL = 86400
 
 # ── Analysis counter ────────────────────────────────────────────────────────────
-# Thread-safe in-memory counter with file backup in /tmp
 import threading
 _count_lock = threading.Lock()
 _memory_count = 0
@@ -50,6 +58,14 @@ _COUNTER_FILE = "/tmp/verilay_count.txt"
 
 def _load_count():
     global _memory_count
+    if _HAS_SUPABASE:
+        try:
+            result = _sb.table("counter").select("count").eq("id", 1).execute()
+            if result.data:
+                _memory_count = result.data[0]["count"]
+                return
+        except Exception as e:
+            print(f"Supabase counter load failed: {e}")
     try:
         with open(_COUNTER_FILE, 'r') as f:
             _memory_count = int(f.read().strip())
@@ -64,6 +80,12 @@ def increment_analysis_count():
     with _count_lock:
         _memory_count += 1
         count = _memory_count
+        if _HAS_SUPABASE:
+            try:
+                _sb.table("counter").update({"count": count}).eq("id", 1).execute()
+                return count
+            except Exception as e:
+                print(f"Supabase counter update failed: {e}")
         try:
             with open(_COUNTER_FILE, 'w') as f:
                 f.write(str(count))
@@ -71,15 +93,42 @@ def increment_analysis_count():
             pass
     return count
 
-# Load count from file on startup
+# Load count on startup
 _load_count()
 
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
+    if _HAS_SUPABASE:
+        try:
+            _sb.table("reports").insert({
+                "id": report_id,
+                "repo": data.get("repo", ""),
+                "data": data,
+                "input_method": data.get("input_method", "github"),
+                "score": data.get("health", {}).get("score", "")
+            }).execute()
+            return report_id
+        except Exception as e:
+            print(f"Supabase save failed: {e}")
+    # Fallback to memory
     _reports[report_id] = {"data": data, "saved_at": time.time()}
     expired = [k for k,v in _reports.items() if time.time()-v["saved_at"] > REPORT_TTL]
     for k in expired: del _reports[k]
     return report_id
+
+def get_report_data(report_id):
+    if _HAS_SUPABASE:
+        try:
+            result = _sb.table("reports").select("data").eq("id", report_id).execute()
+            if result.data:
+                return result.data[0]["data"]
+        except Exception as e:
+            print(f"Supabase get failed: {e}")
+    # Fallback to memory
+    entry = _reports.get(report_id)
+    if entry and time.time() - entry["saved_at"] < REPORT_TTL:
+        return entry["data"]
+    return None
 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 _rate_limit = {}
@@ -897,6 +946,13 @@ def stats():
 def save_report_route():
     try:
         data = request.get_json()
+        existing_id = data.pop("report_id", None)
+        if existing_id and _HAS_SUPABASE:
+            try:
+                _sb.table("reports").update({"data": data}).eq("id", existing_id).execute()
+                return jsonify({"report_id": existing_id})
+            except:
+                pass
         report_id = save_report_data(data)
         return jsonify({"report_id": report_id})
     except Exception as e:
@@ -905,7 +961,11 @@ def save_report_route():
 
 @app.route("/report/<report_id>")
 def view_report(report_id):
-    entry = _reports.get(report_id)
+    entry_data = get_report_data(report_id)
+    if not entry_data:
+        entry = None
+    else:
+        entry = {"data": entry_data}
     if not entry:
         return """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Verilay - Report Not Found</title>
@@ -947,21 +1007,30 @@ Run a new analysis &rarr;
 
 @app.route("/export/markdown/<report_id>")
 def export_markdown(report_id):
-    entry = _reports.get(report_id)
-    if not entry: return "Report not found", 404
-    md = build_markdown(entry["data"])
+    entry_data = get_report_data(report_id)
+    if not entry_data: return "Report not found", 404
+    md = build_markdown(entry_data)
     return Response(md, mimetype="text/markdown",
         headers={"Content-Disposition": f"attachment; filename=verilay-{report_id}.md"})
 
 
 @app.route("/badge/<path:repo>")
 def badge(repo):
-    latest = None
-    for entry in _reports.values():
-        if entry["data"].get("repo","") == repo:
-            if latest is None or entry["saved_at"] > latest["saved_at"]:
-                latest = entry
-    score = latest["data"].get("health",{}).get("score","?") if latest else "?"
+    score = "?"
+    if _HAS_SUPABASE:
+        try:
+            result = _sb.table("reports").select("score").eq("repo", repo).order("created_at", desc=True).limit(1).execute()
+            if result.data:
+                score = result.data[0].get("score", "?") or "?"
+        except:
+            pass
+    else:
+        latest = None
+        for entry in _reports.values():
+            if entry["data"].get("repo","") == repo:
+                if latest is None or entry["saved_at"] > latest["saved_at"]:
+                    latest = entry
+        score = latest["data"].get("health",{}).get("score","?") if latest else "?"
     color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(score,"#999")
     lw, vw = 58, 28
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{lw+vw}" height="20">'
