@@ -824,7 +824,7 @@ function renderLayer() {
     });
   } else if (activeMode === 'learner') {
     var lrn = layer.learner || {};
-    html += \'<div class="learner-label"><i class="ti ti-school" style="font-size:11px"></i> Learner mode</div>\';
+    html += '<div class="learner-label"><i class="ti ti-school" style="font-size:11px"></i> Learner mode</div>';
     if (lrn.analogy) html += '<div class="analogy"><i class="ti ti-bulb" style="margin-right:5px"></i><strong>Think of it like this:</strong> ' + esc(lrn.analogy) + '</div>';
     html += '<div class="lc"><div class="lc-title">What is ' + esc(layer.name) + '?</div><div class="lc-body">' + esc(lrn.what_is_it||'') + '</div></div>';
     html += '<div class="lc"><div class="lc-title">In your app specifically</div><div class="lc-body">' + esc(lrn.what_it_does_in_your_app||'') + '</div></div>';
