@@ -936,6 +936,15 @@ def run_step4():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/report-data/<report_id>")
+def report_data(report_id):
+    """Return report JSON for loading in history view."""
+    data = get_report_data(report_id)
+    if not data:
+        return jsonify({"error": "Report not found or expired"}), 404
+    return jsonify(data)
+
+
 @app.route("/stats")
 def stats():
     count = get_analysis_count()
@@ -1210,6 +1219,7 @@ input:focus{border-color:var(--pu)}
   .ca{min-height:auto}
 }
 </style>
+<script src="/static/app.js"></script>
 </head>
 <body>
 <main><div class="wrap">
@@ -1825,7 +1835,7 @@ input:focus{border-color:var(--pu)}
 
 </div></main>
 
-<script src="/static/app.js" defer></script>
+
 </body>
 </html>"""
 
