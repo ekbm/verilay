@@ -181,10 +181,22 @@ function rerunFromHistory(idx) {
   var entry = history[idx];
   if (!entry) return;
   showForm();
-  if (entry.method === 'github') {
-    selMethod('github');
+  // Switch to correct method
+  var method = entry.method || 'github';
+  currentMethod = method;
+  document.querySelectorAll('.mc').forEach(function(c) { c.classList.remove('sel'); });
+  var mc = document.getElementById('mc-' + method);
+  if (mc) mc.classList.add('sel');
+  document.querySelectorAll('.ip').forEach(function(p) { p.classList.remove('vis'); });
+  var panel = document.getElementById('p-' + method);
+  if (panel) panel.classList.add('vis');
+  // Pre-fill the input
+  if (method === 'github') {
     var input = document.getElementById('gh-url');
     if (input) input.value = 'https://github.com/' + entry.repo;
+  } else if (method === 'url') {
+    var input2 = document.getElementById('lu');
+    if (input2) input2.value = entry.repo;
   }
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
