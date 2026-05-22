@@ -41,6 +41,24 @@ app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 _reports = {}
 REPORT_TTL = 86400
 
+# ── Analysis counter ────────────────────────────────────────────────────────────
+import pathlib
+_COUNTER_FILE = pathlib.Path(__file__).parent / "analysis_count.txt"
+
+def get_analysis_count():
+    try:
+        return int(_COUNTER_FILE.read_text().strip())
+    except:
+        return 0
+
+def increment_analysis_count():
+    count = get_analysis_count() + 1
+    try:
+        _COUNTER_FILE.write_text(str(count))
+    except:
+        pass
+    return count
+
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
     _reports[report_id] = {"data": data, "saved_at": time.time()}
@@ -780,6 +798,8 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             s1["files_read"] = len(files)
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
+            count = increment_analysis_count()
+            s1["analysis_count"] = count
             yield json.dumps({"event":"step1","data":s1}) + "\n"
 
             # ── Steps 2 + 3 in parallel ────────────────────────────────
@@ -850,6 +870,11 @@ def run_step4():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/stats")
+def stats():
+    return jsonify({"analyses": get_analysis_count()})
 
 
 @app.route("/save-report", methods=["POST"])
@@ -1480,6 +1505,14 @@ function handleStreamEvent(evt) {
       currentReport = evt.data;
       renderReport(evt.data);
       saveToHistory(evt.data);
+      // Track analysis completion in Plausible
+      if (window.plausible) {
+        plausible('Analysis Complete', {props: {
+          method: evt.data.input_method || 'github',
+          score: (evt.data.health || {}).score || 'unknown',
+          built_with: evt.data.built_with ? evt.data.built_with.split(' ')[0] : 'unknown'
+        }});
+      }
       break;
     case 'step2':
     case 'step3':
@@ -2017,6 +2050,18 @@ function renderPart2(data) {
 
 // Start everything when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
+
+// Load analysis count for social proof
+fetch('/stats').then(function(r) { return r.json(); }).then(function(d) {
+  if (d.analyses && d.analyses > 0) {
+    var badge = document.getElementById('analysis-count-badge');
+    var count = document.getElementById('analysis-count');
+    if (badge && count) {
+      count.textContent = d.analyses;
+      badge.style.display = 'block';
+    }
+  }
+}).catch(function() {});
 """
 
 
@@ -2176,6 +2221,11 @@ input:focus{border-color:var(--pu)}
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
+      <div id="analysis-count-badge" style="display:none;margin-bottom:.75rem;text-align:center">
+        <span style="font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:4px 14px;border-radius:20px">
+          <span id="analysis-count">0</span> apps analysed so far
+        </span>
+      </div>
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:15px"></i> Analyse my app — it's free
       </button>
