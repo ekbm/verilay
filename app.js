@@ -100,8 +100,10 @@ var MAX_HISTORY = 10;
 function saveToHistory(report) {
   try {
     var history = getHistory();
+    var resolvedId = report._savedId || savedReportId || '';
+    console.log('[History] Saving with id:', resolvedId, 'repo:', report.repo);
     var entry = {
-      id: report._savedId || savedReportId || '',
+      id: resolvedId,
       repo: report.repo || 'Unknown',
       score: (report.health || {}).score || '?',
       verdict: (report.prod_ready || {}).verdict || 'needs_work',
@@ -568,10 +570,11 @@ function handleStreamEvent(evt) {
       break;
     case 'saved':
       savedReportId = evt.data.report_id;
-      // Save to history now that we have the report ID
+      // Save to history with the report ID
       if (currentReport) {
-        currentReport._savedId = savedReportId;
-        saveToHistory(currentReport);
+        var reportForHistory = Object.assign({}, currentReport);
+        reportForHistory._savedId = savedReportId;
+        saveToHistory(reportForHistory);
       }
       var shareUrl = window.location.origin + '/report/' + savedReportId;
       var shareInput = document.getElementById('share-url');
