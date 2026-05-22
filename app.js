@@ -160,7 +160,7 @@ function renderHistory() {
     var timeStr = date.toLocaleDateString('en-AU', {day:'numeric',month:'short'}) +
                   ' ' + date.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'});
     return '<div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.65rem .9rem;display:flex;align-items:center;gap:10px;cursor:pointer" ' +
-           'onclick="rerunFromHistory(' + idx + ')" title="Run again">' +
+           'onclick="viewFromHistory(' + idx + ')" title="View report">' +
            '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
            '<div style="flex:1;min-width:0">' +
            '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(h.repo) + '</div>' +
@@ -178,7 +178,6 @@ function rerunFromHistory(idx) {
   var history = getHistory();
   var entry = history[idx];
   if (!entry) return;
-  // Pre-fill the form with the previous repo
   showForm();
   if (entry.method === 'github') {
     selMethod('github');
@@ -186,6 +185,32 @@ function rerunFromHistory(idx) {
     if (input) input.value = 'https://github.com/' + entry.repo;
   }
   window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function viewFromHistory(idx) {
+  var history = getHistory();
+  var entry = history[idx];
+  if (!entry) return;
+  if (entry.id) {
+    // Load saved report from server
+    fetch('/report-data/' + entry.id)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          // Report expired - offer to re-run
+          if (confirm('This report has expired. Re-run the analysis?')) {
+            rerunFromHistory(idx);
+          }
+        } else {
+          renderReport(data);
+          if (data.top_fixes && data.top_fixes.length) renderPart2(data);
+          window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+      })
+      .catch(function() { rerunFromHistory(idx); });
+  } else {
+    rerunFromHistory(idx);
+  }
 }
 
 function init() {
