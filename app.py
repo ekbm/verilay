@@ -556,66 +556,65 @@ def analyse_step2(files, repo_name):
     ftext = ftext[:5000]
 
     prompt = (
-        "Analyse the Auth, Config and Database layers of this codebase: " + repo_name + "\n\n"
-        + ftext +
-        "\n\nRespond ONLY with key:value pairs, one per line, no other text.\n"
-        "Use exactly these keys (replace values with your findings, 1 sentence each):\n\n"
-        "AUTH_STATUS: passing\n"
-        "AUTH_SUMMARY: summary of auth layer\n"
-        "AUTH_F1_SEV: critical\n"
-        "AUTH_F1_TITLE: finding title\n"
-        "AUTH_F1_DETAIL: technical detail\n"
+        "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
+        "FILES:\n" + ftext + "\n\n"
+        "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
+        "AUTH_STATUS: critical|warning|passing\n"
+        "AUTH_SUMMARY: one sentence technical summary of auth layer\n"
+        "AUTH_F1_SEV: critical|warning|passing\n"
+        "AUTH_F1_TITLE: short finding title\n"
+        "AUTH_F1_DETAIL: one sentence technical detail\n"
         "AUTH_F1_FILE: filename or empty\n"
-        "AUTH_F1_WHY: why it matters\n"
-        "AUTH_F1_PLAIN: plain english version\n"
-        "AUTH_F1_IMPACT: real world impact\n"
-        "AUTH_F1_ACTION: how to fix\n"
-        "AUTH_WHAT: what is auth in plain english\n"
-        "AUTH_ANALOGY: real world analogy\n"
-        "AUTH_DOES: what auth does in this app\n"
-        "AUTH_CONNECTS: how it connects to other layers\n"
-        "AUTH_CONCEPT: key concept to understand\n"
-        "AUTH_Q: quiz question\n"
-        "AUTH_A: quiz answer\n"
-        "AUTH_QWHY: why this matters\n"
-        "CONFIG_STATUS: passing\n"
-        "CONFIG_SUMMARY: summary\n"
-        "CONFIG_F1_SEV: warning\n"
+        "AUTH_F1_WHY: why this matters to the business\n"
+        "AUTH_F1_PLAIN: same finding in plain English a 10-year-old would understand\n"
+        "AUTH_F1_IMPACT: specific real-world consequence if not fixed (e.g. a stranger could log in as any user)\n"
+        "AUTH_F1_ACTION: exact step to fix this in Lovable or Replit\n"
+        "AUTH_WHAT: what the auth layer IS in plain English (1-2 sentences, no jargon)\n"
+        "AUTH_ANALOGY: a specific real-world analogy tied to what THIS app does (not generic - e.g. if it is a booking app say bookings, if ecommerce say shopping)\n"
+        "AUTH_DOES: what auth specifically does in THIS app based on the code you can see\n"
+        "AUTH_CONNECTS: how auth connects to the database and frontend in this specific app\n"
+        "AUTH_CONCEPT: the single most important thing to understand about auth in this app\n"
+        "AUTH_Q: a quiz question that tests understanding of the specific auth finding (not generic)\n"
+        "AUTH_A: the answer in plain English\n"
+        "AUTH_QWHY: why understanding this matters for their app\n"
+        "CONFIG_STATUS: critical|warning|passing\n"
+        "CONFIG_SUMMARY: one sentence technical summary\n"
+        "CONFIG_F1_SEV: critical|warning|passing\n"
         "CONFIG_F1_TITLE: finding title\n"
-        "CONFIG_F1_DETAIL: detail\n"
+        "CONFIG_F1_DETAIL: technical detail\n"
         "CONFIG_F1_FILE: filename\n"
-        "CONFIG_F1_WHY: why it matters\n"
-        "CONFIG_F1_PLAIN: plain english\n"
-        "CONFIG_F1_IMPACT: impact\n"
-        "CONFIG_F1_ACTION: action\n"
-        "CONFIG_WHAT: what is config\n"
-        "CONFIG_ANALOGY: analogy\n"
-        "CONFIG_DOES: what it does\n"
-        "CONFIG_CONNECTS: connections\n"
-        "CONFIG_CONCEPT: key concept\n"
-        "CONFIG_Q: quiz question\n"
-        "CONFIG_A: answer\n"
-        "CONFIG_QWHY: why\n"
-        "DATABASE_STATUS: passing\n"
-        "DATABASE_SUMMARY: summary\n"
-        "DATABASE_F1_SEV: passing\n"
-        "DATABASE_F1_TITLE: finding\n"
-        "DATABASE_F1_DETAIL: detail\n"
-        "DATABASE_F1_FILE: file\n"
-        "DATABASE_F1_WHY: why\n"
-        "DATABASE_F1_PLAIN: plain\n"
-        "DATABASE_F1_IMPACT: impact\n"
-        "DATABASE_F1_ACTION: action\n"
-        "DATABASE_WHAT: what is database\n"
-        "DATABASE_ANALOGY: analogy\n"
-        "DATABASE_DOES: what it does\n"
-        "DATABASE_CONNECTS: connections\n"
-        "DATABASE_CONCEPT: concept\n"
-        "DATABASE_Q: question\n"
-        "DATABASE_A: answer\n"
-        "DATABASE_QWHY: why\n"
+        "CONFIG_F1_WHY: business impact\n"
+        "CONFIG_F1_PLAIN: plain English\n"
+        "CONFIG_F1_IMPACT: real-world consequence\n"
+        "CONFIG_F1_ACTION: fix step\n"
+        "CONFIG_WHAT: what config is in plain English\n"
+        "CONFIG_ANALOGY: specific analogy tied to this app type\n"
+        "CONFIG_DOES: what config does in this specific app\n"
+        "CONFIG_CONNECTS: how it connects to other layers\n"
+        "CONFIG_CONCEPT: most important concept\n"
+        "CONFIG_Q: quiz question specific to this finding\n"
+        "CONFIG_A: plain English answer\n"
+        "CONFIG_QWHY: why it matters\n"
+        "DATABASE_STATUS: critical|warning|passing\n"
+        "DATABASE_SUMMARY: one sentence technical summary\n"
+        "DATABASE_F1_SEV: critical|warning|passing\n"
+        "DATABASE_F1_TITLE: finding title\n"
+        "DATABASE_F1_DETAIL: technical detail\n"
+        "DATABASE_F1_FILE: filename\n"
+        "DATABASE_F1_WHY: business impact\n"
+        "DATABASE_F1_PLAIN: plain English\n"
+        "DATABASE_F1_IMPACT: real-world consequence\n"
+        "DATABASE_F1_ACTION: fix step\n"
+        "DATABASE_WHAT: what the database is in plain English\n"
+        "DATABASE_ANALOGY: specific analogy tied to this app type\n"
+        "DATABASE_DOES: what the database stores in this specific app\n"
+        "DATABASE_CONNECTS: how it connects to other layers\n"
+        "DATABASE_CONCEPT: most important concept\n"
+        "DATABASE_Q: quiz question specific to this finding\n"
+        "DATABASE_A: plain English answer\n"
+        "DATABASE_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1000)
+    text = call_claude_text(prompt, max_tokens=1200)
     return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
@@ -628,66 +627,65 @@ def analyse_step3(files, repo_name):
     ftext = ftext[:5000]
 
     prompt = (
-        "Analyse the API, Frontend and Libraries layers of: " + repo_name + "\n\n"
-        + ftext +
-        "\n\nRespond ONLY with key:value pairs, one per line, no other text.\n"
-        "Use exactly these keys (replace values with your findings, 1 sentence each):\n\n"
-        "API_STATUS: passing\n"
-        "API_SUMMARY: summary\n"
-        "API_F1_SEV: passing\n"
-        "API_F1_TITLE: finding\n"
-        "API_F1_DETAIL: detail\n"
-        "API_F1_FILE: file\n"
-        "API_F1_WHY: why\n"
-        "API_F1_PLAIN: plain\n"
-        "API_F1_IMPACT: impact\n"
-        "API_F1_ACTION: action\n"
-        "API_WHAT: what is API\n"
-        "API_ANALOGY: analogy\n"
-        "API_DOES: what it does\n"
-        "API_CONNECTS: connections\n"
-        "API_CONCEPT: concept\n"
-        "API_Q: question\n"
-        "API_A: answer\n"
-        "API_QWHY: why\n"
-        "FRONTEND_STATUS: passing\n"
-        "FRONTEND_SUMMARY: summary\n"
-        "FRONTEND_F1_SEV: passing\n"
-        "FRONTEND_F1_TITLE: finding\n"
-        "FRONTEND_F1_DETAIL: detail\n"
-        "FRONTEND_F1_FILE: file\n"
-        "FRONTEND_F1_WHY: why\n"
-        "FRONTEND_F1_PLAIN: plain\n"
-        "FRONTEND_F1_IMPACT: impact\n"
-        "FRONTEND_F1_ACTION: action\n"
-        "FRONTEND_WHAT: what is frontend\n"
-        "FRONTEND_ANALOGY: analogy\n"
-        "FRONTEND_DOES: what it does\n"
-        "FRONTEND_CONNECTS: connections\n"
-        "FRONTEND_CONCEPT: concept\n"
-        "FRONTEND_Q: question\n"
-        "FRONTEND_A: answer\n"
-        "FRONTEND_QWHY: why\n"
-        "LIBRARIES_STATUS: passing\n"
-        "LIBRARIES_SUMMARY: summary\n"
-        "LIBRARIES_F1_SEV: passing\n"
-        "LIBRARIES_F1_TITLE: finding\n"
-        "LIBRARIES_F1_DETAIL: detail\n"
-        "LIBRARIES_F1_FILE: file\n"
-        "LIBRARIES_F1_WHY: why\n"
-        "LIBRARIES_F1_PLAIN: plain\n"
-        "LIBRARIES_F1_IMPACT: impact\n"
-        "LIBRARIES_F1_ACTION: action\n"
-        "LIBRARIES_WHAT: what are libraries\n"
-        "LIBRARIES_ANALOGY: analogy\n"
-        "LIBRARIES_DOES: what they do\n"
-        "LIBRARIES_CONNECTS: connections\n"
-        "LIBRARIES_CONCEPT: concept\n"
-        "LIBRARIES_Q: question\n"
-        "LIBRARIES_A: answer\n"
-        "LIBRARIES_QWHY: why\n"
+        "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
+        "FILES:\n" + ftext + "\n\n"
+        "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
+        "API_STATUS: critical|warning|passing\n"
+        "API_SUMMARY: one sentence technical summary\n"
+        "API_F1_SEV: critical|warning|passing\n"
+        "API_F1_TITLE: finding title\n"
+        "API_F1_DETAIL: technical detail\n"
+        "API_F1_FILE: filename\n"
+        "API_F1_WHY: business impact\n"
+        "API_F1_PLAIN: plain English\n"
+        "API_F1_IMPACT: real-world consequence\n"
+        "API_F1_ACTION: fix step\n"
+        "API_WHAT: what the API layer is in plain English (no jargon)\n"
+        "API_ANALOGY: specific analogy tied to what THIS app does\n"
+        "API_DOES: what the API specifically does in this app based on the code\n"
+        "API_CONNECTS: how API connects to frontend and database\n"
+        "API_CONCEPT: most important concept to understand\n"
+        "API_Q: quiz question specific to this app findings\n"
+        "API_A: plain English answer\n"
+        "API_QWHY: why it matters\n"
+        "FRONTEND_STATUS: critical|warning|passing\n"
+        "FRONTEND_SUMMARY: one sentence technical summary\n"
+        "FRONTEND_F1_SEV: critical|warning|passing\n"
+        "FRONTEND_F1_TITLE: finding title\n"
+        "FRONTEND_F1_DETAIL: technical detail\n"
+        "FRONTEND_F1_FILE: filename\n"
+        "FRONTEND_F1_WHY: business impact\n"
+        "FRONTEND_F1_PLAIN: plain English\n"
+        "FRONTEND_F1_IMPACT: real-world consequence\n"
+        "FRONTEND_F1_ACTION: fix step\n"
+        "FRONTEND_WHAT: what the frontend is in plain English\n"
+        "FRONTEND_ANALOGY: specific analogy tied to this app type\n"
+        "FRONTEND_DOES: what the frontend does in this specific app\n"
+        "FRONTEND_CONNECTS: how frontend connects to API and auth\n"
+        "FRONTEND_CONCEPT: most important concept\n"
+        "FRONTEND_Q: quiz question specific to this app\n"
+        "FRONTEND_A: plain English answer\n"
+        "FRONTEND_QWHY: why it matters\n"
+        "LIBRARIES_STATUS: critical|warning|passing\n"
+        "LIBRARIES_SUMMARY: one sentence technical summary\n"
+        "LIBRARIES_F1_SEV: critical|warning|passing\n"
+        "LIBRARIES_F1_TITLE: finding title\n"
+        "LIBRARIES_F1_DETAIL: technical detail\n"
+        "LIBRARIES_F1_FILE: filename\n"
+        "LIBRARIES_F1_WHY: business impact\n"
+        "LIBRARIES_F1_PLAIN: plain English\n"
+        "LIBRARIES_F1_IMPACT: real-world consequence\n"
+        "LIBRARIES_F1_ACTION: fix step\n"
+        "LIBRARIES_WHAT: what libraries are in plain English\n"
+        "LIBRARIES_ANALOGY: specific analogy tied to this app\n"
+        "LIBRARIES_DOES: what the key libraries do in this app\n"
+        "LIBRARIES_CONNECTS: how libraries connect to other layers\n"
+        "LIBRARIES_CONCEPT: most important concept\n"
+        "LIBRARIES_Q: quiz question specific to this app\n"
+        "LIBRARIES_A: plain English answer\n"
+        "LIBRARIES_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1000)
+    text = call_claude_text(prompt, max_tokens=1200)
     return parse_flat_response(text, ["API", "Frontend", "Libraries"])
 
 
@@ -943,7 +941,8 @@ Run a new analysis &rarr;
         "});"
         "</script>"
     )
-    return render_template_string(HTML + extra)
+    count = get_analysis_count()
+    return render_template_string(HTML + extra, analysis_count=count if count > 0 else "")
 
 
 @app.route("/export/markdown/<report_id>")
@@ -1006,7 +1005,9 @@ def build_markdown(data):
 
 
 @app.route("/")
-def index(): return render_template_string(HTML)
+def index():
+    count = get_analysis_count()
+    return render_template_string(HTML, analysis_count=count if count > 0 else "")
 
 
 APP_JS = """
@@ -1598,31 +1599,39 @@ function updateStepsLabel(msg) {
 function resetForm(goToForm) {
   // Clear the report
   document.getElementById('rpt').classList.remove('vis');
-  document.getElementById('report-content').innerHTML = '';
-  // If called from within report, go straight to form
-  // If called from bottom CTA, go to hero
-  if (goToForm) {
-    document.getElementById('hero-section').style.display = 'none';
-    document.getElementById('form-section').style.display = 'block';
-  } else {
-    document.getElementById('hero-section').style.display = 'block';
-    document.getElementById('form-section').style.display = 'none';
-  }
-  document.getElementById('p2-banner').style.display = 'none';
-  document.getElementById('p2-loading').style.display = 'none';
-  document.getElementById('p2-results').innerHTML = '';
+  if (document.getElementById('report-content'))
+    document.getElementById('report-content').innerHTML = '';
+  if (document.getElementById('p2-banner'))
+    document.getElementById('p2-banner').style.display = 'none';
+  if (document.getElementById('p2-loading'))
+    document.getElementById('p2-loading').style.display = 'none';
+  if (document.getElementById('p2-results'))
+    document.getElementById('p2-results').innerHTML = '';
   var s23 = document.getElementById('steps23-loading');
   if (s23) s23.style.display = 'none';
   var lc = document.getElementById('layers-container');
   if (lc) lc.innerHTML = '';
+
+  // Reset state
   currentReport = null;
   currentLayers = {};
   activeLayer = null;
   activeMode = 'expert';
-  cacheKey = '';
-  step1Data = {};
-  window._step2Layers = [];
-  window._step3Layers = [];
+  savedReportId = null;
+
+  // Navigate
+  if (goToForm) {
+    // Go straight to form — skip hero
+    document.getElementById('hero-section').style.display = 'none';
+    document.getElementById('form-section').style.display = 'block';
+    renderHistory();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  } else {
+    // Go back to hero page
+    document.getElementById('hero-section').style.display = 'block';
+    document.getElementById('form-section').style.display = 'none';
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
 }
 
 function catColors(cat) {
@@ -1816,6 +1825,7 @@ function renderLayer() {
     });
   } else if (activeMode === 'learner') {
     var lrn = layer.learner || {};
+    html += \'<div class="learner-label"><i class="ti ti-school" style="font-size:11px"></i> Learner mode</div>\';
     if (lrn.analogy) html += '<div class="analogy"><i class="ti ti-bulb" style="margin-right:5px"></i><strong>Think of it like this:</strong> ' + esc(lrn.analogy) + '</div>';
     html += '<div class="lc"><div class="lc-title">What is ' + esc(layer.name) + '?</div><div class="lc-body">' + esc(lrn.what_is_it||'') + '</div></div>';
     html += '<div class="lc"><div class="lc-title">In your app specifically</div><div class="lc-body">' + esc(lrn.what_it_does_in_your_app||'') + '</div></div>';
@@ -2122,12 +2132,12 @@ HTML = """<!DOCTYPE html>
   --bll:#E6F1FB;--blt:#0C447C;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:15px}
 .wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
 .logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
-.logo-text{font-size:22px;font-weight:600;color:var(--pu)}
-.tagline{font-size:13px;color:var(--mut);margin-bottom:2rem}
-.label{font-size:13px;font-weight:500;margin-bottom:.65rem}
+.logo-text{font-size:24px;font-weight:600;color:var(--pu)}
+.tagline{font-size:14px;color:var(--mut);margin-bottom:2rem}
+.label{font-size:14px;font-weight:500;margin-bottom:.65rem}
 .mg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1.25rem}
 .mc{border:1.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem;cursor:pointer;background:var(--sur);transition:all .15s;user-select:none}
 .mc:hover{border-color:#aaa8ff}
@@ -2178,13 +2188,19 @@ input:focus{border-color:var(--pu)}
 .lico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
 .ca{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem;min-height:280px}
 .mt{display:flex;gap:4px;margin-bottom:.85rem;flex-wrap:wrap}
-.mb{font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
+.mb{font-size:11px;font-weight:500;padding:4px 14px;border-radius:20px;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);transition:all .15s}
 .mb.on{background:var(--pu);color:#fff;border-color:transparent}
-.finding{border-radius:8px;padding:.65rem .85rem;margin-bottom:7px;display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5}
+.mb[data-mode="learner"]{border-color:var(--pu);color:var(--put)}
+.mb[data-mode="learner"].on{background:var(--pu);color:#fff}
+.mb[data-mode="learner"]::before{content:"✦ ";font-size:9px}
+.finding{border-radius:8px;padding:.75rem .95rem;margin-bottom:8px;display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.5}
 .lc{background:var(--bg);border-left:2px solid var(--pu);border-radius:0 8px 8px 0;padding:.65rem .85rem;margin-bottom:7px}
 .lc-title{font-size:12px;font-weight:500;margin-bottom:3px}
 .lc-body{font-size:12px;color:var(--mut);line-height:1.5}
-.analogy{background:var(--pul);border-radius:8px;padding:.65rem .85rem;margin-bottom:8px;font-size:12px;color:var(--put);line-height:1.5}
+.analogy{background:var(--pul);border-left:3px solid var(--pu);border-radius:0 8px 8px 0;padding:.75rem .95rem;margin-bottom:10px;font-size:14px;color:var(--put);line-height:1.6;font-style:italic}
+.learner-section{background:linear-gradient(135deg,var(--pul) 0%,transparent 100%);border:0.5px solid var(--pu);border-radius:var(--r);padding:1rem;margin-bottom:8px}
+.learner-label{font-size:10px;font-weight:600;color:var(--pu);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem;display:flex;align-items:center;gap:5px}
+.key-concept{background:var(--pu);color:#fff;border-radius:8px;padding:.65rem .9rem;margin:.5rem 0;font-size:12px;line-height:1.55}
 .qcard{background:var(--pul);border-radius:8px;padding:.75rem .9rem;margin-bottom:7px}
 .sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px}
 .sc{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.7rem .85rem}
@@ -2194,6 +2210,7 @@ input:focus{border-color:var(--pu)}
 .p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
 .bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){body{font-size:16px}.wrap{padding:1.25rem 1rem}}
 /* Accessibility: underline links inside text blocks */
 .hint a,.scope-notice a,.next-steps a,p a{text-decoration:underline;text-underline-offset:2px}
 #hero-section a,#report-content a{text-decoration:underline;text-underline-offset:2px}
@@ -2248,11 +2265,13 @@ input:focus{border-color:var(--pu)}
     <p style="font-size:15px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
-    <div id="analysis-count-badge" style="display:none;margin-bottom:.85rem;text-align:center;width:100%">
+    {% if analysis_count %}
+    <div id="analysis-count-badge" style="margin-bottom:.85rem;text-align:center;width:100%">
       <span style="font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:5px 16px;border-radius:20px;display:inline-block">
-        🔍 <span id="analysis-count">0</span> apps analysed so far
+        🔍 {{ analysis_count }} apps analysed so far
       </span>
     </div>
+    {% endif %}
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:15px"></i> Analyse my app — it's free
@@ -2668,7 +2687,12 @@ input:focus{border-color:var(--pu)}
   </div>
   <div class="sticky-bar">
     <div style="display:flex;align-items:center;gap:8px">
-      <i class="ti ti-topology-star" style="font-size:16px;color:var(--pu)"></i>
+      <svg width="22" height="22" viewBox="0 0 400 400" style="flex-shrink:0">
+        <rect width="400" height="400" rx="72" fill="#534AB7"/>
+        <circle cx="200" cy="158" r="88" fill="#ffffff" fill-opacity="0.1"/>
+        <circle cx="200" cy="158" r="66" fill="#ffffff" fill-opacity="0.1"/>
+        <polyline points="148,108 200,208 252,108" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
       <span style="font-size:13px;font-weight:500;color:var(--pu)">Verilay</span>
       <span style="font-size:11px;color:var(--mut)" id="report-status">Report ready</span>
     </div>
