@@ -167,7 +167,7 @@ function renderHistory() {
            '<div style="font-size:11px;color:var(--mut)">' + timeStr + ' &nbsp;·&nbsp; ' + h.critical + ' critical, ' + h.warnings + ' warnings</div>' +
            '</div>' +
            '<div style="display:flex;gap:6px;flex-shrink:0">' +
-           (h.id ? '<a href="/report/' + h.id + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none" title="View saved report">View</a>' : '') +
+           '<button onclick="event.stopPropagation();viewFromHistory(' + idx + ')" style="font-size:11px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">View</button>' +
            '<button onclick="event.stopPropagation();rerunFromHistory(' + idx + ')" style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Re-run</button>' +
            '</div>' +
            '</div>';
