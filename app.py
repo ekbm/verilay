@@ -2320,9 +2320,16 @@ input:focus{border-color:var(--pu)}
   <div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem;margin-bottom:2rem;display:flex;align-items:flex-start;gap:10px">
     <i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>
     <div style="font-size:12px;color:var(--mut);line-height:1.6">
-      <strong style="color:var(--txt)">What Verilay is — and isn't.</strong>
-      Verilay gives you a plain-English first-pass overview of your AI-built app. It highlights obvious issues, explains your tech stack, and helps you understand what was built.
-      It is <em>not</em> a full penetration test or a replacement for a professional security audit.
+      <strong style="color:var(--txt)">What Verilay covers — and what it doesn't.</strong>
+      Verilay gives you a plain-English first-pass overview of your AI-built app. It explains your tech stack, flags obvious issues, and helps you understand what was built — whether you wrote the code yourself or not.
+      <br><br>
+      <strong style="color:var(--txt)">For developers:</strong> Think of it as a quick orientation layer — useful before diving into a deeper review with your own tools.
+      It won't replace your expertise, but it gives you and your non-technical collaborators a shared starting point.
+      <br><br>
+      <strong style="color:var(--txt)">For non-developers:</strong> This is built for you.
+      No coding knowledge needed to understand the findings or act on them.
+      <br><br>
+      It is <em>not</em> a penetration test or a professional security audit.
       For apps going live with real user data or payments, we always recommend a deeper review from
       <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a>,
       <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a>,
