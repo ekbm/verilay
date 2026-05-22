@@ -204,7 +204,25 @@ function viewFromHistory(idx) {
             rerunFromHistory(idx);
           }
         } else {
+          // Hide form, show report section
+          document.getElementById('hero-section').style.display = 'none';
+          document.getElementById('form-section').style.display = 'none';
+          currentReport = data;
           renderReport(data);
+          // Load layers from saved data
+          if (data.layers && data.layers.length) {
+            appendLayers(data.layers);
+            // Hide spinner, show Part 2 banner
+            var lb = document.getElementById('steps23-loading');
+            if (lb) lb.style.display = 'none';
+            var p2 = document.getElementById('p2-banner');
+            if (p2) p2.style.display = 'block';
+            // Auto-select first layer
+            setTimeout(function() {
+              var firstBtn = document.querySelector('#layer-nav .lb');
+              if (firstBtn) firstBtn.click();
+            }, 100);
+          }
           if (data.top_fixes && data.top_fixes.length) renderPart2(data);
           window.scrollTo({top: 0, behavior: 'smooth'});
         }
