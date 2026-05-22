@@ -43,16 +43,22 @@ REPORT_TTL = 86400
 
 # ── Analysis counter ────────────────────────────────────────────────────────────
 import pathlib
-_COUNTER_FILE = pathlib.Path(__file__).parent / "analysis_count.txt"
+_COUNTER_FILE = pathlib.Path("/tmp/analysis_count.txt")
+_memory_count = 0  # fallback if file fails
 
 def get_analysis_count():
+    global _memory_count
     try:
-        return int(_COUNTER_FILE.read_text().strip())
+        val = int(_COUNTER_FILE.read_text().strip())
+        _memory_count = val
+        return val
     except:
-        return 0
+        return _memory_count
 
 def increment_analysis_count():
+    global _memory_count
     count = get_analysis_count() + 1
+    _memory_count = count
     try:
         _COUNTER_FILE.write_text(str(count))
     except:
