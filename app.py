@@ -482,7 +482,9 @@ def analyse_step1(files, tree, repo_name, method):
         "STACK_6_CAT: category\n"
         "STACK_6_DESC: description\n"
         "\nBe honest. A score means truly production-ready. Most AI-built apps score B or C.\n"
-        "List all libraries/frameworks found. Leave STACK_N fields empty if fewer than N items."
+        "List all libraries/frameworks found. Leave STACK_N fields empty if fewer than N items.\n"
+        "IMPORTANT: If input method is 'url' (surface scan), do NOT flag environment variable patterns as security issues "
+        "since you cannot inspect server-side configuration from a live URL. Only flag issues visible in the HTML/JS."
     )
 
     text = call_claude_text(prompt, max_tokens=600)
@@ -1712,6 +1714,12 @@ function renderReport(data) {
   document.getElementById('report-content').innerHTML = html;
   document.getElementById('rpt').classList.add('vis');
 
+  // Show surface scan notice for URL method
+  var surfNotice = document.getElementById('surface-scan-notice');
+  if (surfNotice) {
+    surfNotice.style.display = (data.input_method === 'url' || isSurf) ? 'block' : 'none';
+  }
+
   // Wire up tabs
   document.querySelectorAll('#main-tabs .tab').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -2596,6 +2604,9 @@ input:focus{border-color:var(--pu)}
 </div>
 
 <div class="rpt" id="rpt">
+  <div id="surface-scan-notice" style="display:none;background:#FEF3C7;border:0.5px solid #F59E0B;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:12px;color:#92400E;line-height:1.55">
+    <strong>Surface scan only</strong> — scanned from live URL. Server-side config, environment variables and database settings cannot be inspected remotely. For a complete analysis use GitHub URL or ZIP upload.
+  </div>
   <div class="sticky-bar">
     <div style="display:flex;align-items:center;gap:8px">
       <i class="ti ti-topology-star" style="font-size:16px;color:var(--pu)"></i>
