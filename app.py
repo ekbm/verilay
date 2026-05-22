@@ -1211,6 +1211,18 @@ function init() {
   var btnClearHistory = document.getElementById('btn-clear-history');
   if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
 
+  // Load analysis count for social proof
+  fetch('/stats').then(function(r) { return r.json(); }).then(function(d) {
+    if (d.analyses && d.analyses > 0) {
+      var badge = document.getElementById('analysis-count-badge');
+      var count = document.getElementById('analysis-count');
+      if (badge && count) {
+        count.textContent = d.analyses;
+        badge.style.display = 'block';
+      }
+    }
+  }).catch(function() {});
+
   // Analyse button
   var btnAnalyse = document.getElementById('btn-analyse');
   if (btnAnalyse) btnAnalyse.addEventListener('click', runAnalysis);
@@ -2065,17 +2077,7 @@ function renderPart2(data) {
 // Start everything when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
 
-// Load analysis count for social proof
-fetch('/stats').then(function(r) { return r.json(); }).then(function(d) {
-  if (d.analyses && d.analyses > 0) {
-    var badge = document.getElementById('analysis-count-badge');
-    var count = document.getElementById('analysis-count');
-    if (badge && count) {
-      count.textContent = d.analyses;
-      badge.style.display = 'block';
-    }
-  }
-}).catch(function() {});
+
 """
 
 
