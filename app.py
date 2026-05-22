@@ -2236,12 +2236,12 @@ input:focus{border-color:var(--pu)}
     <p style="font-size:15px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
+    <div id="analysis-count-badge" style="display:none;margin-bottom:.85rem;text-align:center">
+      <span style="font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:4px 14px;border-radius:20px">
+        <span id="analysis-count">0</span> apps analysed so far
+      </span>
+    </div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
-      <div id="analysis-count-badge" style="display:none;margin-bottom:.75rem;text-align:center">
-        <span style="font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:4px 14px;border-radius:20px">
-          <span id="analysis-count">0</span> apps analysed so far
-        </span>
-      </div>
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:15px"></i> Analyse my app — it's free
       </button>
@@ -2272,6 +2272,38 @@ input:focus{border-color:var(--pu)}
       <div style="font-size:22px;margin-bottom:.5rem">✅</div>
       <div style="font-size:13px;font-weight:500;margin-bottom:4px">Ship with confidence</div>
       <div style="font-size:12px;color:var(--mut);line-height:1.5">Know exactly what you built and whether it's ready. No developer needed to understand the results.</div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div style="margin-bottom:2.5rem">
+    <div style="text-align:center;font-size:13px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.1rem">How it works</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
+
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem;position:relative">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">1</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:.3rem">Analyse</div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.55">Paste your GitHub link, upload a ZIP, or enter your live app URL. Verilay reads every layer of your app in 30 seconds.</div>
+      </div>
+
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">2</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:.3rem">Check issues</div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.55">See what was found across 6 layers — Auth, Database, API, Frontend, Config, Libraries. Each issue rated critical, warning, or passing.</div>
+      </div>
+
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">3</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:.3rem">Learn</div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.55">Switch to Learner mode for plain-English explanations, real-world analogies, and optional quizzes — so you actually understand what was built.</div>
+      </div>
+
+      <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">4</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:.3rem">Fix and re-run</div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.55">Copy the ready-to-paste fix prompt, apply it in Lovable or Replit, then re-run Verilay to confirm the issue is resolved and your score improves.</div>
+      </div>
+
     </div>
   </div>
 
