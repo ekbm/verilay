@@ -970,48 +970,120 @@ def save_report_route():
 
 @app.route("/report/<report_id>")
 def view_report(report_id):
-    entry_data = get_report_data(report_id)
-    if not entry_data:
-        entry = None
-    else:
-        entry = {"data": entry_data}
-    if not entry:
+    data = get_report_data(report_id)
+    if not data:
         return """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Verilay - Report Not Found</title>
+<html><head><meta charset="UTF-8"><title>Verilay - Not Found</title>
 <meta http-equiv="refresh" content="5;url=https://verilay.dev">
-</head>
-<body style="font-family:-apple-system,sans-serif;padding:3rem;max-width:500px;margin:0 auto">
-<div style="font-size:24px;margin-bottom:.5rem">&#215; Verilay</div>
-<h2 style="font-weight:600;margin-bottom:.75rem">Report not found</h2>
-<p style="color:#666;line-height:1.6;margin-bottom:1rem">
-This report has expired or was cleared during a server update.
-Verilay reports are kept in memory and reset when the server restarts.
-</p>
-<p style="color:#666;line-height:1.6;margin-bottom:1.5rem">
-To get a permanent shareable report, run a new analysis and use
-<strong>Export .md</strong> to save a copy you can keep.
-</p>
-<a href="https://verilay.dev" style="background:#534AB7;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:500">
-Run a new analysis &rarr;
-</a>
-<p style="color:#aaa;font-size:12px;margin-top:1.5rem">Redirecting to verilay.dev in 5 seconds...</p>
+</head><body style="font-family:-apple-system,sans-serif;padding:3rem;max-width:500px;margin:0 auto">
+<div style="font-size:24px;color:#534AB7">&#10005; Verilay</div>
+<h2>Report not found</h2>
+<p style="color:#666;margin:1rem 0">This report has expired or was cleared.</p>
+<a href="https://verilay.dev" style="background:#534AB7;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none">
+Run a new analysis &rarr;</a>
+<p style="color:#aaa;font-size:12px;margin-top:1rem">Redirecting in 5 seconds...</p>
 </body></html>""", 404
-    saved_json = json.dumps(entry["data"])
-    extra = (
-        "<script>"
-        "window.addEventListener('load',function(){"
-        "try{"
-        "var d=" + saved_json + ";"
-        "document.getElementById('hero-section').style.display='none';"
-        "document.getElementById('form-section').style.display='none';"
-        "renderReport(d);"
-        "if(d.top_fixes&&d.top_fixes.length){renderPart2(d);}"
-        "}catch(e){console.error('Saved report error:',e);}"
-        "});"
-        "</script>"
-    )
-    count = get_analysis_count()
-    return render_template_string(HTML + extra, analysis_count=count if count > 0 else "")
+
+    h = data.get("health", {})
+    pr = data.get("prod_ready", {})
+    stack = data.get("stack", [])
+    layers = data.get("layers", [])
+    fixes = data.get("top_fixes", [])
+    so = data.get("second_opinion", {})
+
+    verdict_label = {"ready":"Production Ready","needs_work":"Needs Work","not_ready":"Not Ready"}.get(pr.get("verdict","needs_work"),"Needs Work")
+    verdict_color = {"ready":"#1D9E75","needs_work":"#EF9F27","not_ready":"#E24B4A"}.get(pr.get("verdict","needs_work"),"#EF9F27")
+    score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
+    sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE"}
+    sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A"}
+
+    out = []
+    out.append(f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verilay — {data.get('repo','Report')}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8fc;color:#1a1a2e;font-size:15px;line-height:1.6}}
+.wrap{{max-width:860px;margin:0 auto;padding:2rem 1.5rem}}
+.header{{background:#534AB7;color:#fff;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}}
+.header a{{color:#fff;opacity:.8;font-size:13px;text-decoration:none}}
+.card{{background:#fff;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;border:0.5px solid #e5e5f0}}
+.sg{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:1rem}}
+.sb{{background:#f8f8fc;border-radius:8px;padding:.75rem;text-align:center}}
+.sn{{font-size:28px;font-weight:700}}
+.sl{{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em}}
+.st{{font-size:11px;font-weight:600;color:#888;letter-spacing:.06em;text-transform:uppercase;margin:1.5rem 0 .65rem}}
+.tag{{display:inline-block;background:#EEEDFE;color:#3C3489;font-size:12px;padding:3px 10px;border-radius:20px;margin:2px}}
+.layer{{background:#fff;border-radius:10px;padding:1rem;margin-bottom:8px;border:0.5px solid #e5e5f0}}
+.finding{{border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;font-size:13px}}
+.fix{{background:#f8f8fc;border-radius:10px;padding:1rem;margin-bottom:8px;border-left:3px solid #534AB7}}
+.pb{{background:#f0f0f8;border-radius:8px;padding:.65rem .85rem;font-size:12px;font-family:monospace;margin-top:.5rem;white-space:pre-wrap;word-break:break-word}}
+.footer{{text-align:center;padding:2rem;font-size:12px;color:#aaa}}
+@media(max-width:600px){{.wrap{{padding:1rem}}}}
+</style></head>
+<body>
+<div class="header">
+  <div style="display:flex;align-items:center;gap:10px">
+    <svg width="28" height="28" viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#fff" fill-opacity=".2"/>
+    <polyline points="148,108 200,208 252,108" fill="none" stroke="#fff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span style="font-size:18px;font-weight:600">Verilay Report</span>
+  </div>
+  <a href="https://verilay.dev">Analyse your own app &rarr;</a>
+</div>
+<div class="wrap">""")
+
+    # Summary card
+    out.append(f"""<div class="card">
+  <div style="font-size:20px;font-weight:700;margin-bottom:.25rem">{data.get('repo','')}</div>
+  <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
+  <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
+  <div style="font-size:13px;color:#555">{pr.get('reason','')}</div>
+</div>""")
+
+    # Score grid
+    out.append(f"""<div class="sg">
+  <div class="sb"><div class="sn" style="color:{score_color}">{h.get('score','?')}</div><div class="sl">Score</div></div>
+  <div class="sb"><div class="sn" style="color:#E24B4A">{h.get('critical',0)}</div><div class="sl">Critical</div></div>
+  <div class="sb"><div class="sn" style="color:#EF9F27">{h.get('warnings',0)}</div><div class="sl">Warnings</div></div>
+  <div class="sb"><div class="sn" style="color:#1D9E75">{h.get('passing',0)}</div><div class="sl">Passing</div></div>
+</div>""")
+
+    # Stack
+    if stack:
+        tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}</span>' for s in stack)
+        out.append(f'<div class="st">Tech Stack</div><div class="card">{tags}</div>')
+
+    # Layers
+    if layers:
+        out.append('<div class="st">Layer Analysis</div>')
+        for layer in layers:
+            status = layer.get("status","passing")
+            ex = layer.get("expert",{})
+            lrn = layer.get("learner",{})
+            sc = {"critical":"#E24B4A","warning":"#EF9F27","passing":"#1D9E75"}.get(status,"#999")
+            findings_html = ""
+            for f2 in ex.get("findings",[]):
+                sev = f2.get("severity","passing")
+                findings_html += f'<div class="finding" style="background:{sev_bg.get(sev,"#EAF3DE")};color:{sev_tc.get(sev,"#27500A")}"><strong>{f2.get("title","")}</strong> — {f2.get("detail","")}</div>'
+            analogy = f'<div style="background:#EEEDFE;border-radius:8px;padding:.6rem .8rem;font-size:13px;color:#3C3489;margin-bottom:.5rem;font-style:italic">&#128161; {lrn["analogy"]}</div>' if lrn.get("analogy") else ""
+            concept = f'<div style="background:#534AB7;color:#fff;border-radius:8px;padding:.6rem .8rem;font-size:13px;margin-top:.5rem">&#128161; Key concept: {lrn["key_concept"]}</div>' if lrn.get("key_concept") else ""
+            out.append(f'<div class="layer"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem"><span style="font-weight:600;font-size:14px">{layer.get("name","")}</span><span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{status}</span></div>{analogy}<div style="font-size:13px;color:#555;margin-bottom:.5rem">{ex.get("summary","")}</div>{findings_html}{concept}</div>')
+
+    # Fixes
+    if fixes:
+        out.append('<div class="st">Recommended Fixes</div>')
+        for fix in fixes:
+            prompt = f'<div style="font-size:12px;color:#888;margin-top:.35rem">Fix prompt:</div><div class="pb">{fix.get("lovable_prompt","")}</div>' if fix.get("lovable_prompt") else ""
+            out.append(f'<div class="fix"><div style="font-weight:600;margin-bottom:.35rem">{fix.get("priority","")}. {fix.get("title","")}</div><div style="font-size:13px;color:#555;margin-bottom:.35rem">{fix.get("why_it_matters","")}</div><div style="font-size:13px;color:#444"><strong>How:</strong> {fix.get("how_to_fix","")}</div><div style="font-size:12px;color:#888">Effort: {fix.get("estimated_effort","")}</div>{prompt}</div>')
+
+    # Second opinion
+    if so.get("summary_prompt"):
+        out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
+
+    out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {data.get("generated_at","")} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a></div></div></body></html>')
+
+    return "".join(out)
 
 
 @app.route("/export/markdown/<report_id>")
