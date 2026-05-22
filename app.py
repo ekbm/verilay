@@ -42,28 +42,37 @@ _reports = {}
 REPORT_TTL = 86400
 
 # ── Analysis counter ────────────────────────────────────────────────────────────
-import pathlib
-_COUNTER_FILE = pathlib.Path("/tmp/analysis_count.txt")
-_memory_count = 0  # fallback if file fails
+# Thread-safe in-memory counter with file backup in /tmp
+import threading
+_count_lock = threading.Lock()
+_memory_count = 0
+_COUNTER_FILE = "/tmp/verilay_count.txt"
 
-def get_analysis_count():
+def _load_count():
     global _memory_count
     try:
-        val = int(_COUNTER_FILE.read_text().strip())
-        _memory_count = val
-        return val
+        with open(_COUNTER_FILE, 'r') as f:
+            _memory_count = int(f.read().strip())
     except:
-        return _memory_count
+        _memory_count = 0
+
+def get_analysis_count():
+    return _memory_count
 
 def increment_analysis_count():
     global _memory_count
-    count = get_analysis_count() + 1
-    _memory_count = count
-    try:
-        _COUNTER_FILE.write_text(str(count))
-    except:
-        pass
+    with _count_lock:
+        _memory_count += 1
+        count = _memory_count
+        try:
+            with open(_COUNTER_FILE, 'w') as f:
+                f.write(str(count))
+        except:
+            pass
     return count
+
+# Load count from file on startup
+_load_count()
 
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
@@ -882,7 +891,8 @@ def run_step4():
 
 @app.route("/stats")
 def stats():
-    return jsonify({"analyses": get_analysis_count()})
+    count = get_analysis_count()
+    return jsonify({"analyses": count, "formatted": f"{count:,}"})
 
 
 @app.route("/save-report", methods=["POST"])
@@ -1212,16 +1222,18 @@ function init() {
   if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
 
   // Load analysis count for social proof
-  fetch('/stats').then(function(r) { return r.json(); }).then(function(d) {
-    if (d.analyses && d.analyses > 0) {
+  setTimeout(function() {
+    fetch('/stats').then(function(r) { return r.json(); }).then(function(d) {
       var badge = document.getElementById('analysis-count-badge');
-      var count = document.getElementById('analysis-count');
-      if (badge && count) {
-        count.textContent = d.analyses;
+      var countEl = document.getElementById('analysis-count');
+      if (badge && countEl && d.analyses > 0) {
+        countEl.textContent = d.formatted || d.analyses;
         badge.style.display = 'block';
+        badge.style.visibility = 'visible';
+        badge.style.opacity = '1';
       }
-    }
-  }).catch(function() {});
+    }).catch(function(e) { console.log('Stats fetch failed:', e); });
+  }, 500);
 
   // Analyse button
   var btnAnalyse = document.getElementById('btn-analyse');
@@ -2236,9 +2248,9 @@ input:focus{border-color:var(--pu)}
     <p style="font-size:15px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
-    <div id="analysis-count-badge" style="display:none;margin-bottom:.85rem;text-align:center">
-      <span style="font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:4px 14px;border-radius:20px">
-        <span id="analysis-count">0</span> apps analysed so far
+    <div id="analysis-count-badge" style="display:none;margin-bottom:.85rem;text-align:center;width:100%">
+      <span style="font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:5px 16px;border-radius:20px;display:inline-block">
+        🔍 <span id="analysis-count">0</span> apps analysed so far
       </span>
     </div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem">
