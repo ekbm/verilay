@@ -740,6 +740,18 @@ function renderReport(data) {
   document.getElementById('report-content').innerHTML = html;
   document.getElementById('rpt').classList.add('vis');
 
+  // Wire New analysis buttons after report is rendered
+  var btnNew = document.getElementById('btn-new');
+  if (btnNew) {
+    btnNew.onclick = null;
+    btnNew.addEventListener('click', function() { resetForm(true); });
+  }
+  var btnNew2 = document.getElementById('btn-new2');
+  if (btnNew2) {
+    btnNew2.onclick = null;
+    btnNew2.addEventListener('click', function() { resetForm(false); });
+  }
+
   // Show surface scan notice for URL method
   var surfNotice = document.getElementById('surface-scan-notice');
   if (surfNotice) {
