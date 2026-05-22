@@ -101,7 +101,7 @@ function saveToHistory(report) {
   try {
     var history = getHistory();
     var entry = {
-      id: savedReportId || '',
+      id: report._savedId || savedReportId || '',
       repo: report.repo || 'Unknown',
       score: (report.health || {}).score || '?',
       verdict: (report.prod_ready || {}).verdict || 'needs_work',
@@ -549,7 +549,6 @@ function handleStreamEvent(evt) {
       document.getElementById('ld').classList.remove('vis');
       currentReport = evt.data;
       renderReport(evt.data);
-      saveToHistory(evt.data);
       // Track analysis completion in Plausible
       if (window.plausible) {
         plausible('Analysis Complete', {props: {
@@ -569,6 +568,11 @@ function handleStreamEvent(evt) {
       break;
     case 'saved':
       savedReportId = evt.data.report_id;
+      // Save to history now that we have the report ID
+      if (currentReport) {
+        currentReport._savedId = savedReportId;
+        saveToHistory(currentReport);
+      }
       var shareUrl = window.location.origin + '/report/' + savedReportId;
       var shareInput = document.getElementById('share-url');
       var shareBanner = document.getElementById('share-banner');
