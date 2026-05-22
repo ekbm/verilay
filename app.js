@@ -1,4 +1,3 @@
-
 console.log("[Verilay] app.js loading...");
 var currentMethod = 'github';
 var currentReport = null;
@@ -94,6 +93,101 @@ function exportMarkdown() {
   window.location.href = '/export/markdown/' + savedReportId;
 }
 
+// ── Analysis History (localStorage) ──────────────────────────────────────────
+var HISTORY_KEY = 'verilay_history';
+var MAX_HISTORY = 10;
+
+function saveToHistory(report) {
+  try {
+    var history = getHistory();
+    var entry = {
+      id: savedReportId || '',
+      repo: report.repo || 'Unknown',
+      score: (report.health || {}).score || '?',
+      verdict: (report.prod_ready || {}).verdict || 'needs_work',
+      summary: report.summary || '',
+      built_with: report.built_with || '',
+      critical: (report.health || {}).critical || 0,
+      warnings: (report.health || {}).warnings || 0,
+      timestamp: new Date().toISOString(),
+      method: report.input_method || 'github'
+    };
+    // Remove duplicate if same repo
+    history = history.filter(function(h) { return h.repo !== entry.repo; });
+    history.unshift(entry);
+    if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    renderHistory();
+  } catch(e) {
+    console.log('History save failed:', e);
+  }
+}
+
+function getHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch(e) { return []; }
+}
+
+function clearHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistory();
+}
+
+function renderHistory() {
+  var history = getHistory();
+  var section = document.getElementById('history-section');
+  var list = document.getElementById('history-list');
+  if (!section || !list) return;
+
+  if (history.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  var verdictColors = {
+    ready: 'var(--grl):var(--grt)',
+    needs_work: 'var(--orl):var(--ort)',
+    not_ready: 'var(--rdl):var(--rdt)'
+  };
+  var scoreColors = {A:'#1D9E75',B:'#4A90D9',C:'#EF9F27',D:'#E24B4A',F:'#A32D2D'};
+
+  list.innerHTML = history.map(function(h, idx) {
+    var vc = (verdictColors[h.verdict] || verdictColors.needs_work).split(':');
+    var sc = scoreColors[h.score] || '#999';
+    var date = new Date(h.timestamp);
+    var timeStr = date.toLocaleDateString('en-AU', {day:'numeric',month:'short'}) +
+                  ' ' + date.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'});
+    return '<div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.65rem .9rem;display:flex;align-items:center;gap:10px;cursor:pointer" ' +
+           'onclick="rerunFromHistory(' + idx + ')" title="Run again">' +
+           '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
+           '<div style="flex:1;min-width:0">' +
+           '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(h.repo) + '</div>' +
+           '<div style="font-size:11px;color:var(--mut)">' + timeStr + ' &nbsp;·&nbsp; ' + h.critical + ' critical, ' + h.warnings + ' warnings</div>' +
+           '</div>' +
+           '<div style="display:flex;gap:6px;flex-shrink:0">' +
+           (h.id ? '<a href="/report/' + h.id + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none" title="View saved report">View</a>' : '') +
+           '<button onclick="event.stopPropagation();rerunFromHistory(' + idx + ')" style="font-size:11px;padding:3px 9px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Re-run</button>' +
+           '</div>' +
+           '</div>';
+  }).join('');
+}
+
+function rerunFromHistory(idx) {
+  var history = getHistory();
+  var entry = history[idx];
+  if (!entry) return;
+  // Pre-fill the form with the previous repo
+  showForm();
+  if (entry.method === 'github') {
+    selMethod('github');
+    var input = document.getElementById('gh-url');
+    if (input) input.value = 'https://github.com/' + entry.repo;
+  }
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
 function init() {
   // Method cards
   ['github','zip','url'].forEach(function(m) {
@@ -110,15 +204,34 @@ function init() {
     }
   });
 
+  // History
+  renderHistory();
+  var btnClearHistory = document.getElementById('btn-clear-history');
+  if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
+
+  // Load analysis count for social proof
+  setTimeout(function() {
+    fetch('/stats').then(function(r) { return r.json(); }).then(function(d) {
+      var badge = document.getElementById('analysis-count-badge');
+      var countEl = document.getElementById('analysis-count');
+      if (badge && countEl && d.analyses > 0) {
+        countEl.textContent = d.formatted || d.analyses;
+        badge.style.display = 'block';
+        badge.style.visibility = 'visible';
+        badge.style.opacity = '1';
+      }
+    }).catch(function(e) { console.log('Stats fetch failed:', e); });
+  }, 500);
+
   // Analyse button
   var btnAnalyse = document.getElementById('btn-analyse');
   if (btnAnalyse) btnAnalyse.addEventListener('click', runAnalysis);
 
   // New analysis buttons
   var btnNew = document.getElementById('btn-new');
-  if (btnNew) btnNew.addEventListener('click', resetForm);
+  if (btnNew) btnNew.addEventListener('click', function() { resetForm(true); });
   var btnNew2 = document.getElementById('btn-new2');
-  if (btnNew2) btnNew2.addEventListener('click', resetForm);
+  if (btnNew2) btnNew2.addEventListener('click', function() { resetForm(false); });
 
   // Save report / share link
   var btnSave = document.getElementById('btn-save-report');
@@ -161,6 +274,7 @@ function init() {
   function showForm() {
     document.getElementById('hero-section').style.display = 'none';
     document.getElementById('form-section').style.display = 'block';
+    renderHistory();
     window.scrollTo(0,0);
   }
   function showHero() {
@@ -410,6 +524,15 @@ function handleStreamEvent(evt) {
       document.getElementById('ld').classList.remove('vis');
       currentReport = evt.data;
       renderReport(evt.data);
+      saveToHistory(evt.data);
+      // Track analysis completion in Plausible
+      if (window.plausible) {
+        plausible('Analysis Complete', {props: {
+          method: evt.data.input_method || 'github',
+          score: (evt.data.health || {}).score || 'unknown',
+          built_with: evt.data.built_with ? evt.data.built_with.split(' ')[0] : 'unknown'
+        }});
+      }
       break;
     case 'step2':
     case 'step3':
@@ -460,25 +583,42 @@ function updateStepsLabel(msg) {
   if (el) el.textContent = msg;
 }
 
-function resetForm() {
+function resetForm(goToForm) {
+  // Clear the report
   document.getElementById('rpt').classList.remove('vis');
-  document.getElementById('hero-section').style.display = 'block';
-  document.getElementById('form-section').style.display = 'none';
-  document.getElementById('p2-banner').style.display = 'none';
-  document.getElementById('p2-loading').style.display = 'none';
-  document.getElementById('p2-results').innerHTML = '';
+  if (document.getElementById('report-content'))
+    document.getElementById('report-content').innerHTML = '';
+  if (document.getElementById('p2-banner'))
+    document.getElementById('p2-banner').style.display = 'none';
+  if (document.getElementById('p2-loading'))
+    document.getElementById('p2-loading').style.display = 'none';
+  if (document.getElementById('p2-results'))
+    document.getElementById('p2-results').innerHTML = '';
   var s23 = document.getElementById('steps23-loading');
   if (s23) s23.style.display = 'none';
   var lc = document.getElementById('layers-container');
   if (lc) lc.innerHTML = '';
+
+  // Reset state
   currentReport = null;
   currentLayers = {};
   activeLayer = null;
   activeMode = 'expert';
-  cacheKey = '';
-  step1Data = {};
-  window._step2Layers = [];
-  window._step3Layers = [];
+  savedReportId = null;
+
+  // Navigate
+  if (goToForm) {
+    // Go straight to form — skip hero
+    document.getElementById('hero-section').style.display = 'none';
+    document.getElementById('form-section').style.display = 'block';
+    renderHistory();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  } else {
+    // Go back to hero page
+    document.getElementById('hero-section').style.display = 'block';
+    document.getElementById('form-section').style.display = 'none';
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
 }
 
 function catColors(cat) {
@@ -600,6 +740,12 @@ function renderReport(data) {
   document.getElementById('report-content').innerHTML = html;
   document.getElementById('rpt').classList.add('vis');
 
+  // Show surface scan notice for URL method
+  var surfNotice = document.getElementById('surface-scan-notice');
+  if (surfNotice) {
+    surfNotice.style.display = (data.input_method === 'url' || isSurf) ? 'block' : 'none';
+  }
+
   // Wire up tabs
   document.querySelectorAll('#main-tabs .tab').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -635,10 +781,7 @@ function renderReport(data) {
   var firstLayer = document.querySelector('#layer-nav .lb');
   if (firstLayer) firstLayer.click();
 
-  // Show Part 2 banner
-  if (!isSurf) {
-    document.getElementById('p2-banner').style.display = 'block';
-  }
+  // Part 2 banner only shown after layers_complete event fires
 }
 
 function renderLayer() {
@@ -669,6 +812,7 @@ function renderLayer() {
     });
   } else if (activeMode === 'learner') {
     var lrn = layer.learner || {};
+    html += \'<div class="learner-label"><i class="ti ti-school" style="font-size:11px"></i> Learner mode</div>\';
     if (lrn.analogy) html += '<div class="analogy"><i class="ti ti-bulb" style="margin-right:5px"></i><strong>Think of it like this:</strong> ' + esc(lrn.analogy) + '</div>';
     html += '<div class="lc"><div class="lc-title">What is ' + esc(layer.name) + '?</div><div class="lc-body">' + esc(lrn.what_is_it||'') + '</div></div>';
     html += '<div class="lc"><div class="lc-title">In your app specifically</div><div class="lc-body">' + esc(lrn.what_it_does_in_your_app||'') + '</div></div>';
@@ -694,8 +838,9 @@ function renderLayer() {
       html += '<div id="quiz-content" style="display:none;margin-top:.65rem">';
       quiz.forEach(function(q, i) {
         html += '<div class="qcard" style="margin-bottom:7px"><div style="font-size:12px;font-weight:500;margin-bottom:.5rem">' + esc(q.question||'') + '</div>';
-        html += '<button id="qbtn-' + i + '" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">Reveal answer</button>';
-        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer||'') + '</strong>';
+        var hasAnswer = q.answer && q.answer.trim().length > 0;
+        html += '<button id="qbtn-' + i + '" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">' + (hasAnswer ? 'Reveal answer' : 'No answer available') + '</button>';
+        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer || 'No answer provided for this layer yet.') + '</strong>';
         if (q.why) html += '<div style="font-size:11px;opacity:.8;margin-top:3px">' + esc(q.why) + '</div>';
         html += '</div></div>';
       });
