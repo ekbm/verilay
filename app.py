@@ -922,13 +922,27 @@ def run_step4():
 
         result = analyse_step4(repo_name, built_with, findings)
 
-        # Update saved report with full data
-        if report_id and report_id in _reports:
-            _reports[report_id]["data"].update({
-                "top_fixes":     result.get("top_fixes",[]),
-                "security_score":result.get("security_score",{}),
-                "second_opinion":result.get("second_opinion",{}),
-            })
+        # Update saved report with Part 2 data
+        if report_id:
+            if _HAS_SUPABASE:
+                try:
+                    # Get existing data, merge Part 2, save back
+                    existing = get_report_data(report_id)
+                    if existing:
+                        existing.update({
+                            "top_fixes":     result.get("top_fixes",[]),
+                            "security_score":result.get("security_score",{}),
+                            "second_opinion":result.get("second_opinion",{}),
+                        })
+                        _sb.table("reports").update({"data": existing}).eq("id", report_id).execute()
+                except Exception as e:
+                    print(f"Supabase Part 2 update failed: {e}")
+            if report_id in _reports:
+                _reports[report_id]["data"].update({
+                    "top_fixes":     result.get("top_fixes",[]),
+                    "security_score":result.get("security_score",{}),
+                    "second_opinion":result.get("second_opinion",{}),
+                })
 
         result["part2_loaded"] = True
         return jsonify(result)
