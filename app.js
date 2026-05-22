@@ -194,42 +194,13 @@ function viewFromHistory(idx) {
   var entry = history[idx];
   if (!entry) return;
   if (entry.id) {
-    // Load saved report from server
-    fetch('/report-data/' + entry.id)
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.error) {
-          // Report expired - offer to re-run
-          if (confirm('This report has expired. Re-run the analysis?')) {
-            rerunFromHistory(idx);
-          }
-        } else {
-          // Hide form, show report section
-          document.getElementById('hero-section').style.display = 'none';
-          document.getElementById('form-section').style.display = 'none';
-          currentReport = data;
-          renderReport(data);
-          // Load layers from saved data
-          if (data.layers && data.layers.length) {
-            appendLayers(data.layers);
-            // Hide spinner, show Part 2 banner
-            var lb = document.getElementById('steps23-loading');
-            if (lb) lb.style.display = 'none';
-            var p2 = document.getElementById('p2-banner');
-            if (p2) p2.style.display = 'block';
-            // Auto-select first layer
-            setTimeout(function() {
-              var firstBtn = document.querySelector('#layer-nav .lb');
-              if (firstBtn) firstBtn.click();
-            }, 100);
-          }
-          if (data.top_fixes && data.top_fixes.length) renderPart2(data);
-          window.scrollTo({top: 0, behavior: 'smooth'});
-        }
-      })
-      .catch(function() { rerunFromHistory(idx); });
+    // Open saved report in new tab
+    window.open('/report/' + entry.id, '_blank');
   } else {
-    rerunFromHistory(idx);
+    // No saved ID — offer to re-run
+    if (confirm('This report was not saved. Re-run the analysis?')) {
+      rerunFromHistory(idx);
+    }
   }
 }
 
@@ -774,11 +745,15 @@ function renderReport(data) {
   html += '<button class="mb on" data-mode="expert">Expert</button>';
   html += '<button class="mb" data-mode="learner">Learner</button>';
   html += '</div>';
+  // Only show spinner if no layers loaded yet
+  var hasLayers = data.layers && data.layers.length > 0;
   html += '<div id="layer-content" style="padding:.75rem 0">';
-  html += '<div style="font-size:12px;color:var(--mut);display:flex;align-items:center;gap:8px">';
-  html += '<div style="width:16px;height:16px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
-  html += 'Analysing your codebase - layers will appear shortly...</div>';
-  html += '</div>';
+  if (!hasLayers) {
+    html += '<div style="font-size:12px;color:var(--mut);display:flex;align-items:center;gap:8px">';
+    html += '<div style="width:16px;height:16px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
+    html += 'Analysing your codebase - layers will appear shortly...</div>';
+    html += '</div>';
+  }
   html += '</div></div></div>';
 
   var scards = (data.stack||[]).map(function(s) {
@@ -850,6 +825,10 @@ function renderLayer() {
   if (!activeLayer || !currentLayers[activeLayer]) return;
   var layer = currentLayers[activeLayer];
   var html = '';
+
+  // Always show mode toggle when rendering a layer
+  var mt = document.getElementById('mode-toggle');
+  if (mt) mt.style.display = 'flex';
 
   // Mode toggle button wiring (re-wire every time layer changes)
   document.querySelectorAll('#mode-toggle .mb').forEach(function(btn) {
