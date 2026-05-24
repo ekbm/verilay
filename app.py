@@ -52,50 +52,27 @@ _reports = {}
 REPORT_TTL = 86400
 
 # ── Analysis counter ────────────────────────────────────────────────────────────
+# Uses reports table row count — always accurate, never resets
 import threading
 _count_lock = threading.Lock()
 _memory_count = 0
-_COUNTER_FILE = "/tmp/verilay_count.txt"
-
-def _load_count():
-    global _memory_count
-    if _HAS_SUPABASE:
-        try:
-            result = _sb.table("counter").select("count").eq("id", 1).execute()
-            if result.data:
-                _memory_count = result.data[0]["count"]
-                return
-        except Exception as e:
-            print(f"Supabase counter load failed: {e}")
-    try:
-        with open(_COUNTER_FILE, 'r') as f:
-            _memory_count = int(f.read().strip())
-    except:
-        _memory_count = 0
 
 def get_analysis_count():
+    """Get count from Supabase reports table — always accurate."""
+    if _HAS_SUPABASE:
+        try:
+            result = _sb.table("reports").select("id", count="exact").execute()
+            return result.count or 0
+        except Exception as e:
+            print(f"Counter fetch failed: {e}", flush=True)
     return _memory_count
 
 def increment_analysis_count():
+    """Increment in-memory count — Supabase row count is source of truth."""
     global _memory_count
     with _count_lock:
         _memory_count += 1
-        count = _memory_count
-        if _HAS_SUPABASE:
-            try:
-                _sb.table("counter").update({"count": count}).eq("id", 1).execute()
-                return count
-            except Exception as e:
-                print(f"Supabase counter update failed: {e}")
-        try:
-            with open(_COUNTER_FILE, 'w') as f:
-                f.write(str(count))
-        except:
-            pass
-    return count
-
-# Load count on startup
-_load_count()
+    return _memory_count
 
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
@@ -989,6 +966,20 @@ def feedback():
 def stats():
     count = get_analysis_count()
     return jsonify({"analyses": count, "formatted": f"{count:,}"})
+
+
+@app.route("/counter")
+def counter_debug():
+    """Debug endpoint to check counter sources."""
+    mem = _memory_count
+    supabase_count = 0
+    if _HAS_SUPABASE:
+        try:
+            result = _sb.table("reports").select("id", count="exact").execute()
+            supabase_count = result.count or 0
+        except:
+            pass
+    return jsonify({"memory": mem, "supabase_rows": supabase_count})
 
 
 @app.route("/save-report", methods=["POST"])
