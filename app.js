@@ -580,6 +580,9 @@ function handleStreamEvent(evt) {
       var statusEl = document.getElementById('report-status');
       if (shareInput) shareInput.value = shareUrl;
       if (shareBanner) shareBanner.style.display = 'flex';
+      // Show feedback widget
+      var fw = document.getElementById('feedback-widget');
+      if (fw) fw.style.display = 'block';
       if (statusEl) statusEl.textContent = 'Report saved';
       var repo = currentReport ? currentReport.repo : '';
       if (repo && document.getElementById('badge-section')) {
@@ -1134,4 +1137,41 @@ function renderPart2(data) {
 }
 
 // Start everything when DOM is ready
+// Feedback functions
+function submitFeedback(helpful) {
+  var upBtn = document.getElementById('btn-feedback-up');
+  var downBtn = document.getElementById('btn-feedback-down');
+  if (upBtn) upBtn.style.background = helpful ? '#EAF3DE' : 'none';
+  if (downBtn) downBtn.style.background = !helpful ? '#FCEBEB' : 'none';
+  if (!helpful) {
+    var ta = document.getElementById('feedback-text-area');
+    if (ta) ta.style.display = 'block';
+  } else {
+    sendFeedback(true, '');
+  }
+}
+
+function sendFeedbackText() {
+  var text = document.getElementById('feedback-text');
+  sendFeedback(false, text ? text.value : '');
+}
+
+function sendFeedback(helpful, comment) {
+  fetch('/feedback', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      helpful: helpful,
+      comment: comment,
+      report_id: savedReportId || ''
+    })
+  }).catch(function() {});
+  var ta = document.getElementById('feedback-text-area');
+  if (ta) ta.style.display = 'none';
+  var thanks = document.getElementById('feedback-thanks');
+  if (thanks) thanks.style.display = 'block';
+  var btns = document.getElementById('btn-feedback-up');
+  if (btns) btns.parentElement.style.display = 'none';
+}
+
 document.addEventListener('DOMContentLoaded', init);
