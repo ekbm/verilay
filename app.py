@@ -4,7 +4,8 @@ Verilay v5 — Verification Layer for AI-built apps
 Single-request streaming architecture — no inter-request cache dependency
 """
 
-import os, json, base64, zipfile, io, requests, time, secrets as _secrets, uuid as _uuid, threading
+import os, sys, json, base64, zipfile, io, requests, time, secrets as _secrets, uuid as _uuid, threading
+sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
@@ -923,26 +924,29 @@ def run_step4():
         result = analyse_step4(repo_name, built_with, findings)
 
         # Update saved report with Part 2 data
+        print(f"Part 2 update: report_id={report_id}, has_supabase={_HAS_SUPABASE}", flush=True)
+        print(f"Part 2 result keys: {list(result.keys())}")
+        print(f"top_fixes count: {len(result.get('top_fixes',[]))}")
         if report_id:
+            p2_data = {
+                "top_fixes":     result.get("top_fixes",[]),
+                "security_score":result.get("security_score",{}),
+                "second_opinion":result.get("second_opinion",{}),
+            }
             if _HAS_SUPABASE:
                 try:
-                    # Get existing data, merge Part 2, save back
-                    existing = get_report_data(report_id)
-                    if existing:
-                        existing.update({
-                            "top_fixes":     result.get("top_fixes",[]),
-                            "security_score":result.get("security_score",{}),
-                            "second_opinion":result.get("second_opinion",{}),
-                        })
-                        _sb.table("reports").update({"data": existing}).eq("id", report_id).execute()
+                    res = _sb.table("reports").select("data").eq("id", report_id).execute()
+                    if res.data:
+                        merged = dict(res.data[0]["data"])
+                        merged.update(p2_data)
+                        _sb.table("reports").update({"data": merged}).eq("id", report_id).execute()
+                        print(f"✓ Part 2 saved to Supabase for {report_id}", flush=True)
+                    else:
+                        print(f"✗ Report {report_id} not found in Supabase", flush=True)
                 except Exception as e:
-                    print(f"Supabase Part 2 update failed: {e}")
+                    print(f"✗ Part 2 Supabase error: {e}", flush=True)
             if report_id in _reports:
-                _reports[report_id]["data"].update({
-                    "top_fixes":     result.get("top_fixes",[]),
-                    "security_score":result.get("security_score",{}),
-                    "second_opinion":result.get("second_opinion",{}),
-                })
+                _reports[report_id]["data"].update(p2_data)
 
         result["part2_loaded"] = True
         return jsonify(result)
@@ -957,6 +961,26 @@ def report_data(report_id):
     if not data:
         return jsonify({"error": "Report not found or expired"}), 404
     return jsonify(data)
+
+
+@app.route("/feedback", methods=["POST"])
+def feedback():
+    try:
+        data = request.get_json()
+        helpful = data.get("helpful")
+        comment = data.get("comment", "")
+        report_id = data.get("report_id", "")
+        print(f"Feedback: helpful={helpful} report={report_id} comment={comment[:100]}", flush=True)
+        if _HAS_SUPABASE and report_id:
+            try:
+                _sb.table("reports").update({
+                    "data": {**get_report_data(report_id), "feedback_helpful": helpful, "feedback_comment": comment}
+                }).eq("id", report_id).execute()
+            except:
+                pass
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/stats")
@@ -1813,6 +1837,20 @@ input:focus{border-color:var(--pu)}
 
   <!-- Layers injected here by appendLayers -->
   <div id="layers-container"></div>
+
+  <!-- Feedback widget -->
+  <div id="feedback-widget" style="display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;text-align:center">
+    <div style="font-size:13px;font-weight:500;margin-bottom:.65rem">Was this analysis helpful?</div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:.5rem">
+      <button id="btn-feedback-up" onclick="submitFeedback(true)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:all .15s">👍</button>
+      <button id="btn-feedback-down" onclick="submitFeedback(false)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:all .15s">👎</button>
+    </div>
+    <div id="feedback-text-area" style="display:none;margin-top:.5rem">
+      <textarea id="feedback-text" placeholder="What could be better? (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:12px;font-family:inherit;resize:vertical;min-height:60px;background:var(--bg);color:var(--txt)"></textarea>
+      <button onclick="sendFeedbackText()" style="margin-top:6px;font-size:12px;padding:5px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Send feedback</button>
+    </div>
+    <div id="feedback-thanks" style="display:none;font-size:13px;color:var(--mut)">Thanks for the feedback! 🙏</div>
+  </div>
 
   <div class="p2-banner" id="p2-banner">
     <div style="display:flex;align-items:flex-start;gap:12px">
