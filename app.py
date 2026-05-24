@@ -938,9 +938,11 @@ def run_step4():
                     res = _sb.table("reports").select("data").eq("id", report_id).execute()
                     if res.data:
                         merged = dict(res.data[0]["data"])
+                        print(f"Existing keys before merge: {list(merged.keys())[:5]}", flush=True)
                         merged.update(p2_data)
-                        _sb.table("reports").update({"data": merged}).eq("id", report_id).execute()
-                        print(f"✓ Part 2 saved to Supabase for {report_id}", flush=True)
+                        print(f"Merged keys after update: {[k for k in merged.keys() if k in ['top_fixes','security_score','second_opinion']]}", flush=True)
+                        upd = _sb.table("reports").update({"data": merged}).eq("id", report_id).execute()
+                        print(f"✓ Part 2 saved to Supabase for {report_id}, updated rows: {len(upd.data)}", flush=True)
                     else:
                         print(f"✗ Report {report_id} not found in Supabase", flush=True)
                 except Exception as e:
