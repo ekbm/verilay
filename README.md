@@ -6,6 +6,8 @@ Verilay reads any GitHub repo, ZIP export, or live URL and generates a plain-Eng
 
 Built for the 99% of people who build with AI tools like Lovable, Replit, and Emergent — but can't verify what was generated.
 
+🌐 **Live at [verilay.dev](https://verilay.dev) — free, no account needed**
+
 ---
 
 ## The problem Verilay solves
@@ -18,7 +20,7 @@ You used Lovable or Replit to build an app. It works — but:
 - Is this app ready for real users?
 - What does any of it actually do?
 
-Tools like CodeRabbit and Greptile answer these questions — for developers, in developer language. **Verilay answers them for everyone else.**
+Tools like CodeRabbit and Snyk answer these questions — for developers, in developer language. **Verilay answers them for everyone else.**
 
 ---
 
@@ -26,20 +28,21 @@ Tools like CodeRabbit and Greptile answer these questions — for developers, in
 
 **Stack map** — every framework, library, and tool detected with plain-English descriptions
 
-**Layer map** — your app broken into Auth, Database, API, Frontend, Libraries, Config, and File Handling
+**Layer map** — your app broken into Auth, Database, API, Frontend, Libraries and Config
 
-**Three view modes per layer:**
-- **Expert** — technical findings with severity, file references, and code snippets to verify
-- **Learner** — plain-English explanations, real-world analogies, and "why it matters"
-- **Quiz** — quick-check questions to test whether the understanding actually stuck
+**Two view modes per layer:**
+- **Expert** — technical findings with severity, file references and specific issues
+- **Learner** — plain-English explanations, real-world analogies and key concepts
 
-**Production verdict** — green/amber/red banner: is this app ready to ship?
+**Production verdict** — is this app ready to ship?
 
-**Fix list** — your top issues in priority order with effort estimates and specific steps
+**Fix list** — your top issues in priority order with ready-to-paste fix prompts for Lovable and Replit
 
-**Second opinion export** — ready-made prompts to copy into Claude, ChatGPT, or share with a developer for independent verification
+**Second opinion prompts** — copy into Claude or ChatGPT for independent verification
 
 **Security checklist** — exposed secrets, auth configuration, RLS policies, dependency currency
+
+> ⚠️ Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C → B) after applying fixes indicates real progress. Verilay is a first-pass overview — not a penetration test or professional security audit.
 
 ---
 
@@ -49,7 +52,7 @@ Tools like CodeRabbit and Greptile answer these questions — for developers, in
 |--------|--------------|----------------|
 | GitHub URL | Public repo URL | Full — all layers |
 | ZIP upload | Export from Lovable/Replit | Full — all layers |
-| Live URL | yourapp.lovable.app | Surface — libraries only |
+| Live URL | yourapp.lovable.app | Surface — visible layers only |
 
 ---
 
@@ -96,9 +99,9 @@ Files sent to Claude API with structured analysis prompt
                     ↓
 Claude classifies layers, identifies issues, writes plain-English explanations
                     ↓
-Verilay renders interactive dashboard with Expert / Learner / Quiz modes
+Verilay renders interactive dashboard with Expert and Learner modes
                     ↓
-Second opinion prompts generated — verify findings in any AI tool
+Fix prompts generated — paste directly into Lovable or Replit to fix issues
 ```
 
 ---
@@ -107,27 +110,26 @@ Second opinion prompts generated — verify findings in any AI tool
 
 Designed for apps built with:
 - **Lovable** — React + Supabase stack
-- **Replit** — Python/Node.js stack  
-- **Emergent** — full-stack apps
+- **Replit** — Python/Node.js stack
+- **Bolt, v0, Cursor** — any AI builder
 - Any public GitHub repository
 
 ---
 
 ## Why open source?
 
-Verilay is a trust and validation tool. Being open source means anyone can inspect Verilay's own code — which is the most honest thing a trust product can do. We don't hide our reasoning.
+Verilay is a trust and validation tool. Being open source means anyone can inspect Verilay's own code — which is the most honest thing a trust product can do.
 
 ---
 
 ## Roadmap
 
-- [ ] Hosted version at verilay.dev — no Python install needed
 - [ ] Private repo support via GitHub OAuth
-- [ ] Live mode — webhook updates as you build in Lovable
+- [ ] Email report delivery
+- [ ] Comparison view — before and after fixing issues
+- [ ] GitHub badge — show your Verilay score in your README
 - [ ] Chrome extension — Verilay panel inside Lovable and Replit
-- [ ] Shareable report links
-- [ ] Snyk integration for CVE data on dependencies
-- [ ] Comparison mode — two repos side by side
+- [ ] Stripe — $2.99/month for permanent reports and history
 
 ---
 
@@ -137,15 +139,17 @@ Verilay is open source and welcomes contributions.
 
 - Found a bug → open an issue
 - Want to add a feature → open a PR
-- Want to help build the hosted version → reach out
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- Want to help build → reach out at hello@verilay.dev
 
 ---
 
-## License
+## Licence
 
-MIT — use it, fork it, build on it.
+**Personal & open source use:** Free — see [LICENSE.md](LICENSE.md)
+
+**Commercial use:** If you want to embed Verilay in a commercial product or offer its functionality to paying customers, a commercial licence is required.
+
+📧 Contact **hello@verilay.dev** with subject "Commercial Licence Enquiry"
 
 ---
 
