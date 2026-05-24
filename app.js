@@ -580,9 +580,11 @@ function handleStreamEvent(evt) {
       var statusEl = document.getElementById('report-status');
       if (shareInput) shareInput.value = shareUrl;
       if (shareBanner) shareBanner.style.display = 'flex';
-      // Show feedback widget
+      // Show feedback widget and star prompt
       var fw = document.getElementById('feedback-widget');
       if (fw) fw.style.display = 'block';
+      var sp = document.getElementById('star-prompt');
+      if (sp) sp.style.display = 'block';
       if (statusEl) statusEl.textContent = 'Report saved';
       var repo = currentReport ? currentReport.repo : '';
       if (repo && document.getElementById('badge-section')) {
