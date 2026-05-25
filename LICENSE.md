@@ -22,7 +22,7 @@ If you wish to:
 
 You must obtain a commercial licence from the author.
 
-**Contact:** hello@verilay.dev  
+**Contact:** moses@verilay.dev  
 **Subject:** Commercial Licence Enquiry
 
 Commercial licences are available as:
