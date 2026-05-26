@@ -690,7 +690,7 @@ def analyse_step2(files, repo_name):
         "DATABASE_A: plain English answer\n"
         "DATABASE_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1200)
+    text = call_claude_text(prompt, max_tokens=1000)
     return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
@@ -761,7 +761,7 @@ def analyse_step3(files, repo_name):
         "LIBRARIES_A: plain English answer\n"
         "LIBRARIES_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1200)
+    text = call_claude_text(prompt, max_tokens=1000)
     return parse_flat_response(text, ["API", "Frontend", "Libraries"])
 
 
@@ -909,11 +909,11 @@ def analyse_stream():
                 f2 = executor.submit(analyse_step2, files, repo_name)
                 f3 = executor.submit(analyse_step3, files, repo_name)
                 try:
-                    s2 = f2.result(timeout=55)
+                    s2 = f2.result(timeout=90)
                 except Exception as e:
                     s2_err = str(e)
                 try:
-                    s3 = f3.result(timeout=55)
+                    s3 = f3.result(timeout=90)
                 except Exception as e:
                     s3_err = str(e)
             # Now yield results from main thread
