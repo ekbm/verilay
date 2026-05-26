@@ -45,7 +45,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", _secrets.token_hex(32))
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB max upload
 
 # ── Report storage ─────────────────────────────────────────────────────────────
 _reports = {}
