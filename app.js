@@ -710,6 +710,15 @@ function renderReport(data) {
   html += 'or a developer security audit before going live with real user data.';
   html += '</div></div>';
 
+  // Ask AI button
+  html += '<div style="margin:.75rem 0;padding:.85rem 1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  html += '<div>';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:2px">🤖 Confused about a finding?</div>';
+  html += '<div style="font-size:12px;color:var(--put)">Ask AI to explain any issue in plain English and suggest how to fix it in your specific app.</div>';
+  html += '</div>';
+  html += '<button onclick="askAIAboutReport()" style="font-size:12px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Ask AI about this report →</button>';
+  html += '</div>';
+
   var pills = (data.stack||[]).map(function(s) {
     var c = catColors(s.category);
     return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(s.name||'') + ' ' + esc(s.version||'') + '</span>';
@@ -1065,11 +1074,21 @@ function renderPart2(data) {
   var html = '<div style="margin-top:1rem">';
   var sec = data.security_score || {};
   var checks = [
-    ['env_secrets_exposed','No secrets exposed in .env file',true],
-    ['auth_properly_configured','Auth properly configured',false],
-    ['rls_likely_configured','Row Level Security configured',false],
-    ['dependencies_current','Dependencies are current',false],
-    ['no_hardcoded_secrets','No hardcoded secrets in code',false]
+    ['env_secrets_exposed','No secrets exposed in .env file',true,
+      'Your .env file contains passwords and API keys. If committed to GitHub anyone can steal them and access your database or rack up API bills.',
+      'Green = no .env file found in repo. Red = .env file detected in public code. Surface scans cannot check this.'],
+    ['auth_properly_configured','Auth properly configured',false,
+      'Auth controls who can log in to your app. Misconfigured auth means strangers could access user accounts or bypass login entirely.',
+      'Green = auth middleware detected and appears configured. Red = no auth layer found or session handling missing. Surface scans may show red even if auth is server-side.'],
+    ['rls_likely_configured','Row Level Security configured',false,
+      'Row Level Security (RLS) in Supabase controls which users can see which data. Without it, any logged-in user could read all other users data.',
+      'Green = RLS policies detected in database schema. Red = no RLS found or Supabase tables appear unprotected. Surface scans cannot verify this — use GitHub scan for accurate result.'],
+    ['dependencies_current','Dependencies are current',false,
+      'Outdated libraries often contain known security vulnerabilities that hackers can exploit. Keeping them updated is basic security hygiene.',
+      'Green = package versions appear recent. Red = outdated or vulnerable packages detected. Surface scans cannot check package versions — use GitHub scan.'],
+    ['no_hardcoded_secrets','No hardcoded secrets in code',false,
+      'Hardcoded secrets (like API keys written directly in code) are visible to anyone who views your source. They should always be in environment variables instead.',
+      'Green = no hardcoded keys found in visible code. Red = potential secrets detected in source. Surface scans can only check client-side code.']
   ];
   html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Security checklist</div>';
   checks.forEach(function(c) {
@@ -1079,7 +1098,20 @@ function renderPart2(data) {
     if (pass===true) { bg='var(--grl)';clr='var(--grt)';ico='ti-circle-check'; }
     else if (pass===false) { bg='var(--rdl)';clr='var(--rdt)';ico='ti-alert-circle'; }
     else { bg='#F1EFE8';clr='#5F5E5A';ico='ti-minus'; }
-    html += '<div class="si" style="background:' + bg + ';color:' + clr + '"><i class="ti ' + ico + '" style="font-size:15px"></i>' + c[1] + '</div>';
+    var checkId = 'check-' + c[0];
+    html += '<div class="si" style="background:' + bg + ';color:' + clr + ';cursor:pointer;flex-direction:column;align-items:flex-start" onclick="toggleCheck(\'' + checkId + '\')">';
+    html += '<div style="display:flex;align-items:center;gap:8px;width:100%">';
+    html += '<i class="ti ' + ico + '" style="font-size:15px;flex-shrink:0"></i>';
+    html += '<span style="flex:1;font-weight:500">' + c[1] + '</span>';
+    html += '<i class="ti ti-chevron-down" style="font-size:12px;opacity:.6" id="' + checkId + '-ico"></i>';
+    html += '</div>';
+    html += '<div id="' + checkId + '" style="display:none;margin-top:.6rem;padding-top:.6rem;border-top:0.5px solid currentColor;opacity:.8;width:100%">';
+    html += '<div style="font-size:11px;font-weight:600;margin-bottom:.3rem">Why it matters:</div>';
+    html += '<div style="font-size:11px;line-height:1.55;margin-bottom:.5rem">' + esc(c[3]||'') + '</div>';
+    html += '<div style="font-size:11px;font-weight:600;margin-bottom:.3rem">What this result means:</div>';
+    html += '<div style="font-size:11px;line-height:1.55">' + esc(c[4]||'') + '</div>';
+    html += '</div>';
+    html += '</div>';
   });
   html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Fix list</div>';
   var builtWith = (currentReport && currentReport.built_with) ? currentReport.built_with.toLowerCase() : '';
@@ -1185,6 +1217,16 @@ function renderPart2(data) {
 }
 
 // Start everything when DOM is ready
+// Toggle security checklist item
+function toggleCheck(id) {
+  var el = document.getElementById(id);
+  var ico = document.getElementById(id + '-ico');
+  if (!el) return;
+  var open = el.style.display === 'block';
+  el.style.display = open ? 'none' : 'block';
+  if (ico) ico.style.transform = open ? '' : 'rotate(180deg)';
+}
+
 // Feedback functions
 function submitFeedback(helpful) {
   var upBtn = document.getElementById('btn-feedback-up');
@@ -1220,6 +1262,34 @@ function sendFeedback(helpful, comment) {
   if (thanks) thanks.style.display = 'block';
   var btns = document.getElementById('btn-feedback-up');
   if (btns) btns.parentElement.style.display = 'none';
+}
+
+// Ask AI about report
+function askAIAboutReport() {
+  if (!currentReport) return;
+  var h = currentReport.health || {};
+  var layers = currentReport.layers || [];
+  var findings = layers.map(function(l) {
+    var ex = l.expert || {};
+    var issues = (ex.findings || []).filter(function(f) {
+      return f.severity === 'critical' || f.severity === 'warning';
+    }).map(function(f) {
+      return f.severity.toUpperCase() + ': ' + f.title + ' — ' + f.detail;
+    }).join('\n');
+    return issues ? l.name + ' layer:\n' + issues : null;
+  }).filter(Boolean).join('\n\n');
+
+  var prompt = 'I ran Verilay on my app (' + (currentReport.repo || 'my app') + ') and got these findings:\n\n' +
+    'Score: ' + (h.score || '?') + '\n' +
+    'Built with: ' + (currentReport.built_with || 'AI tools') + '\n\n' +
+    (findings || 'No critical issues found.') + '\n\n' +
+    'Can you explain these findings in simple terms and tell me how to fix the most important ones in ' +
+    (currentReport.built_with && currentReport.built_with.toLowerCase().includes('lovable') ? 'Lovable' :
+     currentReport.built_with && currentReport.built_with.toLowerCase().includes('replit') ? 'Replit' :
+     'my AI builder') + '? I am not a developer so please keep it simple.';
+
+  var url = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
+  window.open(url, '_blank');
 }
 
 document.addEventListener('DOMContentLoaded', init);
