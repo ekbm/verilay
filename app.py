@@ -1726,9 +1726,13 @@ input:focus{border-color:var(--pu)}
     <label class="lbl">Upload your project ZIP</label>
     <p class="sub">Export your project as a ZIP from your AI builder — no GitHub account needed</p>
     <div style="background:#FEF3C7;border:0.5px solid #F59E0B;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:12px;color:#92400E;line-height:1.55">
-      <strong>Before uploading:</strong> Make sure to exclude the <code>node_modules</code> folder from your ZIP — it can make the file several GB large and isn't needed for analysis.
-      In most AI builders you can export just the source files. ZIP should be under 100MB.
-      If your project is on GitHub, the <strong>GitHub URL method is faster and easier</strong>.
+      <strong>ZIP must be under 100MB.</strong> Downloads from Replit and some AI builders include large folders like <code>node_modules</code> that can make ZIPs several GB.
+      <br><br>
+      <strong>Replit users:</strong> Connect your project to GitHub (free at replit.com → Git tab) then use the GitHub URL method — faster, no size limit.
+      <br>
+      <strong>Lovable users:</strong> Use GitHub URL — Lovable auto-syncs every project to GitHub.
+      <br>
+      <strong>For ZIP uploads:</strong> Only zip your source files — exclude <code>node_modules</code>, <code>dist</code>, <code>build</code> folders.
     </div>
     <div class="fd" id="dz">
       <input type="file" id="zf" accept=".zip">
