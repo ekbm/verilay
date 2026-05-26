@@ -45,7 +45,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", _secrets.token_hex(32))
-app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB max upload
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
 # ── Report storage ─────────────────────────────────────────────────────────────
 _reports = {}
@@ -873,8 +873,8 @@ def analyse_stream():
                     yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
                 zip_data = f.read()
                 zip_size_mb = len(zip_data) / (1024 * 1024)
-                if zip_size_mb > 500:
-                    yield json.dumps({"event":"error","data":f"ZIP file is {zip_size_mb:.0f}MB — too large. Please upload a ZIP under 500MB."}) + "\n"; return
+                if zip_size_mb > 100:
+                    yield json.dumps({"event":"error","data":f"ZIP file is {zip_size_mb:.0f}MB — too large. Please exclude the node_modules folder from your ZIP and try again. Alternatively use the GitHub URL method which has no size limit."}) + "\n"; return
                 files, tree, repo_name = fetch_zip(io.BytesIO(zip_data), f.filename)
             elif method == "url":
                 url = request.form.get("live_url","").strip()
@@ -1725,6 +1725,11 @@ input:focus{border-color:var(--pu)}
   <div class="ip" id="p-zip">
     <label class="lbl">Upload your project ZIP</label>
     <p class="sub">Export your project as a ZIP from your AI builder — no GitHub account needed</p>
+    <div style="background:#FEF3C7;border:0.5px solid #F59E0B;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:12px;color:#92400E;line-height:1.55">
+      <strong>Before uploading:</strong> Make sure to exclude the <code>node_modules</code> folder from your ZIP — it can make the file several GB large and isn't needed for analysis.
+      In most AI builders you can export just the source files. ZIP should be under 100MB.
+      If your project is on GitHub, the <strong>GitHub URL method is faster and easier</strong>.
+    </div>
     <div class="fd" id="dz">
       <input type="file" id="zf" accept=".zip">
       <div style="font-size:24px;color:var(--mut);margin-bottom:.4rem"><i class="ti ti-upload"></i></div>
