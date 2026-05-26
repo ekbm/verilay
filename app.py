@@ -186,6 +186,13 @@ def fetch_github(repo_url):
 
     return files, all_files, f"{owner}/{repo}"
 
+# Folders to skip in ZIP analysis
+SKIP_FOLDERS = {
+    'node_modules', '.git', 'dist', 'build', '__pycache__',
+    '.next', '.nuxt', 'vendor', 'venv', '.venv', 'env',
+    'coverage', '.cache', 'tmp', 'temp', 'logs', '.DS_Store'
+}
+
 def fetch_zip(zip_bytes, filename):
     project_name = filename.replace(".zip","")
     files = {}
@@ -196,7 +203,13 @@ def fetch_zip(zip_bytes, filename):
             candidate = all_names[0].split("/")[0] + "/"
             if all(n.startswith(candidate) for n in all_names[:5]): prefix = candidate
         def strip(p): return p[len(prefix):] if p.startswith(prefix) else p
-        name_map = {strip(n): n for n in all_names}
+        # Filter out junk folders
+        filtered_names = [
+            n for n in all_names
+            if not any(part in SKIP_FOLDERS for part in n.split('/'))
+            and not n.endswith('/')
+        ]
+        name_map = {strip(n): n for n in filtered_names}
         def read_zip(rel):
             if rel not in name_map: return None
             try: return zf.read(name_map[rel]).decode("utf-8","replace")[:MAX_FILE_CHARS]
@@ -822,7 +835,11 @@ def analyse_stream():
                 f = request.files.get("zip_file")
                 if not f:
                     yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
-                files, tree, repo_name = fetch_zip(io.BytesIO(f.read()), f.filename)
+                zip_data = f.read()
+                zip_size_mb = len(zip_data) / (1024 * 1024)
+                if zip_size_mb > 50:
+                    yield json.dumps({"event":"error","data":f"ZIP file is {zip_size_mb:.0f}MB — too large to analyse. Please remove the node_modules folder before zipping (right-click node_modules → delete, then re-zip). This usually reduces size to under 5MB."}) + "\n"; return
+                files, tree, repo_name = fetch_zip(io.BytesIO(zip_data), f.filename)
             elif method == "url":
                 url = request.form.get("live_url","").strip()
                 if not url:
