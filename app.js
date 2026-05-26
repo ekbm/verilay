@@ -716,7 +716,10 @@ function renderReport(data) {
   html += '<div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:2px">🤖 Confused about a finding?</div>';
   html += '<div style="font-size:12px;color:var(--put)">Ask AI to explain any issue in plain English and suggest how to fix it in your specific app.</div>';
   html += '</div>';
+  html += '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">';
   html += '<button onclick="askAIAboutReport()" style="font-size:12px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Ask AI about this report →</button>';
+  html += '<span style="font-size:10px;color:var(--put);opacity:.7">Free Claude.ai account required</span>';
+  html += '</div>';
   html += '</div>';
 
   var pills = (data.stack||[]).map(function(s) {
