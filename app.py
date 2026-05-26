@@ -703,7 +703,7 @@ def analyse_step2(files, repo_name):
         "DATABASE_A: plain English answer\n"
         "DATABASE_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1000)
+    text = call_claude_text(prompt, max_tokens=1200)
     return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
@@ -774,7 +774,7 @@ def analyse_step3(files, repo_name):
         "LIBRARIES_A: plain English answer\n"
         "LIBRARIES_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1000)
+    text = call_claude_text(prompt, max_tokens=1200)
     return parse_flat_response(text, ["API", "Frontend", "Libraries"])
 
 
@@ -1153,6 +1153,13 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     if stack:
         tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}</span>' for s in stack)
         out.append(f'<div class="st">Tech Stack</div><div class="card">{tags}</div>')
+
+    # Ask AI button
+    import urllib.parse as _urlparse
+    _critical = [f'{l.get("name")}: {f2.get("title","")}' for l in layers for f2 in l.get("expert",{}).get("findings",[]) if f2.get("severity") in ["critical","warning"]]
+    _ask_q = f"I ran Verilay on {data.get('repo','my app')} (Score {h.get('score','?')}) and got these issues:\n" + ("\n".join(_critical[:5]) or "No critical issues") + "\n\nExplain these simply and how to fix them. I am not a developer."
+    _ask_url = "https://claude.ai/new?q=" + _urlparse.quote(_ask_q)
+    out.append(f'<div style="margin:.75rem 0;padding:.85rem 1rem;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><div style="font-size:13px;font-weight:600;color:#3C3489;margin-bottom:2px">🤖 Confused about a finding?</div><div style="font-size:12px;color:#3C3489">Ask AI to explain any issue in plain English and suggest how to fix it.</div></div><a href="{_ask_url}" target="_blank" style="font-size:12px;padding:7px 16px;border-radius:20px;background:#534AB7;color:#fff;text-decoration:none;white-space:nowrap;font-weight:500">Ask AI about this report →</a></div>')
 
     # Layers
     if layers:
