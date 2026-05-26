@@ -414,6 +414,19 @@ def call_claude_text(prompt, max_tokens=800):
         return raw.strip()
 
 
+_LAYER_DEFAULTS = {
+    "Auth": "Auth is the login system — it checks who you are before letting you into the app, like a bouncer at the door.",
+    "Config": "Config stores your app settings and secret keys — like a locked filing cabinet with all the codes your app needs to run.",
+    "Database": "The Database stores everything permanently — user accounts, content, orders. Without it the app forgets everything when you close it.",
+    "API": "The API is the messenger between what users see and where data lives — like a waiter taking orders to the kitchen and bringing food back.",
+    "Frontend": "The Frontend is everything users see in their browser — buttons, forms, pages. It runs on the user device, not your server.",
+    "Libraries": "Libraries are ready-made code packages your app uses instead of building everything from scratch — like buying pre-made ingredients.",
+}
+
+def _layer_default(name):
+    return _LAYER_DEFAULTS.get(name, f"The {name} layer handles related functionality.")
+
+
 def parse_flat_response(text, layer_names):
     """Parse flat key:value Claude response into layer structure."""
     kv = {}
@@ -503,7 +516,7 @@ def parse_flat_response(text, layer_names):
                 "findings": findings_expert
             },
             "learner": {
-                "what_is_it": kv.get(f"{p}_WHAT", f"The {name} layer handles related functionality."),
+                "what_is_it": kv.get(f"{p}_WHAT", _layer_default(name)),
                 "analogy": kv.get(f"{p}_ANALOGY", ""),
                 "what_it_does_in_your_app": kv.get(f"{p}_DOES", ""),
                 "how_it_connects": kv.get(f"{p}_CONNECTS", ""),
