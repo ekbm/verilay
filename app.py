@@ -203,12 +203,35 @@ def fetch_zip(zip_bytes, filename):
             candidate = all_names[0].split("/")[0] + "/"
             if all(n.startswith(candidate) for n in all_names[:5]): prefix = candidate
         def strip(p): return p[len(prefix):] if p.startswith(prefix) else p
-        # Filter out junk folders
+        # Filter out junk folders and binary files
+        SKIP_EXTENSIONS = {
+            '.png','.jpg','.jpeg','.gif','.ico','.svg','.woff','.woff2',
+            '.ttf','.eot','.mp4','.mp3','.wav','.pdf','.zip','.tar',
+            '.gz','.map','.lock','.min.js','.min.css'
+        }
         filtered_names = [
             n for n in all_names
             if not any(part in SKIP_FOLDERS for part in n.split('/'))
             and not n.endswith('/')
+            and not any(n.endswith(ext) for ext in SKIP_EXTENSIONS)
+            and not n.startswith('.')
         ]
+        # Prioritise important files
+        PRIORITY_PATTERNS = [
+            'auth','login','database','db','schema','config',
+            'env','api','route','server','app','main','index',
+            'package.json','requirements.txt','supabase'
+        ]
+        def priority_score(name):
+            name_lower = name.lower()
+            for i, pat in enumerate(PRIORITY_PATTERNS):
+                if pat in name_lower:
+                    return i
+            return len(PRIORITY_PATTERNS)
+
+        filtered_names.sort(key=priority_score)
+        # Limit to 50 most relevant files
+        filtered_names = filtered_names[:50]
         name_map = {strip(n): n for n in filtered_names}
         def read_zip(rel):
             if rel not in name_map: return None
