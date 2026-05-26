@@ -235,7 +235,11 @@ def fetch_zip(zip_bytes, filename):
         name_map = {strip(n): n for n in filtered_names}
         def read_zip(rel):
             if rel not in name_map: return None
-            try: return zf.read(name_map[rel]).decode("utf-8","replace")[:MAX_FILE_CHARS]
+            try:
+                info = zf.getinfo(name_map[rel])
+                # Skip files larger than 100KB uncompressed
+                if info.file_size > 100000: return None
+                return zf.read(name_map[rel]).decode("utf-8","replace")[:MAX_FILE_CHARS]
             except: return None
         for p in PRIORITY_FILES:
             if p in name_map:
@@ -355,12 +359,12 @@ def sanitise_for_prompt(content):
     return "".join(c for c in content if ord(c) >= 32 or c in "\n\t")
 
 
-def files_for(files, keys):
-    """Build file text block from selected keys, capped at 10KB total."""
+def files_for(files, keys, max_total=10000):
+    """Build file text block from selected keys, capped at max_total chars."""
     out = ""
     total = 0
     for k in keys:
-        if k in files and total < 10000:
+        if k in files and total < max_total:
             content = sanitise_for_prompt(files[k])
             chunk = "\n\n=== " + k + " ===\n" + content
             out += chunk
@@ -512,6 +516,15 @@ def parse_flat_response(text, layer_names):
 
 
 def analyse_step1(files, tree, repo_name, method):
+    # Limit files for ZIP uploads to keep analysis fast
+    if method == "zip" and len(files) > 20:
+        priority_keys = sorted(files.keys(), key=lambda k: (
+            0 if any(p in k.lower() for p in ['auth','login','config','env','database','db','schema']) else
+            1 if any(p in k.lower() for p in ['api','route','server','app','main','index']) else
+            2
+        ))[:20]
+        files = {k: files[k] for k in priority_keys}
+
     tree_str = "\n".join(tree[:60]) if tree else "Not available"
     stack_keys = [k for k in files if any(sf in k for sf in
         ["package.json","requirements","Procfile","vite","tsconfig",".gitignore","Dockerfile"])]
@@ -860,8 +873,8 @@ def analyse_stream():
                     yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
                 zip_data = f.read()
                 zip_size_mb = len(zip_data) / (1024 * 1024)
-                if zip_size_mb > 50:
-                    yield json.dumps({"event":"error","data":f"ZIP file is {zip_size_mb:.0f}MB — too large to analyse. Please remove the node_modules folder before zipping (right-click node_modules → delete, then re-zip). This usually reduces size to under 5MB."}) + "\n"; return
+                if zip_size_mb > 500:
+                    yield json.dumps({"event":"error","data":f"ZIP file is {zip_size_mb:.0f}MB — too large. Please upload a ZIP under 500MB."}) + "\n"; return
                 files, tree, repo_name = fetch_zip(io.BytesIO(zip_data), f.filename)
             elif method == "url":
                 url = request.form.get("live_url","").strip()
