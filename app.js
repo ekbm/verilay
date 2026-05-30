@@ -699,6 +699,21 @@ function renderReport(data) {
   html += '<div><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + pb[3] + '</div>';
   html += '<div style="font-size:12px;opacity:.85">' + esc(pr.reason||'') + '</div></div></div>';
 
+  // Static site recommendation
+  var pr = data.prod_ready || {};
+  if (pr.static_recommendation === 'yes' || pr.static_recommendation === 'partial') {
+    html += '<div style="background:#EFF6FF;border:0.5px solid #3B82F6;border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
+    html += '<i class="ti ti-topology-star" style="color:#3B82F6;font-size:16px;margin-top:1px;flex-shrink:0"></i>';
+    html += '<div>';
+    html += '<div style="font-size:13px;font-weight:600;color:#1D4ED8;margin-bottom:2px">💡 Could this be a static site?</div>';
+    if (pr.static_recommendation === 'yes') {
+      html += '<div style="font-size:12px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'This app may not need a database or server — it could be simpler and cheaper to host as a static site on Netlify or Vercel for free.') + '</div>';
+    } else {
+      html += '<div style="font-size:12px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'Parts of this app could potentially be simplified. A static approach would reduce complexity and security risk.') + '</div>';
+    }
+    html += '</div></div>';
+  }
+
   // Scope notice - always shown, sets honest expectations
   html += '<div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
   html += '<i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>';
@@ -1220,6 +1235,27 @@ function renderPart2(data) {
 }
 
 // Start everything when DOM is ready
+// Toggle accuracy tip
+function toggleAccuracyTip() {
+  var el = document.getElementById('accuracy-tip');
+  var ico = document.getElementById('accuracy-tip-ico');
+  if (!el) return;
+  var open = el.style.display === 'block';
+  el.style.display = open ? 'none' : 'block';
+  if (ico) ico.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function copyAccuracyPrompt() {
+  var text = 'Add a JSDoc comment block to the top of each edge/serverless function with these fields: @auth-required: true|false, @auth-method: in-code|gateway|none, @public: true|false (and reason if true e.g. "inbound webhook" or "landing page demo"). Also create a SECURITY.md explaining your project auth model. This helps security scanners understand your app correctly.';
+  navigator.clipboard.writeText(text).then(function() {
+    var btn = document.getElementById('copy-accuracy-btn');
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(function() { btn.textContent = 'Copy'; }, 2000); }
+  }).catch(function() {
+    var btn = document.getElementById('copy-accuracy-btn');
+    if (btn) btn.textContent = 'Copy';
+  });
+}
+
 // Toggle security checklist item
 function toggleCheck(id) {
   var el = document.getElementById(id);
