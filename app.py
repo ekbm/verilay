@@ -585,13 +585,15 @@ def analyse_step1(files, tree, repo_name, method):
         "STACK_6_VERSION: version\n"
         "STACK_6_CAT: category\n"
         "STACK_6_DESC: description\n"
+        "STATIC_RECOMMENDATION: yes|no|partial — could this app be simplified to a static site?\n"
+        "STATIC_REASON: one sentence — why or why not it could be static (only if STATIC_RECOMMENDATION is yes or partial)\n"
         "\nBe honest. A score means truly production-ready. Most AI-built apps score B or C.\n"
         "List all libraries/frameworks found. Leave STACK_N fields empty if fewer than N items.\n"
         "IMPORTANT: If input method is 'url' (surface scan), do NOT flag environment variable patterns as security issues "
         "since you cannot inspect server-side configuration from a live URL. Only flag issues visible in the HTML/JS."
     )
 
-    text = call_claude_text(prompt, max_tokens=600)
+    text = call_claude_text(prompt, max_tokens=700)
     lines = {}
     for line in text.strip().split("\n"):
         if ":" in line:
@@ -624,7 +626,9 @@ def analyse_step1(files, tree, repo_name, method):
         "prod_ready": {
             "verdict": lines.get("VERDICT", "needs_work"),
             "confidence": lines.get("CONFIDENCE", "medium"),
-            "reason": lines.get("REASON", "")
+            "reason": lines.get("REASON", ""),
+            "static_recommendation": lines.get("STATIC_RECOMMENDATION", "no"),
+            "static_reason": lines.get("STATIC_REASON", "")
         },
         "health": {
             "critical": critical,
@@ -647,12 +651,25 @@ def analyse_step2(files, repo_name):
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
         "FILES:\n" + ftext + "\n\n"
+        "IMPORTANT PLATFORM AWARENESS — read before analysing:\n"
+        "- If this is a Lovable Cloud app: .env files are auto-managed, NEVER flag missing .env validation or .env.example\n"
+        "- If using Supabase JS client: it returns {data, error} NOT exceptions — try/catch is NOT the correct pattern, checking 'error' is\n"
+        "- If using TanStack Query (useQuery/useMutation): loading states, error handling and retry are BUILT IN — do not flag as missing\n"
+        "- If types come from supabase/types.ts auto-generated file: runtime Zod validation is overkill — do not flag as missing\n"
+        "- If onAuthStateChange + autoRefreshToken are present: do NOT flag auth session handling as missing\n"
+        "- If import.meta.env is used for env vars: do NOT flag as hardcoded\n"
+        "- Only flag something as critical or warning if it is GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
         "AUTH_STATUS: critical|warning|passing\n"
         "AUTH_SUMMARY: one sentence technical summary of auth layer\n"
+        "IMPORTANT for AUTH: Before flagging as critical, check if the solution is ALREADY implemented. "
+        "If onAuthStateChange is present, do NOT flag it as missing. "
+        "If autoRefreshToken is configured, do NOT flag token refresh as missing. "
+        "If ProtectedRoute exists and redirects, do NOT flag protected routes as missing. "
+        "Only flag as critical if the issue is genuinely absent from the code.\n"
         "AUTH_F1_SEV: critical|warning|passing\n"
         "AUTH_F1_TITLE: short finding title\n"
-        "AUTH_F1_DETAIL: one sentence technical detail\n"
+        "AUTH_F1_DETAIL: one sentence technical detail — only flag if genuinely missing\n"
         "AUTH_F1_FILE: filename or empty\n"
         "AUTH_F1_WHY: why this matters to the business\n"
         "AUTH_F1_PLAIN: same finding in plain English a 10-year-old would understand\n"
@@ -718,6 +735,14 @@ def analyse_step3(files, repo_name):
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
         "FILES:\n" + ftext + "\n\n"
+        "IMPORTANT PLATFORM AWARENESS — read before analysing:\n"
+        "- If this is a Lovable Cloud app: .env files are auto-managed, NEVER flag missing .env validation or .env.example\n"
+        "- If using Supabase JS client: it returns {data, error} NOT exceptions — try/catch is NOT the correct pattern\n"
+        "- If using TanStack Query (useQuery/useMutation): loading states, error handling and retry are BUILT IN — do not flag as missing\n"
+        "- If types come from supabase/types.ts auto-generated file: runtime Zod validation is overkill — do not flag\n"
+        "- If onAuthStateChange + autoRefreshToken present: do NOT flag auth session handling as missing\n"
+        "- If import.meta.env is used for env vars: do NOT flag as hardcoded values\n"
+        "- Only flag something as critical or warning if GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
         "API_STATUS: critical|warning|passing\n"
         "API_SUMMARY: one sentence technical summary\n"
@@ -786,7 +811,13 @@ def analyse_step4(repo_name, built_with, findings_summary):
     prompt = (
         "Based on this analysis of " + repo_name + ":\n"
         + findings_summary +
-        "\n\nIMPORTANT: Only suggest fixes for issues that are ACTUALLY present in this analysis. "
+        "\n\nIMPORTANT PLATFORM AWARENESS:\n"
+        "- Lovable Cloud: .env auto-managed, NEVER suggest .env.example or env validation as a fix\n"
+        "- Supabase JS client: uses {data,error} pattern NOT exceptions — do NOT suggest wrapping in try/catch\n"
+        "- TanStack Query: loading/error/retry are BUILT IN — do NOT suggest implementing these\n"
+        "- supabase/types.ts is auto-generated: do NOT suggest adding Zod or runtime validation\n"
+        "- import.meta.env usage: do NOT flag as hardcoded values\n\n"
+        "IMPORTANT: Only suggest fixes for issues that are ACTUALLY present in this analysis. "
         "If the score is A or B with no critical issues, say 'No critical fixes needed' for FIX titles. "
         "Do NOT invent generic fixes that aren't supported by the findings above.\n\n"
         "Respond ONLY with key:value pairs, one per line, no other text.\n\n"
