@@ -590,7 +590,10 @@ def analyse_step1(files, tree, repo_name, method):
         "\nBe honest. A score means truly production-ready. Most AI-built apps score B or C.\n"
         "List all libraries/frameworks found. Leave STACK_N fields empty if fewer than N items.\n"
         "IMPORTANT: If input method is 'url' (surface scan), do NOT flag environment variable patterns as security issues "
-        "since you cannot inspect server-side configuration from a live URL. Only flag issues visible in the HTML/JS."
+        "since you cannot inspect server-side configuration from a live URL. Only flag issues visible in the HTML/JS.\n"
+        "AUTH POSTURE HEADERS: If you see @auth-required: false or @public: true in function comments → that function is intentionally public, never flag it. "
+        "If you see @auth-method: in-code → auth is validated in the function code, not the gateway — never flag verify_jwt=false for these functions. "
+        "If you see a SECURITY.md file → read it to understand the project auth model before flagging any auth issues."
     )
 
     text = call_claude_text(prompt, max_tokens=700)
@@ -1747,6 +1750,23 @@ input:focus{border-color:var(--pu)}
     <label class="lbl">Repository URL</label>
     <p class="sub">Works with GitHub, GitLab, Bitbucket, and Azure DevOps</p>
     <input type="url" id="gh-url" placeholder="https://github.com/username/project">
+    <div style="background:#FEF3C7;border:0.5px solid #F59E0B;border-radius:8px;padding:.75rem 1rem;margin-top:.65rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleAccuracyTip()">
+        <div style="font-size:12px;font-weight:600;color:#92400E">⭐ For accurate results — do this before scanning</div>
+        <i class="ti ti-chevron-down" id="accuracy-tip-ico" style="font-size:12px;color:#92400E"></i>
+      </div>
+      <div id="accuracy-tip" style="display:none;margin-top:.65rem">
+        <div style="font-size:12px;color:#92400E;line-height:1.6;margin-bottom:.65rem">
+          Ask your AI builder (Lovable, Replit, Cursor etc) to add auth posture comments to your edge functions. 
+          This helps Verilay understand which functions are intentionally public vs protected, giving you fewer false positives and a more accurate score.
+        </div>
+        <div style="font-size:11px;font-weight:600;color:#92400E;margin-bottom:.35rem">Copy this prompt and paste it into your AI builder:</div>
+        <div style="background:#fff;border:0.5px solid #F59E0B;border-radius:6px;padding:.6rem .75rem;font-size:11px;font-family:monospace;color:#444;line-height:1.6;position:relative">
+          Add a JSDoc comment block to the top of each edge/serverless function with these fields: @auth-required: true|false, @auth-method: in-code|gateway|none, @public: true|false (and reason if true e.g. "inbound webhook" or "landing page demo"). Also create a SECURITY.md explaining your project auth model. This helps security scanners understand your app correctly.
+          <button onclick="copyAccuracyPrompt()" style="position:absolute;top:6px;right:6px;font-size:10px;padding:3px 8px;border-radius:4px;background:#F59E0B;color:#fff;border:none;cursor:pointer" id="copy-accuracy-btn">Copy</button>
+        </div>
+      </div>
+    </div>
     <div class="hint" style="background:var(--bg);border:0.5px solid var(--bdr)">
       <div style="font-size:11px;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.5rem">How to find your repo URL</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:11px;color:var(--mut)">
