@@ -78,9 +78,26 @@ def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
     if _HAS_SUPABASE:
         try:
+            # Check for previous analysis of same repo
+            repo = data.get("repo", "")
+            prev_score = None
+            prev_critical = None
+            if repo:
+                try:
+                    prev = _sb.table("reports").select("score,data").eq("repo", repo).order("created_at", desc=True).limit(1).execute()
+                    if prev.data:
+                        prev_score = prev.data[0].get("score", "")
+                        prev_data = prev.data[0].get("data", {})
+                        prev_critical = prev_data.get("health", {}).get("critical", None)
+                except:
+                    pass
+            # Add previous score to current data for comparison
+            if prev_score:
+                data["prev_score"] = prev_score
+                data["prev_critical"] = prev_critical
             _sb.table("reports").insert({
                 "id": report_id,
-                "repo": data.get("repo", ""),
+                "repo": repo,
                 "data": data,
                 "input_method": data.get("input_method", "github"),
                 "score": data.get("health", {}).get("score", "")
@@ -662,6 +679,7 @@ def analyse_step2(files, repo_name):
         "- If onAuthStateChange + autoRefreshToken are present: do NOT flag auth session handling as missing\n"
         "- If import.meta.env is used for env vars: do NOT flag as hardcoded\n"
         "- CRITICAL: verify_jwt=false in supabase/config.toml is the Lovable Cloud DEFAULT — it does NOT mean functions are unprotected. Each function validates auth in-code using getUser()/getClaims(). NEVER flag verify_jwt=false as a security issue for Lovable apps\n"
+        "- If you MUST mention verify_jwt=false, mark it as WARNING not CRITICAL and add this to AUTH_F1_PLAIN: 'This may be a false positive if your edge functions contain getUser() or getClaims() calls. Ask your AI builder to confirm each function validates auth in-code.'\n"
         "- PUBLIC BY DESIGN patterns — NEVER flag these as security issues:\n"
         "  * Webhook handlers: filenames containing webhook, receive-, inbound, stripe-webhook, sendgrid, meta-conversions\n"
         "  * Public demos/landing: filenames containing public, demo, free, landing, preview\n"
