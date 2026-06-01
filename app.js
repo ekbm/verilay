@@ -696,8 +696,19 @@ function renderReport(data) {
 
   html += '<div class="prod-banner" style="background:' + pb[0] + ';color:' + pb[1] + '">';
   html += '<i class="ti ' + pb[2] + '" style="font-size:26px"></i>';
-  html += '<div><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + pb[3] + '</div>';
-  html += '<div style="font-size:12px;opacity:.85">' + esc(pr.reason||'') + '</div></div></div>';
+  html += '<div style="flex:1"><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + pb[3] + '</div>';
+  html += '<div style="font-size:12px;opacity:.85">' + esc(pr.reason||'') + '</div></div>';
+  if (data.prev_score && data.prev_score !== h.score) {
+    var scores = ['F','D','C','B','A'];
+    var prevIdx = scores.indexOf(data.prev_score);
+    var currIdx = scores.indexOf(h.score);
+    if (currIdx > prevIdx) {
+      html += '<div style="background:#1D9E75;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▲ ' + data.prev_score + ' → ' + h.score + ' Improved!</div>';
+    } else if (currIdx < prevIdx) {
+      html += '<div style="background:#E24B4A;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▼ ' + data.prev_score + ' → ' + h.score + '</div>';
+    }
+  }
+  html += '</div>';
 
   // Static site recommendation
   var pr = data.prod_ready || {};
@@ -890,6 +901,13 @@ function renderLayer() {
       html += '<div><div style="font-weight:500;margin-bottom:2px">' + esc(f.title||'') + '</div>';
       html += '<div>' + esc(f.detail||'') + (f.file ? ' <code style="font-size:10px;opacity:.7">' + esc(f.file) + '</code>' : '') + '</div>';
       if (f.why_it_matters) html += '<div style="font-size:11px;margin-top:4px;opacity:.85"><strong>Why it matters:</strong> ' + esc(f.why_it_matters) + '</div>';
+      // Add manual verification note for verify_jwt findings
+      if (f.title && f.title.toLowerCase().indexOf('jwt') > -1) {
+        html += '<div style="font-size:11px;margin-top:6px;padding:6px 8px;background:#FEF9C3;border-radius:6px;color:#854D0E">';
+        html += '<strong>⚠️ Needs manual check:</strong> If your edge functions contain <code>getUser()</code> or <code>getClaims()</code> calls, this finding may not apply. ';
+        html += 'Ask your AI builder: <em>"Do my edge functions validate auth in-code?"</em>';
+        html += '</div>';
+      }
       html += '</div></div>';
     });
   } else if (activeMode === 'learner') {
