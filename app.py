@@ -866,7 +866,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "OPINION_PROD: complete prompt asking if " + repo_name + " is ready for production\n"
     )
 
-    text = call_claude_text(prompt, max_tokens=800)
+    text = call_claude_text(prompt, max_tokens=1500)
     lines = {}
     for line in text.strip().split("\n"):
         if ":" in line:
