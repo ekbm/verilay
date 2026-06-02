@@ -689,6 +689,7 @@ def analyse_step2(files, repo_name):
         "- If @auth-required: false or @public: true appears in function comments → it is intentionally public, do not flag\n"
         "- If @auth-method: in-code appears in function comments → auth is validated in code, do not flag as missing\n"
         "- Only flag edge functions as critical if they handle payments/admin/PII AND have no auth checks AND no public justification\n"
+        "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_URL in frontend code is NORMAL and BY DESIGN for Supabase apps — NEVER flag as critical or warning. The anon key is meant to be public. Security comes from RLS policies, not hiding the key.\n"
         "- Only flag something as critical or warning if it is GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
         "AUTH_STATUS: critical|warning|passing\n"
@@ -777,6 +778,7 @@ def analyse_step3(files, repo_name):
         "- PUBLIC BY DESIGN — NEVER flag: webhook handlers (webhook/receive-/inbound/stripe/sendgrid), public demos (-public/-demo/-free), pre-auth (send-otp/forgot-password/signup), SEO (sitemap/robots/health)\n"
         "- If @auth-required: false or @public: true in function comments → intentionally public, do not flag\n"
         "- If @auth-method: in-code in function comments → auth in code, do not flag as missing\n"
+        "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_URL in frontend is NORMAL and BY DESIGN — NEVER flag as critical or warning. Security comes from RLS policies not hiding the key.\n"
         "- Only flag something as critical or warning if GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
         "API_STATUS: critical|warning|passing\n"
@@ -854,7 +856,8 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "- import.meta.env usage: do NOT flag as hardcoded values\n"
         "- verify_jwt=false in config.toml is Lovable Cloud DEFAULT — auth is validated in-code per function. NEVER suggest fixing this\n"
         "- PUBLIC BY DESIGN — NEVER suggest auth fixes for: webhook handlers, public demos, pre-auth flows, SEO endpoints, sitemap, send-otp\n"
-        "- If @auth-required: false or @public: true in comments → intentionally public, do not suggest auth fix\n\n"
+        "- If @auth-required: false or @public: true in comments → intentionally public, do not suggest auth fix\n"
+        "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY exposed in frontend is NORMAL — never suggest hiding it or moving it. Security comes from RLS policies.\n\n"
         "IMPORTANT: Only suggest fixes for issues that are ACTUALLY present in this analysis. "
         "If the score is A or B with no critical issues, say 'No critical fixes needed' for FIX titles. "
         "Do NOT invent generic fixes that aren't supported by the findings above.\n\n"
@@ -1732,6 +1735,9 @@ input:focus{border-color:var(--pu)}
     <button id="btn-clear-history" style="font-size:11px;padding:3px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">Clear</button>
   </div>
   <div id="history-list" style="display:flex;flex-direction:column;gap:6px"></div>
+  <div id="history-show-more" style="display:none;text-align:center;margin-top:6px">
+    <button onclick="toggleOlderHistory()" id="btn-show-more" style="font-size:11px;padding:4px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">Show older analyses ▾</button>
+  </div>
 </div>
 
 <!-- ── Analysis form (hidden until user clicks analyse) ──── -->
