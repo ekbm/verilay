@@ -1186,11 +1186,11 @@ function renderPart2(data) {
   (data.top_fixes||[]).forEach(function(f, fi) {
     // Choose the right platform prompt
     var platformPrompt = f.general_prompt || f.lovable_prompt || '';
-    var platformLabel = 'Copy AI prompt';
+    var platformLabel = 'Copy fix prompt';
     var platformIcon = 'ti-copy';
     if (isLovable && f.lovable_prompt) {
       platformPrompt = f.lovable_prompt;
-      platformLabel = 'Fix in Lovable';
+      platformLabel = 'Verify & Fix in Lovable';
       platformIcon = 'ti-wand';
     } else if (isReplit && f.replit_prompt) {
       platformPrompt = f.replit_prompt;
