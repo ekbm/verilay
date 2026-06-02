@@ -148,6 +148,8 @@ function renderHistory() {
   }
 
   section.style.display = 'block';
+  var showMoreBtn = document.getElementById('history-show-more');
+  if (showMoreBtn) showMoreBtn.style.display = history.length > 2 ? 'block' : 'none';
   var verdictColors = {
     ready: 'var(--grl):var(--grt)',
     needs_work: 'var(--orl):var(--ort)',
@@ -162,7 +164,8 @@ function renderHistory() {
     var timeStr = date.toLocaleDateString('en-AU', {day:'numeric',month:'short'}) +
                   ' ' + date.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'});
     var isLatest = idx === 0;
-    return '<div style="background:var(--sur);border:0.5px solid ' + (isLatest ? 'var(--pu)' : 'var(--bdr)') + ';border-radius:var(--r);padding:.65rem .9rem;display:flex;align-items:center;gap:10px;cursor:pointer" ' +
+    var isHidden = idx >= 2;
+    return '<div class="history-item" style="display:' + (isHidden ? 'none' : 'flex') + ';background:var(--sur);border:0.5px solid ' + (isLatest ? 'var(--pu)' : 'var(--bdr)') + ';border-radius:var(--r);padding:.65rem .9rem;align-items:center;gap:10px;cursor:pointer" ' +
            'onclick="viewFromHistory(' + idx + ')" title="View report">' +
            '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
            '<div style="flex:1;min-width:0">' +
@@ -762,7 +765,10 @@ function renderReport(data) {
   }).join('');
 
   html += '<div class="rh">';
-  html += '<div style="font-size:16px;font-weight:600;margin-bottom:3px">' + esc(data.repo||'') + '</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
+  html += '<div style="font-size:16px;font-weight:600">' + esc(data.repo||'') + '</div>';
+  html += '<span style="font-size:10px;background:var(--pu);color:#fff;border-radius:10px;padding:2px 8px;font-weight:600">Current</span>';
+  html += '</div>';
   html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
   html += '<div class="hg">' + hcards + '</div></div>';
@@ -1293,6 +1299,17 @@ function copyAccuracyPrompt() {
     var btn = document.getElementById('copy-accuracy-btn');
     if (btn) btn.textContent = 'Copy';
   });
+}
+
+// Toggle older history items
+function toggleOlderHistory() {
+  var items = document.querySelectorAll('.history-item');
+  var btn = document.getElementById('btn-show-more');
+  var showing = btn && btn.textContent.indexOf('Hide') > -1;
+  items.forEach(function(item, i) {
+    if (i >= 2) item.style.display = showing ? 'none' : 'flex';
+  });
+  if (btn) btn.textContent = showing ? 'Show older analyses ▾' : 'Hide older analyses ▴';
 }
 
 // Toggle security checklist item
