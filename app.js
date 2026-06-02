@@ -161,11 +161,12 @@ function renderHistory() {
     var date = new Date(h.timestamp);
     var timeStr = date.toLocaleDateString('en-AU', {day:'numeric',month:'short'}) +
                   ' ' + date.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'});
-    return '<div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.65rem .9rem;display:flex;align-items:center;gap:10px;cursor:pointer" ' +
+    var isLatest = idx === 0;
+    return '<div style="background:var(--sur);border:0.5px solid ' + (isLatest ? 'var(--pu)' : 'var(--bdr)') + ';border-radius:var(--r);padding:.65rem .9rem;display:flex;align-items:center;gap:10px;cursor:pointer" ' +
            'onclick="viewFromHistory(' + idx + ')" title="View report">' +
            '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
            '<div style="flex:1;min-width:0">' +
-           '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(h.repo) + '</div>' +
+           '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (isLatest ? '<span style="font-size:9px;background:var(--pu);color:#fff;border-radius:10px;padding:1px 6px;margin-right:5px;font-weight:600">LATEST</span>' : '') + esc(h.repo) + '</div>' +
            '<div style="font-size:11px;color:var(--mut)">' + timeStr + ' &nbsp;·&nbsp; ' + h.critical + ' critical, ' + h.warnings + ' warnings</div>' +
            '</div>' +
            '<div style="display:flex;gap:6px;flex-shrink:0">' +
@@ -765,6 +766,26 @@ function renderReport(data) {
   html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
   html += '<div class="hg">' + hcards + '</div></div>';
+
+  // Realistic score guide for vibe-coded apps
+  if (h.score && h.score !== 'A') {
+    var scoreMsg = '';
+    var scoreBg = '';
+    var scoreBdr = '';
+    if (h.score === 'B') {
+      scoreBg = '#F0FDF4'; scoreBdr = '#22C55E';
+      scoreMsg = '🎯 <strong>Score B — Safe to launch.</strong> This is the realistic target for AI-built apps. A score requires developer-level hardening (rate limiting, CSRF protection, penetration testing) that goes beyond what AI builders can do automatically. B means your app is properly secured for real users.';
+    } else if (h.score === 'C') {
+      scoreBg = '#FEF9C3'; scoreBdr = '#EAB308';
+      scoreMsg = '🎯 <strong>Score C — Almost there.</strong> Fix the critical issues above and you will reach B. That is the realistic goal for AI-built apps — not A. A score requires a professional developer security review that goes beyond what Verilay or your AI builder can fully automate.';
+    } else if (h.score === 'D' || h.score === 'F') {
+      scoreBg = '#FEF2F2'; scoreBdr = '#EF4444';
+      scoreMsg = '🎯 <strong>Score ' + h.score + ' — Not ready to launch.</strong> Fix critical issues first using the fix prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
+    }
+    if (scoreMsg) {
+      html += '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6">' + scoreMsg + '</div>';
+    }
+  }
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';
