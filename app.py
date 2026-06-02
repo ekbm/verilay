@@ -608,6 +608,10 @@ def analyse_step1(files, tree, repo_name, method):
         "List all libraries/frameworks found. Leave STACK_N fields empty if fewer than N items.\n"
         "IMPORTANT: If input method is 'url' (surface scan), do NOT flag environment variable patterns as security issues "
         "since you cannot inspect server-side configuration from a live URL. Only flag issues visible in the HTML/JS.\n"
+        "For URL scans: present findings as 'potential issue — verify manually' not confirmed vulnerabilities. "
+        "Never mark something as critical from a URL scan unless it is clearly visible in the HTML/JS (e.g. actual API key in source). "
+        "Do NOT flag missing auth or missing backend config from a URL scan — those cannot be assessed without seeing the code.\n"
+        "Do NOT flag meta http-equiv cache tags as security issues — real caching is controlled by HTTP response headers not meta tags.\n"
         "AUTH POSTURE HEADERS: If you see @auth-required: false or @public: true in function comments → that function is intentionally public, never flag it. "
         "If you see @auth-method: in-code → auth is validated in the function code, not the gateway — never flag verify_jwt=false for these functions. "
         "If you see a SECURITY.md file → read it to understand the project auth model before flagging any auth issues."
@@ -690,6 +694,8 @@ def analyse_step2(files, repo_name):
         "- If @auth-method: in-code appears in function comments → auth is validated in code, do not flag as missing\n"
         "- Only flag edge functions as critical if they handle payments/admin/PII AND have no auth checks AND no public justification\n"
         "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_URL in frontend code is NORMAL and BY DESIGN for Supabase apps — NEVER flag as critical or warning. The anon key is meant to be public. Security comes from RLS policies, not hiding the key.\n"
+        "- CACHE META TAGS: do NOT flag meta http-equiv cache-control tags as security issues. Real caching is controlled by HTTP response headers from the server/CDN, not meta tags. Meta cache tags are largely ignored by browsers.\n"
+        "- NOT PROVIDED: if backend files were not provided for analysis, do NOT flag backend security as an issue — note it as a coverage gap only, not a finding.\n"
         "- Only flag something as critical or warning if it is GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
         "AUTH_STATUS: critical|warning|passing\n"
@@ -1646,6 +1652,7 @@ input:focus{border-color:var(--pu)}
       (e.g. C &rarr; B) after applying fixes indicates real progress. Minor variations of one grade
       are normal and don't necessarily reflect a change in your app's security.
       <br><br>
+      Treat findings as <strong>things to verify, not things to fix</strong> — confirm each issue exists in your app before making changes.
       It is <em>not</em> a penetration test or a professional security audit.
       For apps going live with real user data or payments, we always recommend a deeper review from
       <a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a>,
@@ -1687,7 +1694,7 @@ input:focus{border-color:var(--pu)}
           <div style="font-size:11px">If someone steals a login token, they have permanent access to that account - even after the user changes their password.</div>
         </div>
         <div style="background:var(--grl);border-radius:8px;padding:.55rem .75rem;font-size:11px;color:var(--grt);line-height:1.5">
-          <strong>Fix in Lovable:</strong> "Add a 24-hour session expiry to my Supabase auth configuration"
+          <strong>Verify & Fix in Lovable:</strong> "Add a 24-hour session expiry to my Supabase auth configuration"
         </div>
       </div>
     </div>
