@@ -1228,16 +1228,16 @@ function renderPart2(data) {
   (data.top_fixes||[]).forEach(function(f, fi) {
     // Choose the right platform prompt
     var platformPrompt = f.general_prompt || f.lovable_prompt || '';
-    var platformLabel = 'Copy fix prompt';
-    var platformIcon = 'ti-copy';
+    var platformLabel = 'Get advice prompt';
+    var platformIcon = 'ti-bulb';
     if (isLovable && f.lovable_prompt) {
       platformPrompt = f.lovable_prompt;
-      platformLabel = 'Verify & Fix in Lovable';
-      platformIcon = 'ti-wand';
+      platformLabel = 'Ask Lovable about this';
+      platformIcon = 'ti-bulb';
     } else if (isReplit && f.replit_prompt) {
       platformPrompt = f.replit_prompt;
-      platformLabel = 'Fix in Replit';
-      platformIcon = 'ti-terminal';
+      platformLabel = 'Ask Replit about this';
+      platformIcon = 'ti-bulb';
     } else if (isBolt && f.general_prompt) {
       platformLabel = 'Fix in Bolt';
       platformIcon = 'ti-bolt';
@@ -1277,6 +1277,16 @@ function renderPart2(data) {
       else if (isReplit && f.replit_prompt) prompt = f.replit_prompt;
       if (btn && prompt) {
         btn.addEventListener('click', function() {
+          // Show safety reminder before copying
+          var confirmed = confirm(
+            'Before applying this advice:\n\n' +
+            '1. Paste it into Lovable or Replit\n' +
+            '2. Read their response carefully\n' +
+            '3. Ask them to ADVISE first — not make changes yet\n' +
+            '4. Only apply changes they confirm are safe\n\n' +
+            'Copy advice prompt?'
+          );
+          if (!confirmed) return;
           navigator.clipboard.writeText(prompt).then(function() {
             btn.style.background = 'var(--gr)';
             if (copied) { copied.style.display = 'inline'; }
