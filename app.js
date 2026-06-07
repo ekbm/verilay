@@ -573,6 +573,7 @@ function handleStreamEvent(evt) {
     case 'step2':
     case 'step3':
       if (evt.data && evt.data.layers) appendLayers(evt.data.layers);
+      window._analysisComplete = true;  // All layers loaded
       break;
     case 'step2_error':
     case 'step3_error':
@@ -961,7 +962,10 @@ function renderLayer() {
           html += '</div>';
         } else {
           html += '<div style="margin-top:8px">';
-          html += '<button onclick="showVerifyPanel(\''+fKey+'\', this)" style="font-size:11px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">✓ Mark as verified</button>';
+          var btnDisabled = !window._analysisComplete ? 'opacity:.4;cursor:not-allowed' : 'cursor:pointer';
+          var btnClick = !window._analysisComplete ? '' : 'onclick="showVerifyPanel(\''+fKey+'\', this)"';
+          var btnTitle = !window._analysisComplete ? 'title="Wait for full analysis to complete"' : '';
+          html += '<button '+btnClick+' '+btnTitle+' style="font-size:11px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);'+btnDisabled+'">✓ Mark as verified</button>';
           html += '<div id="verify-panel-'+fKey+'" style="display:none;margin-top:8px;background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem">';
           html += '<div style="font-size:12px;font-weight:600;margin-bottom:4px">Paste your AI builder response:</div>';
           html += '<div style="font-size:11px;color:var(--mut);margin-bottom:6px">Take this finding to Lovable or Replit and ask them to verify it. Paste their response here.</div>';
