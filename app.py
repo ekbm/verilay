@@ -1167,6 +1167,38 @@ def verify_finding():
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/waitlist", methods=["POST"])
+def waitlist():
+    """Save email to waitlist table."""
+    try:
+        data = request.get_json()
+        email = data.get("email", "").strip().lower()
+        analyses_count = data.get("analyses_count", 0)
+        source = data.get("source", "nudge")
+
+        if not email or "@" not in email:
+            return jsonify({"ok": False, "error": "Invalid email"})
+
+        if _HAS_SUPABASE:
+            try:
+                _sb.table("waitlist").insert({
+                    "email": email,
+                    "analyses_count": analyses_count,
+                    "source": source
+                }).execute()
+                print(f"✓ Waitlist signup: {email}", flush=True)
+                return jsonify({"ok": True})
+            except Exception as e:
+                # Duplicate email — already signed up
+                if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+                    return jsonify({"ok": True, "already": True})
+                print(f"Waitlist error: {e}", flush=True)
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @app.route("/feedback", methods=["POST"])
 def feedback():
     try:
