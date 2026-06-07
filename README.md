@@ -149,8 +149,19 @@ Verilay is open source and welcomes contributions.
 
 **Commercial use:** If you want to embed Verilay in a commercial product or offer its functionality to paying customers, a commercial licence is required.
 
-📧 Contact **moses@verilay.dev** with subject "Commercial Licence Enquiry"
+📧 Contact **hello@verilay.dev** with subject "Commercial Licence Enquiry"
 
 ---
 
 *Built in Perth, Australia. For the 99% of people who build real things with AI tools and deserve to understand what they built.*
+
+
+## Forking & Reuse
+
+If you're thinking about forking Verilay — you're welcome to explore the code.
+
+Before you fork, please consider reaching out first at **moses@verilay.dev** with what you're planning to build and whether it's personal, open source, or commercial.
+
+This isn't a legal requirement for personal or open source forks — but it helps avoid duplicated effort and we may be able to collaborate instead.
+
+**Commercial use** always requires a commercial licence. See [LICENSE.md](LICENSE.md).
