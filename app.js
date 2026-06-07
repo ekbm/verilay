@@ -948,6 +948,31 @@ function renderLayer() {
         html += 'Ask your AI builder: <em>"Do my edge functions validate auth in-code?"</em>';
         html += '</div>';
       }
+      // Verify button for critical/warning findings
+      if (f.severity === 'critical' || f.severity === 'warning') {
+        var fKey = (activeLayer + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        var isVerified = currentVerifications && currentVerifications[fKey];
+        if (isVerified) {
+          html += '<div style="margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:11px;color:#166534">';
+          html += '<strong>✅ Verified by AI builder</strong>';
+          if (isVerified.verdict === 'false_positive') html += ' — confirmed not an issue';
+          if (isVerified.verdict === 'fixed') html += ' — confirmed fixed';
+          if (isVerified.builder_response) html += '<div style="margin-top:3px;opacity:.8;font-size:10px">' + esc(isVerified.builder_response.substring(0,120)) + (isVerified.builder_response.length > 120 ? '...' : '') + '</div>';
+          html += '</div>';
+        } else {
+          html += '<div style="margin-top:8px">';
+          html += '<button onclick="showVerifyPanel(\''+fKey+'\', this)" style="font-size:11px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">✓ Mark as verified</button>';
+          html += '<div id="verify-panel-'+fKey+'" style="display:none;margin-top:8px;background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem">';
+          html += '<div style="font-size:12px;font-weight:600;margin-bottom:4px">Paste your AI builder response:</div>';
+          html += '<div style="font-size:11px;color:var(--mut);margin-bottom:6px">Take this finding to Lovable or Replit and ask them to verify it. Paste their response here.</div>';
+          html += '<textarea id="verify-text-'+fKey+'" placeholder="Paste Lovable or Replit response here..." style="width:100%;height:70px;font-size:11px;padding:6px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt);resize:vertical;box-sizing:border-box"></textarea>';
+          html += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+          html += '<button onclick="submitVerification(\''+fKey+'\', \'false_positive\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:0.5px solid #93C5FD;cursor:pointer">Already handled</button>';
+          html += '<button onclick="submitVerification(\''+fKey+'\', \'fixed\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:#F0FDF4;color:#166534;border:0.5px solid #86EFAC;cursor:pointer">Fixed it</button>';
+          html += '<button onclick="submitVerification(\''+fKey+'\', \'verified\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:var(--pul);color:var(--put);border:0.5px solid var(--pu);cursor:pointer">Verified — real issue</button>';
+          html += '</div></div></div>';
+        }
+      }
       html += '</div></div>';
     });
   } else if (activeMode === 'learner') {
