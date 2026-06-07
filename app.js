@@ -1413,6 +1413,7 @@ function updateVerifiedScore() {
 
   layers.forEach(function(layer) {
     var findings = (layer.expert || {}).findings || [];
+    var layerUnverified = 0;
     findings.forEach(function(f, fi) {
       var key = (layer.name + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
       var v = currentVerifications[key];
@@ -1421,10 +1422,27 @@ function updateVerifiedScore() {
         if (v.verdict === 'fixed') fixedCount++;
         if (v.verdict === 'false_positive') falsePositiveCount++;
       } else {
-        if (f.severity === 'critical') unverifiedCritical++;
-        if (f.severity === 'warning') unverifiedWarnings++;
+        if (f.severity === 'critical') { unverifiedCritical++; layerUnverified++; }
+        if (f.severity === 'warning') { unverifiedWarnings++; layerUnverified++; }
       }
     });
+
+    // Update layer dot colour if all findings verified
+    if (findings.length > 0 && layerUnverified === 0) {
+      // Find the layer button and update its dot
+      var layerBtns = document.querySelectorAll('.layer-btn, [data-layer]');
+      layerBtns.forEach(function(btn) {
+        if (btn.textContent.trim().indexOf(layer.name) > -1) {
+          var dot = btn.querySelector('.dot, i[style*="border-radius"]');
+          if (dot) {
+            dot.style.background = 'var(--gr)';
+            dot.style.color = 'var(--grt)';
+          }
+        }
+      });
+      // Also update via layer name in the sidebar
+      updateLayerDot(layer.name, true);
+    }
   });
 
   // Recalculate score based on unverified findings only
@@ -1514,6 +1532,33 @@ function toggleOlderHistory() {
     if (i >= 2) item.style.display = showing ? 'none' : 'flex';
   });
   if (btn) btn.textContent = showing ? 'Show older analyses ▾' : 'Hide older analyses ▴';
+}
+
+// Update layer dot to green when all findings verified
+function updateLayerDot(layerName, allVerified) {
+  // Find layer button by data-layer attribute
+  var btn = document.querySelector('#layer-nav .lb[data-layer="' + layerName + '"]');
+  if (!btn) return;
+
+  if (allVerified) {
+    // Update the dot to green
+    var dot = btn.querySelector('.ldot');
+    if (dot) {
+      dot.style.background = '#1D9E75';
+      dot.title = '✅ All findings verified';
+    }
+    // Update the icon background to green
+    var ico = btn.querySelector('.lico');
+    if (ico) {
+      ico.style.background = 'var(--grl)';
+      ico.style.color = 'var(--grt)';
+    }
+    // Add verified badge next to layer name
+    var span = btn.querySelector('span');
+    if (span && span.textContent.indexOf('✅') === -1) {
+      span.innerHTML = esc(layerName) + ' <span style="font-size:9px;background:#1D9E75;color:#fff;border-radius:8px;padding:1px 5px;margin-left:4px">verified</span>';
+    }
+  }
 }
 
 // Toggle security checklist item
