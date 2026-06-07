@@ -1337,6 +1337,16 @@ async function submitVerification(findingKey, verdict) {
   var textarea = document.getElementById('verify-text-' + findingKey);
   var builderResponse = textarea ? textarea.value.trim() : '';
 
+  // Require builder response before submitting
+  if (!builderResponse || builderResponse.length < 10) {
+    if (textarea) {
+      textarea.style.border = '1.5px solid #E24B4A';
+      textarea.placeholder = 'Please paste your AI builder response first before verifying...';
+      textarea.focus();
+    }
+    return;
+  }
+
   if (!savedReportId) {
     alert('Please wait for the report to save before verifying findings.');
     return;
