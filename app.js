@@ -594,6 +594,13 @@ function handleStreamEvent(evt) {
       var statusEl = document.getElementById('report-status');
       if (shareInput) shareInput.value = shareUrl;
       if (shareBanner) shareBanner.style.display = 'flex';
+
+      // Show waitlist nudge after 3+ analyses
+      var analysisCount = parseInt(localStorage.getItem('verilay_analysis_count') || '0') + 1;
+      localStorage.setItem('verilay_analysis_count', analysisCount);
+      if (analysisCount >= 3 && !localStorage.getItem('verilay_waitlist_shown')) {
+        setTimeout(function() { showWaitlistNudge(analysisCount); }, 2000);
+      }
       // Show feedback widget and star prompt
       var fw = document.getElementById('feedback-widget');
       if (fw) fw.style.display = 'block';
@@ -1508,6 +1515,68 @@ function updateVerifiedScore() {
       (falsePositiveCount > 0 ? falsePositiveCount + ' false positive' + (falsePositiveCount > 1 ? 's' : '') + ' · ' : '') +
       (unverifiedCritical > 0 ? '<span style="color:#E24B4A">' + unverifiedCritical + ' critical still need attention</span>' : 'all critical issues accounted for');
   }
+}
+
+// Waitlist nudge
+function showWaitlistNudge(count) {
+  var existing = document.getElementById('waitlist-nudge');
+  if (existing) return;
+
+  var nudge = document.createElement('div');
+  nudge.id = 'waitlist-nudge';
+  nudge.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:var(--sur);border:0.5px solid var(--pu);border-radius:12px;padding:1.1rem 1.25rem;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;font-size:13px';
+  nudge.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">' +
+    '<div style="font-weight:600;color:var(--txt)">Enjoying Verilay? 🎉</div>' +
+    '<button onclick="dismissWaitlist()" style="background:none;border:none;cursor:pointer;color:var(--mut);font-size:16px;padding:0;line-height:1">×</button>' +
+    '</div>' +
+    '<div style="color:var(--mut);margin-bottom:.75rem;line-height:1.5">You\'ve run ' + count + ' analyses. We\'re building <strong>persistent history</strong>, <strong>email reports</strong>, and <strong>saved verifications</strong> so your progress carries forward.</div>' +
+    '<div style="color:var(--mut);font-size:11px;margin-bottom:.65rem">Join the waitlist — free, no commitment.</div>' +
+    '<div style="display:flex;gap:6px">' +
+    '<input id="waitlist-email" type="email" placeholder="your@email.com" style="flex:1;font-size:12px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)">' +
+    '<button onclick="submitWaitlist()" style="font-size:12px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap">Join →</button>' +
+    '</div>' +
+    '<div id="waitlist-msg" style="font-size:11px;margin-top:6px;color:var(--gr);display:none"></div>';
+
+  document.body.appendChild(nudge);
+}
+
+async function submitWaitlist() {
+  var email = document.getElementById('waitlist-email');
+  var msg = document.getElementById('waitlist-msg');
+  if (!email || !email.value.trim() || email.value.indexOf('@') === -1) {
+    if (email) email.style.border = '1.5px solid #E24B4A';
+    return;
+  }
+
+  try {
+    var resp = await fetch('/waitlist', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        email: email.value.trim(),
+        analyses_count: parseInt(localStorage.getItem('verilay_analysis_count') || '0'),
+        source: 'nudge_banner'
+      })
+    });
+    var data = await resp.json();
+    if (data.ok) {
+      localStorage.setItem('verilay_waitlist_shown', '1');
+      if (msg) {
+        msg.style.display = 'block';
+        msg.textContent = data.already ? 'Already on the list — we\'ll be in touch!' : '✅ You\'re on the list! We\'ll email you when it\'s ready.';
+      }
+      setTimeout(function() { dismissWaitlist(); }, 3000);
+    }
+  } catch(e) {
+    console.error('Waitlist error:', e);
+  }
+}
+
+function dismissWaitlist() {
+  var nudge = document.getElementById('waitlist-nudge');
+  if (nudge) nudge.remove();
+  localStorage.setItem('verilay_waitlist_shown', '1');
 }
 
 // Toggle accuracy tip
