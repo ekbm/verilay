@@ -1360,9 +1360,21 @@ async function submitVerification(findingKey, verdict) {
         verdict: verdict,
         builder_response: builderResponse
       };
-      // Re-render the report to show verified state
-      if (currentReport) renderReport(currentReport);
-      // Recalculate score display
+      // Don't re-render full report - just update this finding panel
+      var panel = document.getElementById('verify-panel-' + findingKey);
+      var btn = panel ? panel.previousElementSibling : null;
+      if (panel) {
+        panel.style.display = 'none';
+        // Show verified state inline
+        var verifiedDiv = document.createElement('div');
+        verifiedDiv.style.cssText = 'margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:11px;color:#166534';
+        verifiedDiv.innerHTML = '<strong>✅ Verified by AI builder</strong>' +
+          (verdict === 'false_positive' ? ' — confirmed not an issue' : verdict === 'fixed' ? ' — confirmed fixed' : ' — verified real issue') +
+          (builderResponse ? '<div style="margin-top:3px;opacity:.8;font-size:10px">' + builderResponse.substring(0,120) + (builderResponse.length > 120 ? '...' : '') + '</div>' : '');
+        if (panel.parentNode) panel.parentNode.replaceChild(verifiedDiv, panel);
+        if (btn) btn.style.display = 'none';
+      }
+      // Recalculate score display only
       updateVerifiedScore();
     }
   } catch(e) {
