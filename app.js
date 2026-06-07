@@ -1,3 +1,11 @@
+// =============================================================================
+// Verilay — AI App Verification Layer
+// © 2026 Moses Ekbote. All rights reserved.
+// Free for personal/open source use.
+// Commercial use requires licence: moses@verilay.dev
+// =============================================================================
+
+
 console.log("[Verilay] app.js loading...");
 var currentMethod = 'github';
 var currentReport = null;
@@ -572,6 +580,7 @@ function handleStreamEvent(evt) {
       break;
     case 'saved':
       savedReportId = evt.data.report_id;
+      currentVerifications = {};  // Reset verifications for new report
       // Save to history with the report ID
       if (currentReport) {
         var reportForHistory = Object.assign({}, currentReport);
@@ -677,6 +686,10 @@ function esc(s) {
 
 function renderReport(data) {
   currentReport = data;
+  // Load verifications from saved report data
+  if (data.verifications) {
+    currentVerifications = data.verifications;
+  }
   currentFilesSample = data.files_sample || '';
   currentLayers = {};
   (data.layers || []).forEach(function(l) { currentLayers[l.name] = l; });
@@ -1280,6 +1293,136 @@ function renderPart2(data) {
 }
 
 // Start everything when DOM is ready
+// Verifications store
+var currentVerifications = {};
+
+function showVerifyPanel(findingKey, btn) {
+  var panel = document.getElementById('verify-panel-' + findingKey);
+  if (!panel) return;
+  var isOpen = panel.style.display === 'block';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '✓ Mark as verified' : '✕ Cancel';
+}
+
+async function submitVerification(findingKey, verdict) {
+  var textarea = document.getElementById('verify-text-' + findingKey);
+  var builderResponse = textarea ? textarea.value.trim() : '';
+
+  if (!savedReportId) {
+    alert('Please wait for the report to save before verifying findings.');
+    return;
+  }
+
+  try {
+    var resp = await fetch('/verify-finding', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        report_id: savedReportId,
+        finding_key: findingKey,
+        builder_response: builderResponse,
+        verdict: verdict
+      })
+    });
+    var data = await resp.json();
+    if (data.ok) {
+      currentVerifications = data.verifications || currentVerifications;
+      currentVerifications[findingKey] = {
+        verdict: verdict,
+        builder_response: builderResponse
+      };
+      // Re-render the report to show verified state
+      if (currentReport) renderReport(currentReport);
+      // Recalculate score display
+      updateVerifiedScore();
+    }
+  } catch(e) {
+    console.error('Verify error:', e);
+  }
+}
+
+function updateVerifiedScore() {
+  if (!currentReport) return;
+  var layers = currentReport.layers || [];
+  var unverifiedCritical = 0;
+  var unverifiedWarnings = 0;
+  var verifiedCount = 0;
+  var fixedCount = 0;
+  var falsePositiveCount = 0;
+
+  layers.forEach(function(layer) {
+    var findings = (layer.expert || {}).findings || [];
+    findings.forEach(function(f, fi) {
+      var key = (layer.name + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      var v = currentVerifications[key];
+      if (v) {
+        verifiedCount++;
+        if (v.verdict === 'fixed') fixedCount++;
+        if (v.verdict === 'false_positive') falsePositiveCount++;
+      } else {
+        if (f.severity === 'critical') unverifiedCritical++;
+        if (f.severity === 'warning') unverifiedWarnings++;
+      }
+    });
+  });
+
+  // Recalculate score based on unverified findings only
+  var newScore;
+  if (unverifiedCritical === 0 && unverifiedWarnings === 0) {
+    newScore = 'A';
+  } else if (unverifiedCritical === 0 && unverifiedWarnings <= 3) {
+    newScore = 'B';
+  } else if (unverifiedCritical <= 1 && unverifiedWarnings <= 5) {
+    newScore = 'C';
+  } else if (unverifiedCritical <= 3) {
+    newScore = 'D';
+  } else {
+    newScore = 'F';
+  }
+
+  // Update score display if improved
+  var originalScore = currentReport.health ? currentReport.health.score : null;
+  var scoreColors = {A:'#1D9E75',B:'#4A90D9',C:'#EF9F27',D:'#E24B4A',F:'#A32D2D'};
+  var scores = ['F','D','C','B','A'];
+
+  if (verifiedCount > 0) {
+    // Update score box
+    var scoreBoxes = document.querySelectorAll('.hc');
+    scoreBoxes.forEach(function(box) {
+      if (box.textContent.trim().includes('score') || box.querySelector('div') && ['A','B','C','D','F'].includes(box.querySelector('div').textContent.trim())) {
+        var scoreDiv = box.querySelector('div');
+        if (scoreDiv && ['A','B','C','D','F'].includes(scoreDiv.textContent.trim())) {
+          scoreDiv.textContent = newScore;
+          scoreDiv.style.color = scoreColors[newScore] || '#999';
+          box.style.background = newScore === 'A' ? 'var(--grl)' : newScore === 'B' ? '#EFF6FF' : newScore === 'C' ? '#FEF9C3' : 'var(--rdl)';
+        }
+      }
+    });
+
+    // Show verified summary banner
+    var existing = document.getElementById('verified-summary');
+    if (!existing) {
+      var banner = document.createElement('div');
+      banner.id = 'verified-summary';
+      var reportEl = document.getElementById('report');
+      if (reportEl) reportEl.insertBefore(banner, reportEl.firstChild);
+      existing = banner;
+    }
+    existing.style.cssText = 'background:#F0FDF4;border:0.5px solid #22C55E;border-radius:8px;padding:.85rem 1rem;margin-bottom:10px;font-size:12px;color:#166534;line-height:1.6';
+
+    var improved = scores.indexOf(newScore) > scores.indexOf(originalScore);
+    var scoreLine = improved
+      ? '▲ Score updated: <strong>' + originalScore + ' → ' + newScore + '</strong> after verifying findings with your AI builder'
+      : 'Score: <strong>' + newScore + '</strong> (based on unverified findings)';
+
+    existing.innerHTML =
+      '✅ <strong>' + verifiedCount + ' finding' + (verifiedCount > 1 ? 's' : '') + ' verified</strong> — ' + scoreLine + '<br>' +
+      (fixedCount > 0 ? fixedCount + ' fixed · ' : '') +
+      (falsePositiveCount > 0 ? falsePositiveCount + ' false positive' + (falsePositiveCount > 1 ? 's' : '') + ' · ' : '') +
+      (unverifiedCritical > 0 ? '<span style="color:#E24B4A">' + unverifiedCritical + ' critical still need attention</span>' : 'all critical issues accounted for');
+  }
+}
+
 // Toggle accuracy tip
 function toggleAccuracyTip() {
   var el = document.getElementById('accuracy-tip');
