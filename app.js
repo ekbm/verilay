@@ -994,29 +994,13 @@ function renderLayer() {
       html += '<div>' + esc(f.plain_detail||'') + '</div>';
       if (f.real_world_impact) html += '<div style="font-size:11px;margin-top:4px;font-style:italic">' + esc(f.real_world_impact) + '</div>';
       if (f.action) html += '<div style="margin-top:5px;font-size:11px;font-weight:500">Action: ' + esc(f.action) + '</div>';
-      // Verify button in learner mode - simpler language
+      // Learner mode — understand only, action happens in Expert mode
       if (f.severity === 'critical' || f.severity === 'warning') {
-        var lKey = (activeLayer + '_learner_' + lrn.findings_plain.indexOf(f)).replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        var lVerified = currentVerifications && currentVerifications[lKey];
-        if (lVerified) {
-          html += '<div style="margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:11px;color:#166534">';
-          html += '<strong>✅ My builder checked this</strong>';
-          if (lVerified.verdict === 'false_positive') html += ' — confirmed not an issue';
-          if (lVerified.verdict === 'fixed') html += ' — confirmed fixed';
-          html += '</div>';
-        } else {
-          html += '<div style="margin-top:8px">';
-          html += '<button onclick="showVerifyPanel(\''+lKey+'\', this)" style="font-size:11px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">✓ My builder checked this</button>';
-          html += '<div id="verify-panel-'+lKey+'" style="display:none;margin-top:8px;background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem">';
-          html += '<div style="font-size:12px;font-weight:600;margin-bottom:4px">Did you ask your AI builder about this?</div>';
-          html += '<div style="font-size:11px;color:var(--mut);margin-bottom:6px">Paste what they said here — even if they said it was already handled.</div>';
-          html += '<textarea id="verify-text-'+lKey+'" placeholder="Paste what Lovable or Replit said here..." style="width:100%;height:70px;font-size:11px;padding:6px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt);resize:vertical;box-sizing:border-box"></textarea>';
-          html += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
-          html += '<button onclick="submitVerification(\''+lKey+'\', \'false_positive\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:0.5px solid #93C5FD;cursor:pointer">They said it\'s fine</button>';
-          html += '<button onclick="submitVerification(\''+lKey+'\', \'fixed\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:#F0FDF4;color:#166534;border:0.5px solid #86EFAC;cursor:pointer">They fixed it</button>';
-          html += '<button onclick="submitVerification(\''+lKey+'\', \'verified\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:var(--pul);color:var(--put);border:0.5px solid var(--pu);cursor:pointer">It\'s a real issue</button>';
-          html += '</div></div></div>';
-        }
+        html += '<div style="margin-top:10px;padding:8px 10px;background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;font-size:11px;color:var(--put);line-height:1.55">';
+        html += '<strong>💡 What to do next:</strong><br>';
+        html += 'If you understand this finding and want to act on it — switch to <strong>Expert mode</strong> above to get an advice prompt you can take to your AI builder.<br><br>';
+        html += '<em>Tip: Not sure what to do? Share this report with a developer or technical friend and ask them to review the Expert mode findings with you.</em>';
+        html += '</div>';
       }
       html += '</div></div>';
     });
