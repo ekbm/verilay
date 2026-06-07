@@ -1,3 +1,14 @@
+# =============================================================================
+# Verilay — AI App Verification Layer
+# © 2026 Moses Ekbote. All rights reserved.
+#
+# Free for personal and open source use.
+# Commercial use (embedding in a product, offering to paying customers,
+# white-labelling) requires a commercial licence.
+#
+# Contact: moses@verilay.dev | github.com/ekbm/verilay
+# =============================================================================
+
 #!/usr/bin/env python3
 """
 Verilay v5 — Verification Layer for AI-built apps
@@ -91,10 +102,16 @@ def save_report_data(data):
                         prev_critical = prev_data.get("health", {}).get("critical", None)
                 except:
                     pass
-            # Add previous score to current data for comparison
+            # Add previous score and verifications for same repo
             if prev_score:
                 data["prev_score"] = prev_score
                 data["prev_critical"] = prev_critical
+            # Carry forward verifications from previous analysis of same repo
+            if prev.data if prev_score else False:
+                prev_verifications = prev.data[0].get("data", {}).get("verifications", {})
+                if prev_verifications:
+                    data["verifications"] = prev_verifications
+                    print(f"Carried forward {len(prev_verifications)} verifications from previous analysis", flush=True)
             _sb.table("reports").insert({
                 "id": report_id,
                 "repo": repo,
@@ -1097,6 +1114,42 @@ def report_data(report_id):
     if not data:
         return jsonify({"error": "Report not found or expired"}), 404
     return jsonify(data)
+
+
+@app.route("/verify-finding", methods=["POST"])
+def verify_finding():
+    """Mark a finding as verified by the user's AI builder."""
+    try:
+        data = request.get_json()
+        report_id = data.get("report_id", "")
+        finding_key = data.get("finding_key", "")
+        builder_response = data.get("builder_response", "")
+        verdict = data.get("verdict", "verified")  # verified | fixed | false_positive
+
+        if not report_id or not finding_key:
+            return jsonify({"ok": False, "error": "Missing report_id or finding_key"})
+
+        if _HAS_SUPABASE:
+            try:
+                res = _sb.table("reports").select("data").eq("id", report_id).execute()
+                if res.data:
+                    report_data = dict(res.data[0]["data"])
+                    # Store verifications
+                    verifications = report_data.get("verifications", {})
+                    verifications[finding_key] = {
+                        "verdict": verdict,
+                        "builder_response": builder_response[:500],
+                        "verified_at": _dt.datetime.utcnow().isoformat()
+                    }
+                    report_data["verifications"] = verifications
+                    _sb.table("reports").update({"data": report_data}).eq("id", report_id).execute()
+                    return jsonify({"ok": True, "verifications": verifications})
+            except Exception as e:
+                print(f"Verify finding error: {e}", flush=True)
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @app.route("/feedback", methods=["POST"])
