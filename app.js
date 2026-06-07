@@ -935,7 +935,7 @@ function renderLayer() {
   if (activeMode === 'expert') {
     var ex = layer.expert || {};
     html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">' + esc(ex.summary||'') + '</div>';
-    (ex.findings || []).forEach(function(f) {
+    (ex.findings || []).forEach(function(f, fi) {
       html += '<div class="finding" style="' + sevStyle(f.severity) + '">';
       html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:15px;flex-shrink:0;margin-top:1px"></i>';
       html += '<div><div style="font-weight:500;margin-bottom:2px">' + esc(f.title||'') + '</div>';
@@ -1155,10 +1155,10 @@ function renderPart2(data) {
       'Green = no .env file found in repo. Red = .env file detected in public code. Surface scans cannot check this.'],
     ['auth_properly_configured','Auth properly configured',false,
       'Auth controls who can log in to your app. Misconfigured auth means strangers could access user accounts or bypass login entirely.',
-      'Green = auth middleware detected and appears configured. Red = no auth layer found or session handling missing. Surface scans may show red even if auth is server-side.'],
+      'Green = auth middleware detected and properly configured. Red = no auth layer found or session handling appears missing from the files analysed.'],
     ['rls_likely_configured','Row Level Security configured',false,
       'Row Level Security (RLS) in Supabase controls which users can see which data. Without it, any logged-in user could read all other users data.',
-      'Green = RLS policies detected in database schema. Red = no RLS found or Supabase tables appear unprotected. Surface scans cannot verify this — use GitHub scan for accurate result.'],
+      'Green = RLS policies detected in your code. Red = no RLS policies found in the files analysed — check your Supabase dashboard to confirm RLS is enabled on all tables.'],
     ['dependencies_current','Dependencies are current',false,
       'Outdated libraries often contain known security vulnerabilities that hackers can exploit. Keeping them updated is basic security hygiene.',
       'Green = package versions appear recent. Red = outdated or vulnerable packages detected. Surface scans cannot check package versions — use GitHub scan.'],
