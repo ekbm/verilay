@@ -478,7 +478,7 @@ def parse_flat_response(text, layer_names):
 
         findings_expert = []
         findings_learner = []
-        for i in range(1, 4):
+        for i in range(1, 6):
             title = kv.get(f"{p}_F{i}_TITLE", "")
             if not title or title.lower() in ("finding title", "finding", "next", ""):
                 break
@@ -910,6 +910,16 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "FIX_3_HOW: how\n"
         "FIX_3_EFFORT: effort\n"
         "FIX_3_PROMPT: prompt for " + platform + "\n"
+        "FIX_4_TITLE: fourth fix if needed (empty if fewer than 4 issues)\\n"
+        "FIX_4_WHY: why it matters\\n"
+        "FIX_4_HOW: 2-3 steps\\n"
+        "FIX_4_EFFORT: 5 minutes|30 minutes|1 hour|1 day\\n"
+        "FIX_4_PROMPT: prompt for " + platform + "\\n"
+        "FIX_5_TITLE: fifth fix if needed (empty if fewer than 5 issues)\\n"
+        "FIX_5_WHY: why it matters\\n"
+        "FIX_5_HOW: 2-3 steps\\n"
+        "FIX_5_EFFORT: 5 minutes|30 minutes|1 hour|1 day\\n"
+        "FIX_5_PROMPT: prompt for " + platform + "\\n"
         "SEC_SECRETS: true|false (are secrets exposed in repo)\n"
         "SEC_AUTH: true|false (is auth properly configured)\n"
         "SEC_RLS: true|false (is row level security configured)\n"
@@ -920,7 +930,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "OPINION_PROD: complete prompt asking if " + repo_name + " is ready for production\n"
     )
 
-    text = call_claude_text(prompt, max_tokens=1500)
+    text = call_claude_text(prompt, max_tokens=2000)
     lines = {}
     for line in text.strip().split("\n"):
         if ":" in line:
