@@ -139,7 +139,7 @@ Verilay is open source and welcomes contributions.
 
 - Found a bug → open an issue
 - Want to add a feature → open a PR
-- Want to help build → reach out at hello@verilay.dev
+- Want to help build → reach out at moses@verilay.dev
 
 ---
 
@@ -149,7 +149,7 @@ Verilay is open source and welcomes contributions.
 
 **Commercial use:** If you want to embed Verilay in a commercial product or offer its functionality to paying customers, a commercial licence is required.
 
-📧 Contact **hello@verilay.dev** with subject "Commercial Licence Enquiry"
+📧 Contact **moses@verilay.dev** with subject "Commercial Licence Enquiry"
 
 ---
 
