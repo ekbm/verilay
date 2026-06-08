@@ -7,6 +7,10 @@
 # white-labelling) requires a commercial licence.
 #
 # Contact: moses@verilay.dev | github.com/ekbm/verilay
+#
+# @auth-required: false
+# @public: true — Verilay is a public utility tool, no login required by design
+# @auth-method: none — intentionally unauthenticated, all features are public
 # =============================================================================
 
 #!/usr/bin/env python3
@@ -707,6 +711,9 @@ def analyse_step2(files, repo_name):
         "  * Pre-auth flows: send-otp, forgot-password, reset-password, signup, verify-email\n"
         "  * SEO/infrastructure: sitemap, robots, health, ping, status\n"
         "  * Public chat/support: briq-public-chat, chat-widget, support-bot\n"
+        "- PUBLIC UTILITY TOOLS: if the app appears to be a public tool (security scanner, analysis tool, calculator, search engine, API service) with no user accounts or personal data storage — no auth IS correct by design. Do NOT flag missing auth for public utility tools.\n"
+        "- If @auth-required: false and @public: true appear in code comments — the app is intentionally public, NEVER flag missing auth.\n"
+        "- If @auth-method: none appears — no auth is correct by design, not a vulnerability.\n"
         "- If @auth-required: false or @public: true appears in function comments → it is intentionally public, do not flag\n"
         "- If @auth-method: in-code appears in function comments → auth is validated in code, do not flag as missing\n"
         "- Only flag edge functions as critical if they handle payments/admin/PII AND have no auth checks AND no public justification\n"
@@ -808,6 +815,8 @@ def analyse_step3(files, repo_name):
         "- If import.meta.env is used for env vars: do NOT flag as hardcoded values\n"
         "- CRITICAL: verify_jwt=false in supabase/config.toml is the Lovable Cloud DEFAULT — it does NOT mean functions are unprotected. NEVER flag verify_jwt=false as a security issue for Lovable apps\n"
         "- PUBLIC BY DESIGN — NEVER flag: webhook handlers (webhook/receive-/inbound/stripe/sendgrid), public demos (-public/-demo/-free), pre-auth (send-otp/forgot-password/signup), SEO (sitemap/robots/health)\n"
+        "- PUBLIC UTILITY TOOLS: security scanners, analysis tools, calculators, search engines with no user accounts — no auth is correct by design, never flag.\n"
+        "- If @auth-required: false or @public: true in comments — intentionally public, never flag missing auth.\n"
         "- If @auth-required: false or @public: true in function comments → intentionally public, do not flag\n"
         "- If @auth-method: in-code in function comments → auth in code, do not flag as missing\n"
         "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_URL in frontend is NORMAL and BY DESIGN — NEVER flag as critical or warning. Security comes from RLS policies not hiding the key.\n"
@@ -894,6 +903,8 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "- import.meta.env usage: do NOT flag as hardcoded values\n"
         "- verify_jwt=false in config.toml is Lovable Cloud DEFAULT — auth is validated in-code per function. NEVER suggest fixing this\n"
         "- PUBLIC BY DESIGN — NEVER suggest auth fixes for: webhook handlers, public demos, pre-auth flows, SEO endpoints, sitemap, send-otp\n"
+        "- PUBLIC UTILITY TOOLS: security scanners, analysis tools, calculators — no auth is correct. NEVER suggest adding auth to public utility tools.\n"
+        "- If @auth-required: false or @public: true in comments — never suggest adding auth.\n"
         "- If @auth-required: false or @public: true in comments → intentionally public, do not suggest auth fix\n"
         "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY exposed in frontend is NORMAL — never suggest hiding it or moving it. Security comes from RLS policies.\n\n"
         "- REPLIT AUTH: isAuthenticated/isAdmin/requireAuth middleware = valid auth. NEVER suggest replacing with JWT or Supabase.\\n"
