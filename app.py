@@ -1023,6 +1023,11 @@ def analyse_stream():
                 url = request.form.get("github_url","").strip()
                 if not url:
                     yield json.dumps({"event":"error","data":"Please enter a GitHub URL"}) + "\n"; return
+                # Validate URL format
+                if not any(host in url.lower() for host in ['github.com','gitlab.com','bitbucket.org','dev.azure.com']):
+                    yield json.dumps({"event":"error","data":"Please enter a valid GitHub, GitLab, or Bitbucket URL"}) + "\n"; return
+                if len(url) > 500:
+                    yield json.dumps({"event":"error","data":"URL is too long"}) + "\n"; return
                 files, tree, repo_name = fetch_github(url)
             elif method == "zip":
                 f = request.files.get("zip_file")
@@ -1037,6 +1042,11 @@ def analyse_stream():
                 url = request.form.get("live_url","").strip()
                 if not url:
                     yield json.dumps({"event":"error","data":"Please enter a URL"}) + "\n"; return
+                # Validate URL format
+                if not url.startswith(('http://','https://')):
+                    yield json.dumps({"event":"error","data":"Please enter a valid URL starting with http:// or https://"}) + "\n"; return
+                if len(url) > 500:
+                    yield json.dumps({"event":"error","data":"URL is too long"}) + "\n"; return
                 files, tree, repo_name = fetch_url(url)
             else:
                 yield json.dumps({"event":"error","data":"Unknown method"}) + "\n"; return
@@ -2306,8 +2316,22 @@ input:focus{border-color:var(--pu)}
 </body>
 </html>"""
 
-if __name__ == "__main__":
+def validate_startup():
+    """Validate required environment variables at startup."""
+    missing = []
     if not ANTHROPIC_API_KEY:
-        print("\n⚠️  No ANTHROPIC_API_KEY in .env\n")
+        missing.append("ANTHROPIC_API_KEY — required for analysis (get from console.anthropic.com)")
+    if missing:
+        print("\n⚠️  Missing required environment variables:")
+        for m in missing:
+            print(f"   • {m}")
+        print("\nSet these in Railway environment variables or .env file\n")
+    else:
+        print("✓ Environment validated — all required keys present")
+
+# Run validation on startup (works with both local and Gunicorn)
+validate_startup()
+
+if __name__ == "__main__":
     print("🔍 Verilay running at http://localhost:5000\n")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
