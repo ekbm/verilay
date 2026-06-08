@@ -1418,19 +1418,22 @@ async function submitVerification(findingKey, verdict) {
 }
 
 function updateVerifiedScore() {
-  if (!currentReport) return;
-  var layers = currentReport.layers || [];
+  // Use currentLayers which is where layer data actually lives
+  var layerNames = Object.keys(currentLayers);
+  if (layerNames.length === 0) return;
   var unverifiedCritical = 0;
   var unverifiedWarnings = 0;
   var verifiedCount = 0;
   var fixedCount = 0;
   var falsePositiveCount = 0;
 
-  layers.forEach(function(layer) {
+  layerNames.forEach(function(layerName) {
+    var layer = currentLayers[layerName];
+    layer.name = layerName;  // ensure name is set
     var findings = (layer.expert || {}).findings || [];
     var layerUnverified = 0;
     findings.forEach(function(f, fi) {
-      var key = (layer.name + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      var key = (layerName + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
       var v = currentVerifications[key];
       if (v) {
         verifiedCount++;
@@ -1456,7 +1459,7 @@ function updateVerifiedScore() {
         }
       });
       // Also update via layer name in the sidebar
-      updateLayerDot(layer.name, true);
+      updateLayerDot(layerName, true);
     }
   });
 
@@ -1475,7 +1478,7 @@ function updateVerifiedScore() {
   }
 
   // Update score display if improved
-  var originalScore = currentReport.health ? currentReport.health.score : null;
+  var originalScore = (currentReport && currentReport.health) ? currentReport.health.score : null;
   var scoreColors = {A:'#1D9E75',B:'#4A90D9',C:'#EF9F27',D:'#E24B4A',F:'#A32D2D'};
   var scores = ['F','D','C','B','A'];
 
