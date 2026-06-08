@@ -1409,8 +1409,19 @@ async function submitVerification(findingKey, verdict) {
         if (panel.parentNode) panel.parentNode.replaceChild(verifiedDiv, panel);
         if (btn) btn.style.display = 'none';
       }
-      // Recalculate score display only
+      // Recalculate score and update layer dot directly
       updateVerifiedScore();
+      // Also directly update the layer dot for the current active layer
+      if (activeLayer) {
+        var layerFindings = (currentLayers[activeLayer] && currentLayers[activeLayer].expert || {}).findings || [];
+        var hasUnverified = layerFindings.some(function(f, fi) {
+          var k = (activeLayer + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          return !currentVerifications[k] && (f.severity === 'critical' || f.severity === 'warning');
+        });
+        if (!hasUnverified && layerFindings.length > 0) {
+          updateLayerDot(activeLayer, true);
+        }
+      }
     }
   } catch(e) {
     console.error('Verify error:', e);
