@@ -1246,6 +1246,29 @@ def stats():
     return jsonify({"analyses": count, "formatted": f"{count:,}"})
 
 
+@app.route("/sitemap.xml")
+def sitemap():
+    """Sitemap for search engine indexing."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://verilay.dev/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>"""
+    return app.response_class(xml, mimetype='application/xml')
+
+
+@app.route("/robots.txt")
+def robots():
+    """Robots.txt for search engines."""
+    txt = """User-agent: *
+Allow: /
+Sitemap: https://verilay.dev/sitemap.xml"""
+    return app.response_class(txt, mimetype='text/plain')
+
+
 @app.route("/counter")
 def counter_debug():
     """Debug endpoint to check counter sources."""
