@@ -205,43 +205,59 @@ SECURITY_KEYWORDS = [
 
 def smart_file_selection(files, max_files=25):
     """Intelligently select the most security-relevant files from a repo."""
-    selected = []
-    remaining = list(files.keys())
+    all_paths = list(files.keys())
 
-    # Step 1 — Always include priority files first
+    # Build a set of priority filenames for O(1) lookup
+    priority_names = set()
+    priority_suffixes = []
     for pf in PRIORITY_FILES:
-        for f in remaining[:]:
-            if f.endswith(pf) or f == pf or f.split('/')[-1] == pf.split('/')[-1]:
-                if f not in selected:
-                    selected.append(f)
-                    remaining.remove(f)
-                if len(selected) >= max_files:
-                    break
+        priority_names.add(pf)
+        priority_names.add(pf.split('/')[-1])
+        priority_suffixes.append(pf)
+
+    selected = []
+    selected_set = set()
+
+    # Step 1 — Priority files first (single pass)
+    for path in all_paths:
+        fname = path.split('/')[-1]
+        if fname in priority_names or path in priority_names:
+            if path not in selected_set:
+                selected.append(path)
+                selected_set.add(path)
         if len(selected) >= max_files:
             break
 
-    # Step 2 — Score remaining files by security keyword relevance
+    # Step 2 — Score remaining files (only if needed)
     if len(selected) < max_files:
+        remaining = [p for p in all_paths if p not in selected_set]
+
         def security_score(filepath):
             name = filepath.lower()
             score = 0
+            # Quick keyword check
             for kw in SECURITY_KEYWORDS:
                 if kw in name:
-                    score += 3
-            # Bonus for being in key directories
-            if any(d in name for d in ['/api/', '/auth/', '/db/', '/lib/', '/utils/', '/middleware/']):
-                score += 2
-            # Penalty for test/asset files
-            if any(d in name for d in ['.test.', '.spec.', '/test/', '/tests/', '/assets/', '/public/']):
-                score -= 5
-            # Bonus for TypeScript/Python over minified
-            if name.endswith(('.ts', '.tsx', '.py', '.go', '.rs')):
+                    score += 2
+                    break  # One match is enough to boost
+            if any(d in name for d in ['/api/', '/auth/', '/db/', '/lib/', '/middleware/']):
+                score += 3
+            if any(d in name for d in ['.test.', '.spec.', '/test/', '/tests/', '/assets/', '/public/', 'node_modules']):
+                score -= 10
+            if name.endswith(('.ts', '.tsx', '.py', '.go')):
                 score += 1
             return score
 
-        scored = sorted(remaining, key=security_score, reverse=True)
+        # Only sort what we need
         needed = max_files - len(selected)
-        selected.extend(scored[:needed])
+        if len(remaining) > needed * 3:
+            # Sample top candidates without full sort for large repos
+            scored = [(security_score(p), p) for p in remaining]
+            scored.sort(reverse=True)
+            selected.extend([p for _, p in scored[:needed]])
+        else:
+            scored = sorted(remaining, key=security_score, reverse=True)
+            selected.extend(scored[:needed])
 
     return selected[:max_files]
 KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
@@ -284,12 +300,16 @@ def fetch_github(repo_url):
         max_files=MAX_FILES
     )
 
-    # Also always check for package.json first to understand stack
+    # Ensure manifests are always first — swap in if missing
     for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
         if manifest in all_files and manifest not in selected_paths:
-            selected_paths.insert(0, manifest)
+            # Replace last item to stay within MAX_FILES
+            if len(selected_paths) >= MAX_FILES:
+                selected_paths[-1] = manifest
+            else:
+                selected_paths.insert(0, manifest)
 
-    # Fetch selected files
+    # Fetch selected files — hard cap at MAX_FILES
     for path in selected_paths[:MAX_FILES]:
         if path in all_files:
             c = fetch_file(path)
@@ -773,50 +793,8 @@ def analyse_step2(files, repo_name):
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
-        "FILES:\n" + ftext + "\n\n"
-        "IMPORTANT PLATFORM AWARENESS — read before analysing:\n"
-        "- If this is a Lovable Cloud app: .env files are auto-managed, NEVER flag missing .env validation or .env.example\n"
-        "- If using Supabase JS client: it returns {data, error} NOT exceptions — try/catch is NOT the correct pattern, checking 'error' is\n"
-        "- If using TanStack Query (useQuery/useMutation): loading states, error handling and retry are BUILT IN — do not flag as missing\n"
-        "- If types come from supabase/types.ts auto-generated file: runtime Zod validation is overkill — do not flag as missing\n"
-        "- If onAuthStateChange + autoRefreshToken are present: do NOT flag auth session handling as missing\n"
-        "- If import.meta.env is used for env vars: do NOT flag as hardcoded\n"
-        "- CRITICAL: verify_jwt=false in supabase/config.toml is the Lovable Cloud DEFAULT — it does NOT mean functions are unprotected. Each function validates auth in-code using getUser()/getClaims(). NEVER flag verify_jwt=false as a security issue for Lovable apps\n"
-        "- If you MUST mention verify_jwt=false, mark it as WARNING not CRITICAL and add this to AUTH_F1_PLAIN: 'This may be a false positive if your edge functions contain getUser() or getClaims() calls. Ask your AI builder to confirm each function validates auth in-code.'\n"
-        "- PUBLIC BY DESIGN patterns — NEVER flag these as security issues:\n"
-        "  * Webhook handlers: filenames containing webhook, receive-, inbound, stripe-webhook, sendgrid, meta-conversions\n"
-        "  * Public demos/landing: filenames containing public, demo, free, landing, preview\n"
-        "  * Pre-auth flows: send-otp, forgot-password, reset-password, signup, verify-email\n"
-        "  * SEO/infrastructure: sitemap, robots, health, ping, status\n"
-        "  * Public chat/support: briq-public-chat, chat-widget, support-bot\n"
-        "- PUBLIC UTILITY TOOLS: if the app appears to be a public tool (security scanner, analysis tool, calculator, search engine, API service) with no user accounts or personal data storage — no auth IS correct by design. Do NOT flag missing auth for public utility tools.\n"
-        "- If @auth-required: false and @public: true appear in code comments — the app is intentionally public, NEVER flag missing auth.\n"
-        "- If @auth-method: none appears — no auth is correct by design, not a vulnerability.\n"
-        "- If @auth-required: false or @public: true appears in function comments → it is intentionally public, do not flag\n"
-        "- If @auth-method: in-code appears in function comments → auth is validated in code, do not flag as missing\n"
-        "- Only flag edge functions as critical if they handle payments/admin/PII AND have no auth checks AND no public justification\n"
-        "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_URL in frontend code is NORMAL and BY DESIGN for Supabase apps — NEVER flag as critical or warning. The anon key is meant to be public. Security comes from RLS policies, not hiding the key.\n"
-        "- REPLIT AUTH: Replit apps use isAuthenticated, isAdmin, requireAuth Express middleware for auth — these ARE valid auth patterns. Replit uses OIDC not JWT/Supabase. NEVER flag as missing auth.\n"
-        "- EXPRESS MIDDLEWARE: if isAuthenticated or requireAuth is present on routes, auth IS configured — do not flag as missing.\n"
-        "- FIREBASE AUTH: firebaseAuth, onAuthStateChanged, getAuth = valid enterprise auth — NEVER flag as missing or insecure.\n"
-        "- PASSWORDLESS/MAGIC LINK: email magic links and OTP are valid secure auth methods — NEVER flag as missing auth.\n"
-        "- DRIZZLE ORM: Drizzle uses TypeScript schemas for type safety — do NOT flag missing Zod validation if Drizzle schema files exist. Drizzle handles type validation at the ORM level.\n"
-        "- DRIZZLE TRANSACTIONS: db.transaction() is the correct Drizzle pattern — do NOT flag missing transactions if this pattern exists.\n"
-        "- FLASK/PYTHON: Flask apps use @app.route decorators, request object, jsonify — these are correct patterns. Do NOT flag missing middleware if Flask-Login or JWT decorators are present.\n"
-        "- GUNICORN: Gunicorn is a production WSGI server — do NOT flag as development server or suggest replacing it.\n"
-        "- PYTHON ENV: os.getenv() and python-dotenv are correct Python env var patterns — do NOT flag as missing validation.\n"
-        "- CACHE META TAGS: do NOT flag meta http-equiv cache-control tags as security issues. Real caching is controlled by HTTP response headers from the server/CDN, not meta tags. Meta cache tags are largely ignored by browsers.\n"
-        "- NOT PROVIDED: if backend files were not provided for analysis, do NOT flag backend security as an issue — note it as a coverage gap only, not a finding.\n"
-        "- Only flag something as critical or warning if it is GENUINELY absent or misconfigured in the actual code\n\n"
-        "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
-        "AUTH_STATUS: critical|warning|passing\n"
-        "AUTH_SUMMARY: one sentence technical summary of auth layer\n"
-        "IMPORTANT for AUTH: Before flagging as critical, check if the solution is ALREADY implemented. "
-        "If onAuthStateChange is present, do NOT flag it as missing. "
-        "If autoRefreshToken is configured, do NOT flag token refresh as missing. "
-        "If ProtectedRoute exists and redirects, do NOT flag protected routes as missing. "
-        "Only flag as critical if the issue is genuinely absent from the code.\n"
-        "AUTH_F1_SEV: critical|warning|passing\n"
+        "FILES:\\n" + ftext + "\\n\\n" +
+        PLATFORM_RULES +
         "AUTH_F1_TITLE: short finding title\n"
         "AUTH_F1_DETAIL: one sentence technical detail — only flag if genuinely missing\n"
         "AUTH_F1_FILE: filename or empty\n"
@@ -883,27 +861,8 @@ def analyse_step3(files, repo_name):
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
-        "FILES:\n" + ftext + "\n\n"
-        "IMPORTANT PLATFORM AWARENESS — read before analysing:\n"
-        "- If this is a Lovable Cloud app: .env files are auto-managed, NEVER flag missing .env validation or .env.example\n"
-        "- If using Supabase JS client: it returns {data, error} NOT exceptions — try/catch is NOT the correct pattern\n"
-        "- If using TanStack Query (useQuery/useMutation): loading states, error handling and retry are BUILT IN — do not flag as missing\n"
-        "- If types come from supabase/types.ts auto-generated file: runtime Zod validation is overkill — do not flag\n"
-        "- If onAuthStateChange + autoRefreshToken present: do NOT flag auth session handling as missing\n"
-        "- If import.meta.env is used for env vars: do NOT flag as hardcoded values\n"
-        "- CRITICAL: verify_jwt=false in supabase/config.toml is the Lovable Cloud DEFAULT — it does NOT mean functions are unprotected. NEVER flag verify_jwt=false as a security issue for Lovable apps\n"
-        "- PUBLIC BY DESIGN — NEVER flag: webhook handlers (webhook/receive-/inbound/stripe/sendgrid), public demos (-public/-demo/-free), pre-auth (send-otp/forgot-password/signup), SEO (sitemap/robots/health)\n"
-        "- PUBLIC UTILITY TOOLS: security scanners, analysis tools, calculators, search engines with no user accounts — no auth is correct by design, never flag.\n"
-        "- If @auth-required: false or @public: true in comments — intentionally public, never flag missing auth.\n"
-        "- If @auth-required: false or @public: true in function comments → intentionally public, do not flag\n"
-        "- If @auth-method: in-code in function comments → auth in code, do not flag as missing\n"
-        "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_URL in frontend is NORMAL and BY DESIGN — NEVER flag as critical or warning. Security comes from RLS policies not hiding the key.\n"
-        "- REPLIT AUTH: isAuthenticated, isAdmin, requireAuth Express middleware = valid auth. Replit uses OIDC not JWT/Supabase. NEVER flag as missing.\n"
-        "- FIREBASE AUTH: firebaseAuth, onAuthStateChanged, getAuth = valid auth. NEVER flag as missing or insecure.\n"
-        "- PASSWORDLESS/MAGIC LINK: email magic links and OTP = valid secure auth. NEVER flag as missing.\n"
-        "- DRIZZLE ORM: Drizzle TypeScript schemas = type validation already handled. Do NOT flag missing Zod if Drizzle exists.\n"
-        "- FLASK/PYTHON: @app.route, request, jsonify, os.getenv() are correct patterns. Do NOT flag if Flask-Login or JWT decorators present.\n"
-        "- GUNICORN: production WSGI server — never flag as development server.\n"
+        "FILES:\n" + ftext + "\n\n" +
+        PLATFORM_RULES +
         "- Only flag something as critical or warning if GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line. Be specific to THIS app, not generic.\n\n"
         "API_STATUS: critical|warning|passing\n"
@@ -978,18 +937,8 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "- Supabase JS client: uses {data,error} pattern NOT exceptions — do NOT suggest wrapping in try/catch\n"
         "- TanStack Query: loading/error/retry are BUILT IN — do NOT suggest implementing these\n"
         "- supabase/types.ts is auto-generated: do NOT suggest adding Zod or runtime validation\n"
-        "- import.meta.env usage: do NOT flag as hardcoded values\n"
-        "- verify_jwt=false in config.toml is Lovable Cloud DEFAULT — auth is validated in-code per function. NEVER suggest fixing this\n"
-        "- PUBLIC BY DESIGN — NEVER suggest auth fixes for: webhook handlers, public demos, pre-auth flows, SEO endpoints, sitemap, send-otp\n"
-        "- PUBLIC UTILITY TOOLS: security scanners, analysis tools, calculators — no auth is correct. NEVER suggest adding auth to public utility tools.\n"
-        "- If @auth-required: false or @public: true in comments — never suggest adding auth.\n"
-        "- If @auth-required: false or @public: true in comments → intentionally public, do not suggest auth fix\n"
-        "- SUPABASE ANON KEY: VITE_SUPABASE_ANON_KEY exposed in frontend is NORMAL — never suggest hiding it or moving it. Security comes from RLS policies.\n\n"
-        "- REPLIT AUTH: isAuthenticated/isAdmin/requireAuth middleware = valid auth. NEVER suggest replacing with JWT or Supabase.\\n"
-        "- FIREBASE AUTH: firebaseAuth/onAuthStateChanged = valid auth. NEVER suggest replacing.\\n"
-        "- PASSWORDLESS: magic links and OTP = valid secure auth. NEVER suggest adding passwords.\\n\\n"
-        "- DRIZZLE ORM: Drizzle schemas handle type validation — NEVER suggest adding Zod on top of Drizzle.\\n"
-        "- FLASK/PYTHON: os.getenv() is correct — NEVER suggest adding validation if already present. Gunicorn is production-ready.\\n"
+        "- import.meta.env usage: do NOT flag as hardcoded values\n" +
+        PLATFORM_RULES +
         "IMPORTANT GUIDANCE PHILOSOPHY: Generate ADVICE prompts not FIX prompts. "
         "The goal is to help non-developers investigate and understand issues safely — not to make sweeping changes. "
         "Every prompt should ask the AI builder to REVIEW and ADVISE first, then suggest targeted changes only if genuinely needed. "
