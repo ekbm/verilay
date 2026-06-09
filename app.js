@@ -547,7 +547,16 @@ async function runAnalysis() {
     stopMsgs();
     document.getElementById('ld').classList.remove('vis');
     document.getElementById('form-section').style.display = 'block';
-    showErr(e.message || 'Something went wrong. Please try again.');
+    var errMsg = e.message || 'Something went wrong. Please try again.';
+    // Make network errors more helpful
+    if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('Load failed')) {
+      errMsg = 'Connection interrupted. This can happen with large repos — please try again. If the issue persists, try a smaller repo or ZIP upload.';
+    } else if (errMsg.includes('504') || errMsg.includes('timeout')) {
+      errMsg = 'Analysis timed out — the repo may be too large. Try a ZIP upload with just the main source files.';
+    } else if (errMsg.includes('503')) {
+      errMsg = 'Server is busy — please wait 30 seconds and try again.';
+    }
+    showErr(errMsg);
   }
 }
 
