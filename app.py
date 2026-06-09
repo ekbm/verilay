@@ -165,16 +165,85 @@ def get_ip():
 
 # ── File readers ───────────────────────────────────────────────────────────────
 PRIORITY_FILES = [
-    "package.json","requirements.txt","pyproject.toml",".env",".env.example",
-    "vite.config.ts","vite.config.js","supabase/config.toml",
-    "src/lib/supabase.ts","src/lib/supabase.js",
-    "src/integrations/supabase/client.ts",
-    "lib/db.ts","lib/database.ts","database.py","prisma/schema.prisma",
-    "src/auth.ts","auth.py","middleware/auth.ts","lib/auth.ts",
-    "app.py","main.py","index.js","server.js",
-    "src/App.tsx","src/App.jsx","src/main.tsx",
-    "src/router.tsx","src/routes.tsx",".gitignore","Procfile",
+    # Dependency manifests — ALWAYS read first
+    "package.json","requirements.txt","pyproject.toml","Gemfile","go.mod","cargo.toml",
+    # Environment and config
+    ".env.example",".env.local","supabase/config.toml","config.toml","config.yaml","config.json",
+    # Auth — all major patterns
+    "src/auth.ts","src/auth.js","auth.py","middleware/auth.ts","lib/auth.ts",
+    "src/lib/auth.ts","app/auth.ts","server/auth.ts","src/server/auth.ts",
+    "middleware.ts","middleware.js",  # NextAuth, Clerk
+    "src/middleware.ts",
+    # Database schemas and clients
+    "prisma/schema.prisma","drizzle.config.ts","schema.ts","src/db/schema.ts",
+    "lib/db.ts","lib/database.ts","database.py","src/lib/db.ts",
+    "src/integrations/supabase/client.ts","src/lib/supabase.ts",
+    "models.py","src/models","db/schema.rb",
+    # Main app entry points
+    "app.py","main.py","server.js","server.ts","index.js","index.ts",
+    "src/app/layout.tsx","src/app/page.tsx",  # Next.js app router
+    "pages/_app.tsx","pages/_app.js",  # Next.js pages router
+    "src/main.tsx","src/App.tsx","src/App.jsx",
+    # Routes and API handlers
+    "src/router.tsx","src/routes.tsx","routes.py",
+    "src/app/api","app/api/auth",  # Next.js API routes
+    # Build and deployment
+    "vite.config.ts","next.config.js","next.config.ts","nuxt.config.ts",
+    "Procfile","Dockerfile",".gitignore",
 ]
+
+# Security-relevant keywords for scoring additional files
+SECURITY_KEYWORDS = [
+    'auth','login','session','token','jwt','password','secret','key','oauth',
+    'database','db','model','schema','migration','query',
+    'route','endpoint','api','handler','middleware','guard',
+    'config','env','setting','permission','role','admin',
+    'upload','storage','bucket','s3','blob',
+    'payment','stripe','billing','subscription',
+    'email','smtp','webhook','cron',
+]
+
+def smart_file_selection(files, max_files=25):
+    """Intelligently select the most security-relevant files from a repo."""
+    selected = []
+    remaining = list(files.keys())
+
+    # Step 1 — Always include priority files first
+    for pf in PRIORITY_FILES:
+        for f in remaining[:]:
+            if f.endswith(pf) or f == pf or f.split('/')[-1] == pf.split('/')[-1]:
+                if f not in selected:
+                    selected.append(f)
+                    remaining.remove(f)
+                if len(selected) >= max_files:
+                    break
+        if len(selected) >= max_files:
+            break
+
+    # Step 2 — Score remaining files by security keyword relevance
+    if len(selected) < max_files:
+        def security_score(filepath):
+            name = filepath.lower()
+            score = 0
+            for kw in SECURITY_KEYWORDS:
+                if kw in name:
+                    score += 3
+            # Bonus for being in key directories
+            if any(d in name for d in ['/api/', '/auth/', '/db/', '/lib/', '/utils/', '/middleware/']):
+                score += 2
+            # Penalty for test/asset files
+            if any(d in name for d in ['.test.', '.spec.', '/test/', '/tests/', '/assets/', '/public/']):
+                score -= 5
+            # Bonus for TypeScript/Python over minified
+            if name.endswith(('.ts', '.tsx', '.py', '.go', '.rs')):
+                score += 1
+            return score
+
+        scored = sorted(remaining, key=security_score, reverse=True)
+        needed = max_files - len(selected)
+        selected.extend(scored[:needed])
+
+    return selected[:max_files]
 KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
 MAX_FILE_CHARS = 5000
 MAX_FILES = 25
@@ -209,16 +278,20 @@ def fetch_github(repo_url):
         except: return None
 
     files = {}
-    for p in PRIORITY_FILES:
-        if p in all_files:
-            c = fetch_file(p)
-            if c: files[p] = c
-    for path in all_files:
-        if len(files) >= MAX_FILES: break
-        if path in files: continue
-        fname = path.lower().split("/")[-1]
-        for ext in [".ts",".js",".py",".json",".prisma"]: fname = fname.replace(ext,"")
-        if any(k in fname for k in KEYWORDS):
+    # Use smart file selection — security-scored prioritisation
+    selected_paths = smart_file_selection(
+        {p: True for p in all_files},
+        max_files=MAX_FILES
+    )
+
+    # Also always check for package.json first to understand stack
+    for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
+        if manifest in all_files and manifest not in selected_paths:
+            selected_paths.insert(0, manifest)
+
+    # Fetch selected files
+    for path in selected_paths[:MAX_FILES]:
+        if path in all_files:
             c = fetch_file(path)
             if c: files[path] = c
 
@@ -588,6 +661,11 @@ def analyse_step1(files, tree, repo_name, method):
         "Repo: " + repo_name + "\n"
         "File tree:\n" + tree_str + "\n\n"
         "Key files:\n" + ftext + "\n\n"
+        "IMPORTANT: Read package.json or requirements.txt first to identify exact libraries. "
+        "Determine auth library (nextauth/clerk/auth0/supabase/passport/jwt/lucia/better-auth), "
+        "database (prisma/drizzle/mongoose/supabase/sqlalchemy/gorm/typeorm), "
+        "and framework (nextjs/express/flask/fastapi/django/hono/nuxt/sveltekit/astro). "
+        "Your findings must reflect actual libraries present — never assume patterns not in dependencies.\\n\\n"
         "Use exactly these keys:\n\n"
         "SUMMARY: one sentence what this app does\n"
         "BUILT_WITH: which AI platform built this and why you think so\n"
