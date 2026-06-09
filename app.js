@@ -799,12 +799,29 @@ function renderReport(data) {
     var scoreMsg = '';
     var scoreBg = '';
     var scoreBdr = '';
-    if (h.score === 'B') {
-      scoreBg = '#F0FDF4'; scoreBdr = '#22C55E';
-      scoreMsg = '🎯 <strong>Score B — Safe to launch.</strong> This is the realistic target for AI-built apps. A score requires developer-level hardening (rate limiting, CSRF protection, penetration testing) that goes beyond what AI builders can do automatically. B means your app is properly secured for real users.';
+    if (h.score === 'A') {
+      scoreBg = '#F0FDF4'; scoreBdr = '#1D9E75';
+      scoreMsg = '🏆 <strong>Score A — Excellent.</strong> Your app has no critical or warning findings. This is outstanding — most AI-built apps score B or C. Keep dependencies updated and review your security posture as you add new features.';
+    } else if (h.score === 'B') {
+      scoreBg = '#EFF6FF'; scoreBdr = '#4A90D9';
+      scoreMsg = '🎯 <strong>Score B — Safe to launch.</strong> This is the realistic target for AI-built apps. ' +
+        'A score requires developer-level hardening that goes beyond what AI builders can do automatically.<br><br>' +
+        '<strong>To reach A, verify these with your AI builder:</strong><br>' +
+        '✓ RLS enabled on all Supabase tables<br>' +
+        '✓ No secrets or API keys in frontend code<br>' +
+        '✓ All protected routes have auth middleware<br>' +
+        '✓ Dependencies have no critical vulnerabilities<br>' +
+        '✓ Webhook endpoints validate signatures<br>' +
+        '✓ Payment endpoints properly scoped';
     } else if (h.score === 'C') {
       scoreBg = '#FEF9C3'; scoreBdr = '#EAB308';
-      scoreMsg = '🎯 <strong>Score C — Almost there.</strong> Fix the critical issues above and you will reach B. That is the realistic goal for AI-built apps — not A. A score requires a professional developer security review that goes beyond what Verilay or your AI builder can fully automate.';
+      scoreMsg = '🎯 <strong>Score C — Almost there.</strong> Fix the critical issues above and you will reach B. ' +
+        'That is the realistic goal for AI-built apps — not A.<br><br>' +
+        '<strong>Your path to B:</strong><br>' +
+        '1. Use the advice prompts below to investigate each critical finding<br>' +
+        '2. Take findings to your AI builder and ask them to verify<br>' +
+        '3. Paste their response back here to update your score<br>' +
+        '4. Once all criticals are verified or fixed — re-run for updated score';
     } else if (h.score === 'D' || h.score === 'F') {
       scoreBg = '#FEF2F2'; scoreBdr = '#EF4444';
       scoreMsg = '🎯 <strong>Score ' + h.score + ' — Not ready to launch.</strong> Fix critical issues first using the fix prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
