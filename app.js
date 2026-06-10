@@ -603,6 +603,9 @@ function handleStreamEvent(evt) {
       var statusEl = document.getElementById('report-status');
       if (shareInput) shareInput.value = shareUrl;
       if (shareBanner) shareBanner.style.display = 'flex';
+      // Add delete button to share banner
+      var deleteBtn = document.getElementById('delete-report-btn');
+      if (deleteBtn) deleteBtn.style.display = 'inline-block';
 
       // Show waitlist nudge after 3+ analyses
       var analysisCount = parseInt(localStorage.getItem('verilay_analysis_count') || '0') + 1;
@@ -1623,6 +1626,27 @@ function dismissWaitlist() {
   var nudge = document.getElementById('waitlist-nudge');
   if (nudge) nudge.remove();
   localStorage.setItem('verilay_waitlist_shown', '1');
+}
+
+// Delete report
+async function deleteReport() {
+  if (!savedReportId) return;
+  if (!confirm('Delete this report? The findings will be removed. This cannot be undone.')) return;
+  try {
+    var resp = await fetch('/delete-report/' + savedReportId, { method: 'POST' });
+    var data = await resp.json();
+    if (data.ok) {
+      // Clear the report from view
+      document.getElementById('report').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--mut)">Report deleted.</div>';
+      savedReportId = null;
+      // Remove from local history
+      var history = getHistory();
+      var filtered = history.filter(function(h) { return h.id !== savedReportId; });
+      localStorage.setItem('verilay_history', JSON.stringify(filtered));
+    }
+  } catch(e) {
+    console.error('Delete error:', e);
+  }
 }
 
 // Toggle accuracy tip
