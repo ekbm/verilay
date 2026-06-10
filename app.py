@@ -73,14 +73,36 @@ _count_lock = threading.Lock()
 _memory_count = 0
 
 def get_analysis_count():
-    """Get count from Supabase reports table — always accurate."""
+    """Get cumulative count from stats table — never decreases even if reports deleted."""
     if _HAS_SUPABASE:
         try:
-            result = _sb.table("reports").select("id", count="exact").execute()
-            return result.count or 0
+            result = _sb.table("stats").select("value").eq("key", "total_analyses").execute()
+            if result.data:
+                return result.data[0]["value"] or 0
+            # Fallback to counting reports if stats table not set up yet
+            result2 = _sb.table("reports").select("id", count="exact").execute()
+            return result2.count or 0
         except Exception as e:
-            print(f"Counter fetch failed: {e}", flush=True)
-    return _memory_count
+            print(f"Count error: {e}", flush=True)
+    return 0
+
+
+def increment_analysis_count(score=None, method=None):
+    """Increment cumulative stats counters."""
+    if not _HAS_SUPABASE:
+        return
+    try:
+        # Increment total
+        _sb.rpc("increment_stat", {"stat_key": "total_analyses"}).execute()
+        # Increment by score
+        if score in ["A", "B", "C", "D", "F"]:
+            _sb.rpc("increment_stat", {"stat_key": f"score_{score.lower()}"}).execute()
+        # Increment by method
+        if method in ["github", "url", "zip"]:
+            _sb.rpc("increment_stat", {"stat_key": f"method_{method}"}).execute()
+    except Exception as e:
+        print(f"Stats increment error: {e}", flush=True)
+
 
 def increment_analysis_count():
     """Increment in-memory count — Supabase row count is source of truth."""
@@ -1197,6 +1219,7 @@ def analyse_stream():
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
             report_id = save_report_data(partial)
+            increment_analysis_count(score=data.get("health", {}).get("score"), method=method)
             yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
 
             # ── Done with layers ────────────────────────────────────────
@@ -1293,6 +1316,28 @@ def verify_finding():
             except Exception as e:
                 print(f"Verify finding error: {e}", flush=True)
 
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/delete-report/<report_id>", methods=["POST"])
+def delete_report(report_id):
+    """Delete a report — strips sensitive data but keeps stats."""
+    try:
+        if not report_id or len(report_id) < 8:
+            return jsonify({"ok": False, "error": "Invalid report ID"})
+        if _HAS_SUPABASE:
+            try:
+                # Anonymise rather than delete — keeps stats accurate
+                _sb.table("reports").update({
+                    "data": {"deleted": True, "deleted_at": _dt.datetime.utcnow().isoformat()},
+                    "repo": "[deleted]"
+                }).eq("id", report_id).execute()
+                print(f"✓ Report anonymised: {report_id}", flush=True)
+                return jsonify({"ok": True})
+            except Exception as e:
+                print(f"Delete error: {e}", flush=True)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
@@ -2419,7 +2464,9 @@ input:focus{border-color:var(--pu)}
     <div style="display:flex;gap:6px;align-items:center">
       <input id="share-url" type="text" readonly style="flex:1;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:11px;font-family:var(--mono);background:white;color:var(--txt)">
       <button id="btn-copy-share" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer;flex-shrink:0">Copy link</button>
+      <button id="delete-report-btn" onclick="deleteReport()" style="display:none;font-size:11px;padding:5px 10px;border-radius:20px;background:transparent;color:var(--mut);border:0.5px solid var(--bdr);cursor:pointer;flex-shrink:0">Delete report</button>
     </div>
+    <div style="font-size:10px;color:var(--grt);opacity:.8">&#x1F512; Report stored securely. Your findings are private and never shared publicly. Free reports auto-delete after 24 hours.</div>
     <div id="badge-section" style="display:none;margin-top:4px">
       <div style="font-size:11px;color:var(--grt);margin-bottom:4px;font-weight:500">Add this badge to your GitHub README:</div>
       <input id="badge-code" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:10px;font-family:var(--mono);background:white;color:var(--mut)">
