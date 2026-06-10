@@ -1098,16 +1098,26 @@ def analyse_stream():
             s3 = {"layers":[]}
             s2_err = None
             s3_err = None
-            # Run in parallel, collect results, THEN yield
+            # Run in parallel with keepalive pings to prevent Railway timeout
+            import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f2 = executor.submit(analyse_step2, files, repo_name)
                 f3 = executor.submit(analyse_step3, files, repo_name)
+                # Send keepalive every 20s while waiting — prevents Railway 30s timeout
+                deadline = _time.time() + 90
+                while _time.time() < deadline:
+                    done2 = f2.done()
+                    done3 = f3.done()
+                    if done2 and done3:
+                        break
+                    yield json.dumps({"event":"status","data":"Analysing your codebase — layers will appear shortly..."}) + "\n"
+                    _time.sleep(20)
                 try:
-                    s2 = f2.result(timeout=90)
+                    s2 = f2.result(timeout=10)
                 except Exception as e:
                     s2_err = str(e)
                 try:
-                    s3 = f3.result(timeout=90)
+                    s3 = f3.result(timeout=10)
                 except Exception as e:
                     s3_err = str(e)
             # Now yield results from main thread
