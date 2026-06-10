@@ -1356,6 +1356,159 @@ def stats():
     return jsonify({"analyses": count, "formatted": f"{count:,}"})
 
 
+# Blog routes — paste this into app.py before the sitemap route
+
+BLOG_POSTS = [
+    {
+        "slug": "built-ai-apps-no-idea-secure",
+        "title": "I Built Several AI Apps and Had No Idea If Any of Them Were Secure",
+        "date": "June 10, 2026",
+        "category": "Story",
+        "excerpt": "The moment I realised my AI-built apps might be vulnerable and what I did about it.",
+        "medium_url": "https://medium.com/@mosesekbote",
+        "read_time": "6 min read",
+        "featured": True,
+    },
+    {
+        "slug": "how-built-security-tool-without-developer",
+        "title": "How I Built a Security Tool Without Being a Developer",
+        "date": "June 13, 2026",
+        "category": "Build",
+        "excerpt": "The technical journey — Flask, Claude API, smart file selection, and the false positive problem.",
+        "medium_url": "https://medium.com/@mosesekbote",
+        "read_time": "7 min read",
+        "featured": False,
+    },
+    {
+        "slug": "advise-not-fix-non-developer-security",
+        "title": "Why Advise Not Fix Is the Only Safe Approach for Non-Developer Security",
+        "date": "June 17, 2026",
+        "category": "Philosophy",
+        "excerpt": "Three real conversations that proved the model and what the B grade actually means.",
+        "medium_url": "https://medium.com/@mosesekbote",
+        "read_time": "7 min read",
+        "featured": False,
+    },
+    {
+        "slug": "evident-ai-c-to-b",
+        "title": "How Evident-AI Went From C to B",
+        "date": "June 10, 2026",
+        "category": "Case Study",
+        "excerpt": "Two critical vulnerabilities, three advice conversations, zero broken features.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": False,
+    },
+]
+
+CAT_COLORS = {
+    "Story": ("#EEEDFE", "#3C3489"),
+    "Build": ("#E1F5EE", "#085041"),
+    "Philosophy": ("#FAEEDA", "#633806"),
+    "Case Study": ("#E6F1FB", "#0C447C"),
+    "Feature": ("#FCEBEB", "#A32D2D"),
+}
+
+BLOG_CSS = """
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+.wrap{max-width:800px;margin:0 auto;padding:2rem 1.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+a.card{display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;transition:box-shadow .15s}
+a.card:hover{box-shadow:0 4px 20px rgba(0,0,0,.08)}
+"""
+
+def _render_card(p, big=False):
+    bg, fg = CAT_COLORS.get(p["category"], ("#fff", "#666"))
+    link = p["medium_url"] if p["medium_url"] else "/blog/" + p["slug"]
+    target = 'target="_blank" rel="noopener"' if p["medium_url"] else ""
+    ext = " &nearr;" if p["medium_url"] else ""
+    pad = "2rem" if big else "1.25rem"
+    title_size = "21px" if big else "16px"
+    return (
+        '<a href="' + link + '" ' + target + ' class="card" style="padding:' + pad + '">'
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:.6rem">'
+        '<span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;background:' + bg + ';color:' + fg + '">' + p["category"] + '</span>'
+        '<span style="font-size:11px;color:#6b6966">' + p["date"] + ' - ' + p["read_time"] + '</span>'
+        '</div>'
+        '<div style="font-size:' + title_size + ';font-weight:700;color:#1a1917;margin-bottom:.4rem;line-height:1.3">' + p["title"] + ext + '</div>'
+        '<div style="font-size:13px;color:#6b6966;line-height:1.55">' + p["excerpt"] + '</div>'
+        '</a>'
+    )
+
+
+@app.route("/blog")
+def blog():
+    featured = next((p for p in BLOG_POSTS if p.get("featured")), None)
+    others = [p for p in BLOG_POSTS if not p.get("featured")]
+    featured_html = _render_card(featured, big=True) if featured else ""
+    grid_html = "".join("<div>" + _render_card(p) + "</div>" for p in others)
+
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blog - Verilay</title>
+<meta name="description" content="Security insights, case studies and building lessons for non-developers.">
+<style>""" + BLOG_CSS + """</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">From the team</div>
+    <h1 style="font-size:28px;font-weight:700;margin-bottom:.5rem">Verilay Blog</h1>
+    <p style="color:#6b6966;font-size:15px">Security insights, case studies and building lessons for non-developers who build real things.</p>
+  </div>
+  """ + featured_html + """
+  <div style="font-size:12px;font-weight:600;color:#6b6966;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.75rem;margin-top:1.5rem">More posts</div>
+  <div class="grid">""" + grid_html + """</div>
+  <div style="margin-top:3rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
+    <p style="font-size:13px;color:#6b6966">Ready to check your own app?</p>
+    <a href="/" style="display:inline-block;margin-top:.75rem;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/blog/<slug>")
+def blog_post(slug):
+    post = next((p for p in BLOG_POSTS if p["slug"] == slug), None)
+    if not post:
+        return "Post not found", 404
+    if post.get("medium_url"):
+        return '<meta http-equiv="refresh" content="0;url=' + post["medium_url"] + '">'
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>""" + post["title"] + """ - Verilay</title>
+<style>""" + BLOG_CSS + """</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">Back to blog</a>
+</nav>
+<div class="wrap" style="max-width:680px">
+  <div style="background:#EEEDFE;border:0.5px solid #534AB7;border-radius:10px;padding:1.5rem;text-align:center">
+    <div style="font-size:24px;margin-bottom:.75rem">&#x270D;</div>
+    <div style="font-weight:600;margin-bottom:.5rem">""" + post["title"] + """</div>
+    <div style="font-size:13px;color:#6b6966">Coming soon. <a href="/" style="color:#534AB7">Run a free analysis</a> while you wait.</div>
+  </div>
+</div>
+</body>
+</html>"""
+
+
 @app.route("/sitemap.xml")
 def sitemap():
     """Sitemap for search engine indexing."""
