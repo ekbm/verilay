@@ -1554,6 +1554,177 @@ def blog_post(slug):
 </html>"""
 
 
+@app.route("/privacy")
+def privacy():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy Policy - Verilay</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+.wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+h2{font-size:17px;font-weight:600;margin:1.5rem 0 .5rem}
+p{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px}
+ul{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px;padding-left:1.25rem}
+li{margin-bottom:.35rem}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Last updated June 2026</div>
+    <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Privacy Policy</h1>
+    <p>Verilay is a free public tool built by Moses Ekbote. This policy explains what we collect, why, and how you can delete it.</p>
+  </div>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li>The GitHub URL, live URL, or ZIP file you submit for analysis</li>
+    <li>The analysis results — findings, score, and layer breakdown</li>
+    <li>Your IP address for rate limiting (not stored permanently)</li>
+    <li>If you join the waitlist — your email address</li>
+  </ul>
+
+  <h2>What we do not collect</h2>
+  <ul>
+    <li>No account or login required — we don't know who you are</li>
+    <li>No cookies or tracking beyond Plausible Analytics (privacy-friendly, no personal data)</li>
+    <li>No payment information</li>
+    <li>No access to your GitHub account — we read public repos only via GitHub API</li>
+  </ul>
+
+  <h2>How your data is stored</h2>
+  <p>Analysis reports are stored in Supabase (hosted in the EU) linked to a random report ID. Reports are accessible only via your unique share link. We do not publish, share, or sell individual report data.</p>
+  <p>Free tier reports auto-delete after 24 hours. You can delete your report at any time using the Delete Report button on your report page.</p>
+
+  <h2>Statistics</h2>
+  <p>We track aggregate statistics — total analyses run, score distribution (how many A/B/C/D/F grades), and analysis method. This data is anonymised and used to improve the product.</p>
+
+  <h2>Waitlist emails</h2>
+  <p>If you join the waitlist, your email is stored in Supabase and used only to notify you when Pro features launch. You can request deletion by emailing moses@verilay.dev.</p>
+
+  <h2>Your rights</h2>
+  <ul>
+    <li>Delete your report anytime using the Delete Report button</li>
+    <li>Request deletion of waitlist email at moses@verilay.dev</li>
+    <li>No account means no account data to delete</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
+
+  <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
+    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/terms")
+def terms():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Terms of Use - Verilay</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+.wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+h2{font-size:17px;font-weight:600;margin:1.5rem 0 .5rem}
+p{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px}
+ul{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px;padding-left:1.25rem}
+li{margin-bottom:.35rem}
+.highlight{background:#EEEDFE;border:0.5px solid #534AB7;border-radius:8px;padding:1rem;margin:1rem 0;font-size:13px;color:#3C3489}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Last updated June 2026</div>
+    <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Terms of Use</h1>
+    <p>By using Verilay you agree to these terms. If you do not agree, please do not use the service.</p>
+  </div>
+
+  <div class="highlight">
+    <strong>Plain English summary:</strong> Verilay is a free AI-powered security analysis tool. It gives you information to help you understand your app — not professional security advice. Use findings as a starting point, not as a definitive security audit. Always verify with your AI builder before making changes.
+  </div>
+
+  <h2>1. What Verilay is</h2>
+  <p>Verilay is a free online tool that uses AI to analyse code repositories and provide plain-English security observations. It is designed to help non-developers understand potential security concerns in AI-built applications.</p>
+
+  <h2>2. What Verilay is not</h2>
+  <ul>
+    <li>Not a professional security audit or penetration test</li>
+    <li>Not a guarantee that your app is secure or insecure</li>
+    <li>Not a substitute for professional security advice for production applications handling sensitive data</li>
+    <li>Not liable for decisions made based on analysis results</li>
+  </ul>
+
+  <h2>3. AI disclaimer</h2>
+  <p>Verilay uses Claude AI (Anthropic) to analyse code. AI analysis has known limitations:</p>
+  <ul>
+    <li><strong>False positives:</strong> Verilay may flag correct code as a potential issue</li>
+    <li><strong>False negatives:</strong> Verilay may miss genuine security issues</li>
+    <li><strong>Context limitations:</strong> Analysis is based on a sample of files — not the entire codebase</li>
+    <li><strong>Score variation:</strong> The same codebase may receive slightly different scores on different runs</li>
+    <li><strong>Not a replacement for human review:</strong> For apps handling payments, health data, or personal information, a professional security review is recommended</li>
+  </ul>
+  <p>Always verify findings with your AI builder before making any code changes. Verilay provides advice prompts specifically designed for safe investigation before action.</p>
+
+  <h2>4. Acceptable use</h2>
+  <p>You may use Verilay to analyse:</p>
+  <ul>
+    <li>Your own applications and repositories</li>
+    <li>Open source repositories you have permission to analyse</li>
+    <li>Applications you have been authorised to assess</li>
+  </ul>
+  <p>You may not use Verilay to:</p>
+  <ul>
+    <li>Analyse applications without authorisation from the owner</li>
+    <li>Attempt to extract, scrape, or copy the analysis prompts or AI logic</li>
+    <li>Deliberately submit malicious inputs to probe or attack the service</li>
+    <li>Resell or commercially embed Verilay without a commercial licence</li>
+  </ul>
+
+  <h2>5. Intellectual property</h2>
+  <p>Verilay is built and owned by Moses Ekbote. The source code is available on GitHub under a custom licence. Commercial use requires a separate licence — contact moses@verilay.dev.</p>
+
+  <h2>6. No warranty</h2>
+  <p>Verilay is provided "as is" without warranty of any kind. We make no guarantees about the accuracy, completeness, or reliability of analysis results. Use at your own risk.</p>
+
+  <h2>7. Limitation of liability</h2>
+  <p>To the maximum extent permitted by law, Verilay and its creator shall not be liable for any damages arising from use of the service, including but not limited to security breaches, data loss, or decisions made based on analysis results.</p>
+
+  <h2>8. Changes to terms</h2>
+  <p>These terms may be updated from time to time. Continued use of Verilay constitutes acceptance of the updated terms.</p>
+
+  <h2>9. Contact</h2>
+  <p>Questions: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
+
+  <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
+    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
 @app.route("/sitemap.xml")
 def sitemap():
     """Sitemap for search engine indexing."""
@@ -1728,7 +1899,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     if so.get("summary_prompt"):
         out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
 
-    out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.</div>')
+    out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br><strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {data.get("generated_at","")} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
     return "".join(out)
@@ -1951,7 +2122,16 @@ input:focus{border-color:var(--pu)}
     <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
     <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
   </div>
-  <div style="display:flex;gap:8px">
+  <div style="display:flex;gap:6px;align-items:center">
+    <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
+      <i class="ti ti-news" style="font-size:12px"></i> Blog
+    </a>
+    <a href="/privacy" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
+      <i class="ti ti-lock" style="font-size:12px"></i> Privacy
+    </a>
+    <a href="/terms" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
+      <i class="ti ti-file-text" style="font-size:12px"></i> Terms
+    </a>
     <a href="https://github.com/ekbm/verilay" target="_blank" aria-label="View Verilay on GitHub" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
       <i class="ti ti-brand-github" style="font-size:13px" aria-hidden="true"></i> GitHub
     </a>
@@ -2489,6 +2669,12 @@ input:focus{border-color:var(--pu)}
     <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:12px;color:var(--mut);text-decoration:none">
       ⭐ Found Verilay useful? Star us on GitHub
     </a>
+    <div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem">
+      <a href="/blog" style="font-size:11px;color:var(--mut);text-decoration:none">Blog</a>
+      <a href="/privacy" style="font-size:11px;color:var(--mut);text-decoration:none">Privacy</a>
+      <a href="/terms" style="font-size:11px;color:var(--mut);text-decoration:none">Terms</a>
+      <a href="mailto:moses@verilay.dev" style="font-size:11px;color:var(--mut);text-decoration:none">Contact</a>
+    </div>
   </div>
 
   <!-- Feedback widget -->
