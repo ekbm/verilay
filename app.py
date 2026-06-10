@@ -284,7 +284,7 @@ def fetch_github(repo_url):
 
     def fetch_file(path):
         try:
-            r = requests.get(f"{base}/contents/{path}", headers=hdrs, timeout=10)
+            r = requests.get(f"{base}/contents/{path}", headers=hdrs, timeout=25)
             if r.status_code != 200: return None
             d = r.json()
             if isinstance(d, list): return None
@@ -401,7 +401,7 @@ def fetch_url(live_url):
         if "Cannot scan" in str(e): raise
     if parsed.scheme not in ("http","https"):
         raise ValueError("Only http:// and https:// URLs supported.")
-    r = requests.get(live_url, timeout=10, headers={"User-Agent":"Verilay/1.0"})
+    r = requests.get(live_url, timeout=25, headers={"User-Agent":"Verilay/1.0"})
     r.raise_for_status()
     domain = live_url.split("/")[2]
     name = domain.replace(".lovable.app","").replace(".replit.app","")
@@ -1164,11 +1164,11 @@ def analyse_stream():
                     yield json.dumps({"event":"status","data":"Analysing your codebase — layers will appear shortly..."}) + "\n"
                     _time.sleep(20)
                 try:
-                    s2 = f2.result(timeout=10)
+                    s2 = f2.result(timeout=30)
                 except Exception as e:
                     s2_err = str(e)
                 try:
-                    s3 = f3.result(timeout=10)
+                    s3 = f3.result(timeout=30)
                 except Exception as e:
                     s3_err = str(e)
             # Now yield results from main thread
