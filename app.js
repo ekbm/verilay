@@ -713,6 +713,12 @@ function renderReport(data) {
 
   var isSurf = data.analysis_depth === 'surface';
   var h = data.health || {};
+  // Client-side score correction — ensures score matches actual counts
+  var critical = parseInt(h.critical || 0);
+  var warnings = parseInt(h.warnings || 0);
+  if (critical === 0 && warnings === 0) h.score = 'A';
+  else if (critical === 0 && warnings <= 3) h.score = 'B';
+  else if (critical <= 2) { if (h.score === 'D' || h.score === 'F') {} else h.score = 'C'; }
   var pr = data.prod_ready || {};
 
   var pbMap = {
