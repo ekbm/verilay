@@ -798,7 +798,13 @@ function renderReport(data) {
 
   var hvals = [h.critical||0, h.warnings||0, h.passing||0, h.score||'?'];
   var hlbls = ['critical','warnings','passing','score'];
-  var hcols = [['var(--rdl)','var(--rdt)'],['var(--orl)','var(--ort)'],['var(--grl)','var(--grt)'],['var(--bll)','var(--blt)']];
+  // Score box colour based on actual corrected score
+  var scoreBgCol = h.score === 'A' ? ['#E1F5EE','#085041'] :
+                   h.score === 'B' ? ['#EFF6FF','#1D4ED8'] :
+                   h.score === 'C' ? ['#FEF9C3','#854D0E'] :
+                   h.score === 'D' ? ['#FEF2F2','#991B1B'] :
+                   h.score === 'F' ? ['#FEF2F2','#7F1D1D'] : ['var(--bll)','var(--blt)'];
+  var hcols = [['var(--rdl)','var(--rdt)'],['var(--orl)','var(--ort)'],['var(--grl)','var(--grt)'],scoreBgCol];
   var hcards = hvals.map(function(v,i) {
     return '<div class="hc" style="background:' + hcols[i][0] + '"><div style="font-size:18px;font-weight:600;color:' + hcols[i][1] + '">' + v + '</div><div style="font-size:10px;color:' + hcols[i][1] + ';margin-top:1px">' + hlbls[i] + '</div></div>';
   }).join('');
@@ -1268,12 +1274,28 @@ function renderPart2(data) {
     html += '</div>';
     html += '</div>';
   });
-  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Fix list</div>';
+  // Build platform-specific "where to paste" instruction
   var builtWith = (currentReport && currentReport.built_with) ? currentReport.built_with.toLowerCase() : '';
   var isLovable = builtWith.includes('lovable');
   var isReplit  = builtWith.includes('replit');
   var isBolt    = builtWith.includes('bolt');
   var isV0      = builtWith.includes('v0');
+
+  var whereToGo = 'your AI builder chat';
+  var whereDetail = 'Open your AI builder and paste the prompt into the chat';
+  if (isLovable) { whereToGo = 'Lovable'; whereDetail = 'Go to lovable.dev → open your project → paste in the chat box'; }
+  if (isReplit) { whereToGo = 'Replit'; whereDetail = 'Go to replit.com → open your project → paste in the Replit AI chat'; }
+  if (isBolt) { whereToGo = 'Bolt'; whereDetail = 'Go to bolt.new → open your project → paste in the chat'; }
+  if (isV0) { whereToGo = 'v0'; whereDetail = 'Go to v0.dev → open your project → paste in the chat'; }
+
+  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Advice prompts</div>';
+  html += '<div style="background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;padding:.75rem 1rem;margin-bottom:.75rem;font-size:12px;color:var(--put);line-height:1.6">';
+  html += '<strong>How to use these:</strong> ';
+  html += whereDetail + '. ';
+  html += 'Copy each prompt, read what ' + whereToGo + ' says, then paste their response back here to verify. ';
+  html += '<strong>Do not apply changes until ' + whereToGo + ' confirms it is safe.</strong>';
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--mut);margin-bottom:.75rem">Note: advice prompts group related issues together — you may see fewer prompts than the number of findings above. Each prompt covers the most impactful fixes first.</div>';
 
   (data.top_fixes||[]).forEach(function(f, fi) {
     // Choose the right platform prompt
