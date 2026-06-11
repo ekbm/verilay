@@ -1438,20 +1438,19 @@ BLOG_POSTS = [
         "date": "June 10, 2026",
         "category": "Story",
         "excerpt": "The moment I realised my AI-built apps might be vulnerable and what I did about it.",
-        "medium_url": "https://medium.com/@mosesekbote",
+        "medium_url": "https://medium.com/@mosesekbote/i-built-an-ai-app-and-had-no-idea-if-it-was-secure-cb6f54be8e27",
         "read_time": "6 min read",
         "featured": True,
     },
     {
         "slug": "how-built-security-tool-without-developer",
         "title": "How I Built a Security Tool Without Being a Developer",
-        "date": "Coming June 13, 2026",
+        "date": "June 13, 2026",
         "category": "Build",
         "excerpt": "The technical journey — Flask, Claude API, smart file selection, and the false positive problem.",
-        "medium_url": None,
+        "medium_url": "https://medium.com/@mosesekbote/how-i-built-a-security-tool-without-being-a-developer-5f1ed4da32ec",
         "read_time": "7 min read",
         "featured": False,
-        "coming_soon": True,
     },
     {
         "slug": "advise-not-fix-non-developer-security",
@@ -1555,22 +1554,60 @@ def blog():
   </div>
 </div>
 <script>
-function toggleBurger() {
-  var menu = document.getElementById("burger-menu");
-  var btn = document.getElementById("burger-btn");
-  if (!menu) return;
-  var open = menu.style.display === "block";
-  menu.style.display = open ? "none" : "block";
-  if (btn) btn.innerHTML = open ? '<i class="ti ti-menu-2" style="font-size:18px"></i>' : '<i class="ti ti-x" style="font-size:18px"></i>';
-}
-document.addEventListener("click", function(e) {
-  var menu = document.getElementById("burger-menu");
-  var btn = document.getElementById("burger-btn");
-  if (menu && btn && menu.style.display === "block" && !menu.contains(e.target) && !btn.contains(e.target)) {
-    menu.style.display = "none";
-    if (btn) btn.innerHTML = '<i class="ti ti-menu-2" style="font-size:18px"></i>';
+(function() {
+  function initBurger() {
+    var btn = document.getElementById("burger-btn");
+    var menu = document.getElementById("burger-menu");
+    if (!btn || !menu) return;
+
+    function openMenu() {
+      menu.style.display = "block";
+      btn.innerHTML = '<i class="ti ti-x" style="font-size:18px"></i>';
+    }
+    function closeMenu() {
+      menu.style.display = "none";
+      btn.innerHTML = '<i class="ti ti-menu-2" style="font-size:18px"></i>';
+    }
+    function toggleMenu(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      menu.style.display === "block" ? closeMenu() : openMenu();
+    }
+
+    // Use both touch and click for reliability on mobile
+    btn.addEventListener("touchend", toggleMenu, {passive: false});
+    btn.addEventListener("click", function(e) {
+      // Only fire click if not already handled by touch
+      if (!e._handledByTouch) toggleMenu(e);
+    });
+    btn.addEventListener("touchstart", function(e) {
+      e._handledByTouch = true;
+    }, {passive: true});
+
+    // Close on outside tap/click
+    document.addEventListener("touchend", function(e) {
+      if (menu.style.display === "block" && !menu.contains(e.target) && !btn.contains(e.target)) {
+        closeMenu();
+      }
+    }, {passive: true});
+    document.addEventListener("click", function(e) {
+      if (menu.style.display === "block" && !menu.contains(e.target) && !btn.contains(e.target)) {
+        closeMenu();
+      }
+    });
+
+    // Close when a menu link is tapped
+    menu.querySelectorAll("a").forEach(function(a) {
+      a.addEventListener("touchend", function() { closeMenu(); }, {passive: true});
+    });
   }
-});
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initBurger);
+  } else {
+    initBurger();
+  }
+})();
 </script>
 
 </body>
@@ -1870,8 +1907,21 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
   <p style="font-size:13px">Source code: <a href="https://github.com/ekbm/verilay" target="_blank" style="color:#534AB7">github.com/ekbm/verilay</a></p>
 
   <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">Get in touch</h2>
-  <p>Questions, feedback, or partnership enquiries: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
-  <p style="font-size:13px;color:#6b6966">Commercial licensing for embedding Verilay in your product: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
+  <div style="background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1.25rem;margin-bottom:.75rem">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x2709; General enquiries &amp; feedback</div>
+    <div style="font-size:13px;color:#6b6966;margin-bottom:.5rem">Questions about Verilay, feature requests, or want to share what score your app got?</div>
+    <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:13px;color:#534AB7">moses@verilay.dev</a>
+  </div>
+  <div style="background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1.25rem;margin-bottom:.75rem">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F4BC; Commercial licensing</div>
+    <div style="font-size:13px;color:#6b6966;margin-bottom:.5rem">Want to embed Verilay in your product or offer it to your customers?</div>
+    <a href="mailto:moses@verilay.dev?subject=Verilay%20Commercial%20Licence" style="font-size:13px;color:#534AB7">moses@verilay.dev</a>
+  </div>
+  <div style="background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1.25rem">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F4F0; Follow the journey</div>
+    <div style="font-size:13px;color:#6b6966;margin-bottom:.5rem">Building in public on Medium — new posts as features ship.</div>
+    <a href="https://medium.com/@mosesekbote" target="_blank" style="font-size:13px;color:#534AB7">medium.com/@mosesekbote</a>
+  </div>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
     <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
@@ -2472,7 +2522,7 @@ input:focus{border-color:var(--pu)}
       Analyse my app
     </button>
     <!-- Burger button — visible on mobile only -->
-    <button id="burger-btn" onclick="toggleBurger()" aria-label="Menu" style="display:none;background:transparent;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 8px;cursor:pointer;color:var(--txt)">
+    <button id="burger-btn" aria-label="Menu" style="display:none;background:transparent;border:0.5px solid var(--bdr);border-radius:8px;padding:10px 12px;cursor:pointer;color:var(--txt);-webkit-tap-highlight-color:transparent;touch-action:manipulation">
       <i class="ti ti-menu-2" style="font-size:18px"></i>
     </button>
   </div>
@@ -3025,7 +3075,7 @@ input:focus{border-color:var(--pu)}
       <a href="/privacy" style="font-size:11px;color:var(--mut);text-decoration:none">Privacy</a>
       <a href="/terms" style="font-size:11px;color:var(--mut);text-decoration:none">Terms</a>
       <a href="/ai-disclaimer" style="font-size:11px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
-      <a href="mailto:moses@verilay.dev" style="font-size:11px;color:var(--mut);text-decoration:none">Contact</a>
+      <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:11px;color:var(--mut);text-decoration:none">Contact Moses</a>
     </div>
   </div>
 
@@ -3162,7 +3212,7 @@ input:focus{border-color:var(--pu)}
     <a href="/privacy" style="font-size:11px;color:var(--mut);text-decoration:none">Privacy</a>
     <a href="/terms" style="font-size:11px;color:var(--mut);text-decoration:none">Terms</a>
     <a href="/ai-disclaimer" style="font-size:11px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
-    <a href="mailto:moses@verilay.dev" style="font-size:11px;color:var(--mut);text-decoration:none">Contact</a>
+    <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:11px;color:var(--mut);text-decoration:none">Contact Moses</a>
   </div>
 </div>
 
