@@ -2402,6 +2402,8 @@ HTML = """<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:15px}
 .wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
+#nav-toggle:checked + #burger-menu{display:block!important}
+#nav-toggle:checked + * #burger-btn{background:var(--pul);color:var(--pu)}
 @media(max-width:768px){.wrap{padding:1rem 1rem!important}#nav-links{display:none!important}#burger-btn{display:flex!important;align-items:center}.layer-panel{flex-direction:column!important}#layer-nav{width:100%!important;min-width:0!important;border-right:none!important;border-bottom:0.5px solid var(--bdr)!important;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:4px!important;padding:.5rem!important;overflow-x:auto}#layer-nav .lb{flex:1 1 calc(33% - 4px)!important;min-width:80px!important;font-size:11px!important;padding:6px 8px!important}#layer-content{padding:.75rem!important}.hcs{grid-template-columns:1fr 1fr!important}.hc{min-width:0!important}h1{font-size:1.6rem!important}#hero-section{padding:0!important}}
 .logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
 .logo-text{font-size:24px;font-weight:600;color:var(--pu)}
@@ -2507,7 +2509,7 @@ input:focus{border-color:var(--pu)}
 <!-- ── Nav ─────────────────────────────────────────────────── -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem;min-width:0;overflow:hidden">
   <div style="display:flex;align-items:center;gap:8px">
-    <i class="ti ti-topology-star" style="font-size:20px;color:var(--pu)"></i>
+    <span style="font-size:20px">🛡️</span>
     <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
     <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
   </div>
@@ -2515,28 +2517,29 @@ input:focus{border-color:var(--pu)}
     <!-- Desktop nav links — hidden on mobile -->
     <div id="nav-links" style="display:flex;gap:6px;align-items:center">
       <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
-      <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none"><i class="ti ti-news" style="font-size:12px"></i> Blog</a>
-      <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none"><i class="ti ti-brand-github" style="font-size:12px"></i> GitHub</a>
+      <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Blog</a>
+      <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">GitHub</a>
     </div>
     <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500;white-space:nowrap">
       Analyse my app
     </button>
-    <!-- Burger button — visible on mobile only -->
-    <button id="burger-btn" aria-label="Menu" style="display:none;background:transparent;border:0.5px solid var(--bdr);border-radius:8px;padding:10px 12px;cursor:pointer;color:var(--txt);-webkit-tap-highlight-color:transparent;touch-action:manipulation">
-      <i class="ti ti-menu-2" style="font-size:18px"></i>
-    </button>
+    <!-- CSS-only burger using label+checkbox — no JS needed, works on all mobile -->
+    <label for="nav-toggle" id="burger-btn" style="display:none;padding:10px 12px;cursor:pointer;border:0.5px solid var(--bdr);border-radius:8px;color:var(--txt);user-select:none;-webkit-tap-highlight-color:transparent">
+      &#9776;
+    </label>
   </div>
 </div>
-<!-- Mobile dropdown menu -->
-<div id="burger-menu" style="display:none;background:var(--sur);border-bottom:0.5px solid var(--bdr);padding:.75rem 1.5rem">
+<input type="checkbox" id="nav-toggle" style="display:none">
+<!-- Mobile dropdown menu — CSS controlled -->
+<div id="burger-menu" style="background:var(--sur);border-bottom:0.5px solid var(--bdr);padding:.75rem 1.5rem;display:none">
   <div style="display:flex;flex-direction:column;gap:.5rem">
-    <a href="/about" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
-    <a href="/blog" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
-    <a href="/changelog" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
-    <a href="/privacy" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Privacy</a>
-    <a href="/terms" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Terms</a>
-    <a href="/ai-disclaimer" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">AI Disclaimer</a>
-    <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0">GitHub</a>
+    <a href="/about" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
+    <a href="/blog" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
+    <a href="/changelog" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
+    <a href="/privacy" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Privacy</a>
+    <a href="/terms" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Terms</a>
+    <a href="/ai-disclaimer" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">AI Disclaimer</a>
+    <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0">GitHub</a>
   </div>
 </div>
 
