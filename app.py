@@ -1189,7 +1189,7 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             s1["files_read"] = len(files)
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
-            count = increment_analysis_count()
+            count = get_analysis_count()
             s1["analysis_count"] = count
             yield json.dumps({"event":"step1","data":s1}) + "\n"
 
