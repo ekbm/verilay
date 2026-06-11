@@ -424,7 +424,29 @@ def fetch_url(live_url):
         if "Cannot scan" in str(e): raise
     if parsed.scheme not in ("http","https"):
         raise ValueError("Only http:// and https:// URLs supported.")
-    r = requests.get(live_url, timeout=25, headers={"User-Agent":"Verilay/1.0"})
+    _headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,*/*", "Accept-Language": "en-US,en;q=0.5"}
+    try:
+        r = requests.get(live_url, timeout=25, headers=_headers)
+    except requests.exceptions.SSLError:
+        try:
+            # Retry without SSL verification for sites with certificate issues
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            r = requests.get(live_url, timeout=25, headers=_headers, verify=False)
+        except Exception as ssl_e:
+            raise ValueError(f"SSL certificate error — this website has an invalid or untrusted certificate. This is itself a security finding. Error: {str(ssl_e)[:100]}")
+    except requests.exceptions.ConnectionError as ce:
+        raise ValueError(f"Could not connect to this URL. The site may be down or blocking automated access. Try the GitHub URL instead.")
+    except requests.exceptions.Timeout:
+        raise ValueError("The website took too long to respond (25s timeout). It may be slow or blocking automated access. Try the GitHub URL instead.")
+    if r.status_code == 403:
+        raise ValueError("This website blocked the scan (403 Forbidden) — it has bot protection or firewall rules. Try using the GitHub URL instead if you have access to the source code.")
+    elif r.status_code == 401:
+        raise ValueError("This website requires authentication (401 Unauthorized). Try using the GitHub URL instead.")
+    elif r.status_code == 404:
+        raise ValueError("URL not found (404). Please check the URL is correct and try again.")
+    elif r.status_code >= 500:
+        raise ValueError(f"The website returned a server error ({r.status_code}). It may be down — try again later.")
     r.raise_for_status()
     domain = live_url.split("/")[2]
     name = domain.replace(".lovable.app","").replace(".replit.app","")
@@ -2293,7 +2315,7 @@ HTML = """<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:15px}
 .wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
-@media(max-width:768px){.wrap{padding:1rem}.layer-panel{flex-direction:column!important}#layer-nav{width:100%!important;min-width:0!important;border-right:none!important;border-bottom:0.5px solid var(--bdr)!important;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:4px!important;padding:.5rem!important;overflow-x:auto}#layer-nav .lb{flex:1 1 calc(33% - 4px)!important;min-width:80px!important;font-size:11px!important;padding:6px 8px!important}#layer-content{padding:.75rem!important}#nav-links{display:none!important}#burger-btn{display:flex!important}.hcs{grid-template-columns:1fr 1fr!important}}
+@media(max-width:768px){.wrap{padding:1rem 1rem!important}#nav-links{display:none!important}#burger-btn{display:flex!important;align-items:center}.layer-panel{flex-direction:column!important}#layer-nav{width:100%!important;min-width:0!important;border-right:none!important;border-bottom:0.5px solid var(--bdr)!important;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:4px!important;padding:.5rem!important;overflow-x:auto}#layer-nav .lb{flex:1 1 calc(33% - 4px)!important;min-width:80px!important;font-size:11px!important;padding:6px 8px!important}#layer-content{padding:.75rem!important}.hcs{grid-template-columns:1fr 1fr!important}.hc{min-width:0!important}h1{font-size:1.6rem!important}#hero-section{padding:0!important}}
 .logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
 .logo-text{font-size:24px;font-weight:600;color:var(--pu)}
 .tagline{font-size:14px;color:var(--mut);margin-bottom:2rem}
@@ -2396,7 +2418,7 @@ input:focus{border-color:var(--pu)}
 <main><div class="wrap">
 
 <!-- ── Nav ─────────────────────────────────────────────────── -->
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem;min-width:0;overflow:hidden">
   <div style="display:flex;align-items:center;gap:8px">
     <i class="ti ti-topology-star" style="font-size:20px;color:var(--pu)"></i>
     <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
