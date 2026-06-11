@@ -1245,6 +1245,9 @@ def run_step4():
         findings       = data.get("findings_summary","")
         report_id      = data.get("report_id","")
 
+        # Truncate findings if too long to prevent timeout
+        if len(findings) > 800:
+            findings = findings[:800] + '...'
         result = analyse_step4(repo_name, built_with, findings)
 
         # Update saved report with Part 2 data
