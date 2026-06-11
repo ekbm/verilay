@@ -88,21 +88,19 @@ def get_analysis_count():
 
 
 def increment_analysis_count(score=None, method=None):
-    """Increment cumulative stats counters — fails silently if table not set up."""
+    """Increment cumulative stats counter — read then increment."""
     if not _HAS_SUPABASE:
         return
     try:
-        # Try RPC first, fall back to raw update
-        try:
-            _sb.rpc("increment_stat", {"stat_key": "total_analyses"}).execute()
-        except Exception:
-            # RPC not set up yet — try direct update
-            try:
-                _sb.table("stats").update({"value": 999}).eq("key", "total_analyses").execute()
-            except Exception:
-                pass  # Stats table not set up yet — silent fail
+        result = _sb.table("stats").select("value").eq("key", "total_analyses").execute()
+        if result.data:
+            current = result.data[0]["value"] or 0
+            _sb.table("stats").update({"value": current + 1}).eq("key", "total_analyses").execute()
+            print(f"✓ Count: {current + 1}", flush=True)
+        else:
+            _sb.table("stats").insert({"key": "total_analyses", "value": 1}).execute()
     except Exception as e:
-        print(f"Stats increment error (non-critical): {e}", flush=True)
+        print(f"Stats increment failed (non-critical): {e}", flush=True)
 
 
 def increment_analysis_count():
