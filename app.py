@@ -1554,6 +1554,25 @@ def blog():
     <a href="/" style="display:inline-block;margin-top:.75rem;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
+<script>
+function toggleBurger() {
+  var menu = document.getElementById("burger-menu");
+  var btn = document.getElementById("burger-btn");
+  if (!menu) return;
+  var open = menu.style.display === "block";
+  menu.style.display = open ? "none" : "block";
+  if (btn) btn.innerHTML = open ? '<i class="ti ti-menu-2" style="font-size:18px"></i>' : '<i class="ti ti-x" style="font-size:18px"></i>';
+}
+document.addEventListener("click", function(e) {
+  var menu = document.getElementById("burger-menu");
+  var btn = document.getElementById("burger-btn");
+  if (menu && btn && menu.style.display === "block" && !menu.contains(e.target) && !btn.contains(e.target)) {
+    menu.style.display = "none";
+    if (btn) btn.innerHTML = '<i class="ti ti-menu-2" style="font-size:18px"></i>';
+  }
+});
+</script>
+
 </body>
 </html>"""
 
@@ -1793,15 +1812,33 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
     <div style="font-size:32px;flex-shrink:0">👋</div>
     <div>
       <div style="font-weight:700;font-size:16px;margin-bottom:.25rem">Moses Ekbote</div>
-      <div style="font-size:13px;color:#3C3489;margin-bottom:.5rem">Builder, Perth Australia</div>
-      <div style="font-size:13px;color:#4a4846;line-height:1.6">I build tools to solve real-world problems. Not a developer by background — I use AI platforms like Lovable and Replit to turn ideas into real products.</div>
-      <div style="display:flex;gap:8px;margin-top:.75rem;flex-wrap:wrap">
-        <a href="https://evident-ai.net" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">evident-ai.net</a>
-        <a href="https://loginsight.com.au" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">loginsight.com.au</a>
-        <a href="https://buildstory.com.au" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">buildstory.com.au</a>
+      <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.5rem">I build things in my spare time. Verilay, Evident, LogInsight, and BuildStory are all live products built without a traditional development background.</div>
+      <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.75rem">Follow the journey on <a href="https://medium.com/@mosesekbote" target="_blank" style="color:#534AB7">Medium</a>.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a href="https://medium.com/@mosesekbote" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">Medium</a>
+        <a href="https://github.com/ekbm" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">GitHub</a>
       </div>
     </div>
+  </div>
+
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Other products</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:2rem">
+    <a href="https://evident-ai.net" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
+      <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">Evident AI &#x2197;</div>
+      <div style="font-size:12px;color:#6b6966;line-height:1.5">AI-powered study and document management platform. Built on Replit with PostgreSQL and OpenAI.</div>
+    </a>
+    <a href="https://loginsight.com.au" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
+      <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">LogInsight &#x2197;</div>
+      <div style="font-size:12px;color:#6b6966;line-height:1.5">Log analysis and environment monitoring tool. Plain-English explanations for complex server logs.</div>
+    </a>
+    <a href="https://buildstory.com.au" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
+      <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">BuildStory &#x2197;</div>
+      <div style="font-size:12px;color:#6b6966;line-height:1.5">Document your build journey. Track what you built, why, and what you learned along the way.</div>
+    </a>
+    <a href="https://verilay.dev" style="display:block;text-decoration:none;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:10px;padding:1rem">
+      <div style="font-weight:600;font-size:14px;color:#534AB7;margin-bottom:.25rem">Verilay &#x2713; You are here</div>
+      <div style="font-size:12px;color:#3C3489;line-height:1.5">Free security analysis for AI-built apps. Plain-English findings and advice prompts.</div>
+    </a>
   </div>
 
   <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Why Verilay exists</h2>
@@ -3113,6 +3150,21 @@ input:focus{border-color:var(--pu)}
 
 </div></main>
 
+<!-- Footer -->
+<div style="text-align:center;padding:1.5rem 1rem 2rem;border-top:0.5px solid var(--bdr);margin-top:1rem">
+  <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:12px;color:var(--mut);text-decoration:none">
+    ⭐ Found Verilay useful? Star us on GitHub
+  </a>
+  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:.5rem">
+    <a href="/about" style="font-size:11px;color:var(--mut);text-decoration:none">About</a>
+    <a href="/blog" style="font-size:11px;color:var(--mut);text-decoration:none">Blog</a>
+    <a href="/changelog" style="font-size:11px;color:var(--mut);text-decoration:none">Changelog</a>
+    <a href="/privacy" style="font-size:11px;color:var(--mut);text-decoration:none">Privacy</a>
+    <a href="/terms" style="font-size:11px;color:var(--mut);text-decoration:none">Terms</a>
+    <a href="/ai-disclaimer" style="font-size:11px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
+    <a href="mailto:moses@verilay.dev" style="font-size:11px;color:var(--mut);text-decoration:none">Contact</a>
+  </div>
+</div>
 
 <script>
 function toggleBurger() {
