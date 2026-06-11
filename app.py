@@ -1536,7 +1536,7 @@ def blog():
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1631,7 +1631,7 @@ def blog_post(slug):
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">Back to blog</a>
 </nav>
 <div class="wrap" style="max-width:680px">
@@ -1666,7 +1666,7 @@ li{margin-bottom:.35rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1742,7 +1742,7 @@ li{margin-bottom:.35rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1836,7 +1836,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1954,7 +1954,7 @@ li{margin-bottom:.4rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2039,7 +2039,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2509,7 +2509,7 @@ input:focus{border-color:var(--pu)}
 <!-- ── Nav ─────────────────────────────────────────────────── -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem;min-width:0;overflow:hidden">
   <div style="display:flex;align-items:center;gap:8px">
-    <span style="font-size:20px">🛡️</span>
+    <svg width="28" height="28" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><path d="M22 3L4 10v12c0 11 8 21 18 23.5C32 43 40 33 40 22V10L22 3z" fill="#534AB7" opacity="0.15"/><path d="M22 3L4 10v12c0 11 8 21 18 23.5C32 43 40 33 40 22V10L22 3z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 22l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
     <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
   </div>
