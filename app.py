@@ -103,13 +103,6 @@ def increment_analysis_count(score=None, method=None):
         print(f"Stats increment failed (non-critical): {e}", flush=True)
 
 
-def increment_analysis_count():
-    """Increment in-memory count — Supabase row count is source of truth."""
-    global _memory_count
-    with _count_lock:
-        _memory_count += 1
-    return _memory_count
-
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
     if _HAS_SUPABASE:
@@ -2140,7 +2133,7 @@ Sitemap: https://verilay.dev/sitemap.xml"""
 @app.route("/counter")
 def counter_debug():
     """Debug endpoint to check counter sources."""
-    mem = _memory_count
+    mem = 0  # memory count deprecated — using Supabase stats table
     supabase_count = 0
     if _HAS_SUPABASE:
         try:
