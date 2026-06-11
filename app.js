@@ -1166,7 +1166,7 @@ async function runPart2() {
     renderPart2(data);
   } catch(e) {
     document.getElementById('p2-loading').style.display = 'none';
-    document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">Deep analysis failed. Please try again.</div>';
+    document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">Deep analysis timed out or failed — this can happen with large or complex apps. <a href=\'#\' onclick=\'runPart2();return false;\' style=\'color:var(--rd);font-weight:600\'>Try again</a> or skip and use the advice prompts above.</div>';
   }
 }
 
