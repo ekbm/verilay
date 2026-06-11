@@ -1539,7 +1539,7 @@ def blog():
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1634,7 +1634,7 @@ def blog_post(slug):
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">Back to blog</a>
 </nav>
 <div class="wrap" style="max-width:680px">
@@ -1669,7 +1669,7 @@ li{margin-bottom:.35rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1745,7 +1745,7 @@ li{margin-bottom:.35rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1839,7 +1839,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -1957,7 +1957,7 @@ li{margin-bottom:.4rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2042,7 +2042,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">🛡️ Verilay</a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
