@@ -88,20 +88,21 @@ def get_analysis_count():
 
 
 def increment_analysis_count(score=None, method=None):
-    """Increment cumulative stats counters."""
+    """Increment cumulative stats counters — fails silently if table not set up."""
     if not _HAS_SUPABASE:
         return
     try:
-        # Increment total
-        _sb.rpc("increment_stat", {"stat_key": "total_analyses"}).execute()
-        # Increment by score
-        if score in ["A", "B", "C", "D", "F"]:
-            _sb.rpc("increment_stat", {"stat_key": f"score_{score.lower()}"}).execute()
-        # Increment by method
-        if method in ["github", "url", "zip"]:
-            _sb.rpc("increment_stat", {"stat_key": f"method_{method}"}).execute()
+        # Try RPC first, fall back to raw update
+        try:
+            _sb.rpc("increment_stat", {"stat_key": "total_analyses"}).execute()
+        except Exception:
+            # RPC not set up yet — try direct update
+            try:
+                _sb.table("stats").update({"value": 999}).eq("key", "total_analyses").execute()
+            except Exception:
+                pass  # Stats table not set up yet — silent fail
     except Exception as e:
-        print(f"Stats increment error: {e}", flush=True)
+        print(f"Stats increment error (non-critical): {e}", flush=True)
 
 
 def increment_analysis_count():
@@ -1219,7 +1220,10 @@ def analyse_stream():
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
             report_id = save_report_data(partial)
-            increment_analysis_count(score=data.get("health", {}).get("score"), method=method)
+            try:
+                increment_analysis_count(score=data.get("health", {}).get("score"), method=method)
+            except Exception as _inc_err:
+                print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
             yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
 
             # ── Done with layers ────────────────────────────────────────
@@ -1331,8 +1335,7 @@ def delete_report(report_id):
             try:
                 # Anonymise rather than delete — keeps stats accurate
                 _sb.table("reports").update({
-                    "data": {"deleted": True, "deleted_at": _dt.datetime.utcnow().isoformat()},
-                    "repo": "[deleted]"
+                    "data": {"deleted": True, "deleted_at": _dt.datetime.utcnow().isoformat()}
                 }).eq("id", report_id).execute()
                 print(f"✓ Report anonymised: {report_id}", flush=True)
                 return jsonify({"ok": True})
@@ -1417,22 +1420,24 @@ BLOG_POSTS = [
     {
         "slug": "how-built-security-tool-without-developer",
         "title": "How I Built a Security Tool Without Being a Developer",
-        "date": "June 13, 2026",
+        "date": "Coming June 13, 2026",
         "category": "Build",
         "excerpt": "The technical journey — Flask, Claude API, smart file selection, and the false positive problem.",
-        "medium_url": "https://medium.com/@mosesekbote",
+        "medium_url": None,
         "read_time": "7 min read",
         "featured": False,
+        "coming_soon": True,
     },
     {
         "slug": "advise-not-fix-non-developer-security",
         "title": "Why Advise Not Fix Is the Only Safe Approach for Non-Developer Security",
-        "date": "June 17, 2026",
+        "date": "Coming June 17, 2026",
         "category": "Philosophy",
         "excerpt": "Three real conversations that proved the model and what the B grade actually means.",
-        "medium_url": "https://medium.com/@mosesekbote",
+        "medium_url": None,
         "read_time": "7 min read",
         "featured": False,
+        "coming_soon": True,
     },
     {
         "slug": "evident-ai-c-to-b",
@@ -1467,9 +1472,14 @@ a.card:hover{box-shadow:0 4px 20px rgba(0,0,0,.08)}
 
 def _render_card(p, big=False):
     bg, fg = CAT_COLORS.get(p["category"], ("#fff", "#666"))
+    is_soon = p.get("coming_soon", False)
     link = p["medium_url"] if p["medium_url"] else "/blog/" + p["slug"]
     target = 'target="_blank" rel="noopener"' if p["medium_url"] else ""
     ext = " &nearr;" if p["medium_url"] else ""
+    if is_soon:
+        link = "#"
+        target = ""
+        ext = ""
     pad = "2rem" if big else "1.25rem"
     title_size = "21px" if big else "16px"
     return (
@@ -1478,7 +1488,7 @@ def _render_card(p, big=False):
         '<span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;background:' + bg + ';color:' + fg + '">' + p["category"] + '</span>'
         '<span style="font-size:11px;color:#6b6966">' + p["date"] + ' - ' + p["read_time"] + '</span>'
         '</div>'
-        '<div style="font-size:' + title_size + ';font-weight:700;color:#1a1917;margin-bottom:.4rem;line-height:1.3">' + p["title"] + ext + '</div>'
+        '<div style="font-size:' + title_size + ';font-weight:700;color:' + ('#9999aa' if is_soon else '#1a1917') + ';margin-bottom:.4rem;line-height:1.3">' + p["title"] + ext + ('&nbsp;<span style="font-size:10px;background:#f0f0f0;color:#999;padding:2px 7px;border-radius:10px;font-weight:500">Coming soon</span>' if is_soon else '') + '</div>'
         '<div style="font-size:13px;color:#6b6966;line-height:1.55">' + p["excerpt"] + '</div>'
         '</a>'
     )
@@ -1716,6 +1726,272 @@ li{margin-bottom:.35rem}
 
   <h2>9. Contact</h2>
   <p>Questions: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
+
+  <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
+    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/about")
+def about():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>About - Verilay</title>
+<meta name="description" content="Verilay was built by Moses Ekbote — a non-developer who built real apps and needed to know if they were secure.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+.wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
+.card{background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1.25rem;margin-bottom:.75rem}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Our story</div>
+    <h1 style="font-size:26px;font-weight:700;margin-bottom:1rem">Built by a non-developer, for non-developers</h1>
+  </div>
+
+  <div style="background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;padding:1.5rem;margin-bottom:2rem;display:flex;gap:1rem;align-items:flex-start">
+    <div style="font-size:32px;flex-shrink:0">👋</div>
+    <div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:.25rem">Moses Ekbote</div>
+      <div style="font-size:13px;color:#3C3489;margin-bottom:.5rem">Builder, Perth Australia</div>
+      <div style="font-size:13px;color:#4a4846;line-height:1.6">I build tools to solve real-world problems. Not a developer by background — I use AI platforms like Lovable and Replit to turn ideas into real products.</div>
+      <div style="display:flex;gap:8px;margin-top:.75rem;flex-wrap:wrap">
+        <a href="https://evident-ai.net" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">evident-ai.net</a>
+        <a href="https://loginsight.com.au" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">loginsight.com.au</a>
+        <a href="https://buildstory.com.au" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">buildstory.com.au</a>
+        <a href="https://medium.com/@mosesekbote" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">Medium</a>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Why Verilay exists</h2>
+  <p>I built several apps using AI platforms — Evident, LogInsight, BuildStory. Real apps with real users, databases, payments, and login systems.</p>
+  <p>One day I ran a security scan and found my database was publicly accessible. No authentication. Anyone with the URL could download everything.</p>
+  <p>I went looking for tools to check my other apps. What I found were security scanners written for developers — full of terms like "JWT verification bypass" and "insufficient input sanitization." I understood the words but not the sentences. I had no idea what to actually do.</p>
+  <p>So I built what I wished existed: a tool that reads your code and explains what it found in plain English — then helps you investigate safely with your AI builder before touching anything.</p>
+
+  <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">The philosophy</h2>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F4AC; Advise, don't fix</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">Every prompt Verilay generates asks your AI builder to investigate and advise — never to make sweeping changes. Blindly applying fix prompts can break working code.</div>
+  </div>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x2705; Verify before acting</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">Verilay lets you paste your builder's response back and update the report. The score reflects what's actually been verified — not just what static analysis found.</div>
+  </div>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F3AF; B grade is the realistic target</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">Not A. For AI-built apps, B means properly secured for real users. A requires enterprise-level hardening beyond what any AI builder can automate.</div>
+  </div>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F513; Free forever for non-developers</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">Verilay will always be free to analyse your app. No login required. Pro features for power users coming soon.</div>
+  </div>
+
+  <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">Built with</h2>
+  <p style="font-size:13px">Python / Flask &nbsp;&middot;&nbsp; Claude AI (Anthropic) &nbsp;&middot;&nbsp; Supabase &nbsp;&middot;&nbsp; Railway &nbsp;&middot;&nbsp; Cloudflare</p>
+  <p style="font-size:13px">Source code: <a href="https://github.com/ekbm/verilay" target="_blank" style="color:#534AB7">github.com/ekbm/verilay</a></p>
+
+  <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">Get in touch</h2>
+  <p>Questions, feedback, or partnership enquiries: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
+  <p style="font-size:13px;color:#6b6966">Commercial licensing for embedding Verilay in your product: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
+
+  <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
+    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/ai-disclaimer")
+def ai_disclaimer():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Disclaimer - Verilay</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+.wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+h2{font-size:17px;font-weight:600;margin:1.5rem 0 .5rem}
+p{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px}
+ul{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px;padding-left:1.25rem}
+li{margin-bottom:.4rem}
+.good{background:#E1F5EE;border:0.5px solid #1D9E75;border-radius:8px;padding:1rem;margin:.5rem 0}
+.warn{background:#FEF9C3;border:0.5px solid #EF9F27;border-radius:8px;padding:1rem;margin:.5rem 0}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Transparency</div>
+    <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">AI Disclaimer</h1>
+    <p>Verilay uses AI to analyse code. Here is exactly what that means — the good and the limitations.</p>
+  </div>
+
+  <h2>What AI Verilay uses</h2>
+  <p>Verilay uses <strong>Claude</strong>, built by <a href="https://anthropic.com" target="_blank" style="color:#534AB7">Anthropic</a> — one of the leading AI safety companies. Claude reads your code files and generates security findings, plain-English explanations, and advice prompts.</p>
+
+  <h2>What AI does well here</h2>
+  <div class="good">
+    <ul style="list-style:none;padding:0">
+      <li>&#x2705; Reads code and explains what it does in plain English</li>
+      <li>&#x2705; Identifies common security patterns and anti-patterns</li>
+      <li>&#x2705; Understands platform-specific patterns (Supabase, Replit, Firebase, Lovable)</li>
+      <li>&#x2705; Generates safe investigative prompts tailored to your specific codebase</li>
+      <li>&#x2705; Explains findings at different levels — technical and plain English</li>
+    </ul>
+  </div>
+
+  <h2>Known limitations</h2>
+  <div class="warn">
+    <ul style="list-style:none;padding:0">
+      <li>&#x26A0;&#xFE0F; <strong>False positives</strong> — may flag correct code as a potential issue</li>
+      <li>&#x26A0;&#xFE0F; <strong>False negatives</strong> — may miss genuine security issues</li>
+      <li>&#x26A0;&#xFE0F; <strong>File sample only</strong> — analyses up to 25 files, not your entire codebase</li>
+      <li>&#x26A0;&#xFE0F; <strong>Score variation</strong> — same codebase may score slightly differently on different runs</li>
+      <li>&#x26A0;&#xFE0F; <strong>No code execution</strong> — reads code statically, cannot test actual runtime behaviour</li>
+      <li>&#x26A0;&#xFE0F; <strong>Not a penetration test</strong> — does not attempt to exploit vulnerabilities</li>
+    </ul>
+  </div>
+
+  <h2>How we reduce AI errors</h2>
+  <p>Verilay includes extensive platform awareness rules — over 30 patterns that tell Claude what correct behaviour looks like for Lovable, Replit, Supabase, Firebase, Drizzle, NextAuth, Clerk, and more. These rules are updated continuously based on real-world false positives reported by users.</p>
+  <p>The verify feature lets you confirm findings with your AI builder and update the report — so the score reflects verified reality, not just static analysis.</p>
+
+  <h2>When to get a professional review</h2>
+  <p>Verilay is a first-pass overview. For apps that handle:</p>
+  <ul>
+    <li>Medical or health data</li>
+    <li>Financial transactions or payment card data</li>
+    <li>Personal data covered by GDPR or similar regulations</li>
+    <li>Authentication for enterprise or B2B customers</li>
+  </ul>
+  <p>We recommend a professional security review in addition to Verilay. Services like <a href="https://snyk.io" target="_blank" style="color:#534AB7">Snyk</a> and <a href="https://codrabbit.ai" target="_blank" style="color:#534AB7">CodeRabbit</a> provide deeper analysis.</p>
+
+  <h2>Anthropic responsible AI</h2>
+  <p>Claude is built by Anthropic with a focus on AI safety and responsible deployment. Learn more at <a href="https://anthropic.com/responsible-scaling-policy" target="_blank" style="color:#534AB7">anthropic.com</a>.</p>
+
+  <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
+    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/changelog")
+def changelog():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Changelog - Verilay</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+.wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+.entry{border-left:2px solid #e8e6e0;padding-left:1.25rem;margin-bottom:2rem;position:relative}
+.entry::before{content:"";width:10px;height:10px;background:#534AB7;border-radius:50%;position:absolute;left:-6px;top:4px}
+.tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-right:4px;margin-bottom:4px}
+.new{background:#E1F5EE;color:#085041}
+.fix{background:#FCEBEB;color:#A32D2D}
+.improve{background:#EFF6FF;color:#1D4ED8}
+.feature{background:#EEEDFE;color:#3C3489}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">&#x1F6E1; Verilay</a>
+  <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
+    <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
+    <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 10, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Blog, Privacy, Terms and About pages</div>
+    <div><span class="tag new">New</span><span class="tag new">New</span><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Added Blog at /blog, Privacy policy, Terms of use with AI disclaimer, About page with the story behind Verilay, and this Changelog. Verilay now feels like a proper product.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 9, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Advice-first prompts — investigate before fixing</div>
+    <div><span class="tag feature">Feature</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">All fix prompts changed to advice prompts. Every prompt now asks your AI builder to investigate and advise before making any changes. "Copy fix prompt" became "Get advice prompt". "Fix in Lovable" became "Ask Lovable about this". Safety warning added before copying.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 9, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Verify findings with your AI builder</div>
+    <div><span class="tag feature">Feature</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Mark any finding as verified by pasting your AI builder's response. Score recalculates based on unverified findings only. Layer dots turn green when all findings are verified. Report becomes a living document.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 8, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Smart file selection + dependency awareness</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Verilay now reads package.json first to identify your exact stack before analysing. Files are selected by security relevance not just filename. Added awareness for Drizzle ORM, NextAuth, Clerk, Prisma, Flask, Gunicorn and more.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 7, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Waitlist capture + score A/B/C guide</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Waitlist popup after 3 analyses to capture demand for Pro features. Score guide now shows exactly what's needed to reach each grade — including a checklist to go from B to A.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 5, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Learner mode + unique app-specific analogies</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Learner mode explains each layer in plain English with analogies specific to your app. A travel app gets travel analogies. A legal app gets legal analogies. Never generic "think of it like a bouncer" explanations.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">May 28, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Platform awareness for Lovable, Replit, Supabase</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Added 30+ platform-specific rules to prevent false positives. Supabase anon keys, Replit OIDC auth, Lovable auto-managed env vars and TanStack Query patterns are now correctly recognised as valid — never flagged.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">May 20, 2026</div>
+    <div style="font-weight:700;font-size=16px;margin-bottom:.5rem">&#x1F680; Verilay launched</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">First public release. GitHub and URL analysis, plain-English security reports, layer map with Expert and Learner modes. Free, no login required.</p>
+  </div>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
     <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
@@ -2014,6 +2290,7 @@ HTML = """<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:15px}
 .wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
+@media(max-width:768px){.wrap{padding:1rem}.layer-panel{flex-direction:column!important}#layer-nav{width:100%!important;min-width:0!important;border-right:none!important;border-bottom:0.5px solid var(--bdr)!important;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:4px!important;padding:.5rem!important;overflow-x:auto}#layer-nav .lb{flex:1 1 calc(33% - 4px)!important;min-width:80px!important;font-size:11px!important;padding:6px 8px!important}#layer-content{padding:.75rem!important}#nav-links{display:none!important}#burger-btn{display:flex!important}.hcs{grid-template-columns:1fr 1fr!important}}
 .logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
 .logo-text{font-size:24px;font-weight:600;color:var(--pu)}
 .tagline{font-size:14px;color:var(--mut);margin-bottom:2rem}
@@ -2122,22 +2399,32 @@ input:focus{border-color:var(--pu)}
     <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
     <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
   </div>
-  <div style="display:flex;gap:6px;align-items:center">
-    <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
-      <i class="ti ti-news" style="font-size:12px"></i> Blog
-    </a>
-    <a href="/privacy" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
-      <i class="ti ti-lock" style="font-size:12px"></i> Privacy
-    </a>
-    <a href="/terms" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
-      <i class="ti ti-file-text" style="font-size:12px"></i> Terms
-    </a>
-    <a href="https://github.com/ekbm/verilay" target="_blank" aria-label="View Verilay on GitHub" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">
-      <i class="ti ti-brand-github" style="font-size:13px" aria-hidden="true"></i> GitHub
-    </a>
-    <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500">
+  <div style="display:flex;align-items:center;gap:8px">
+    <!-- Desktop nav links — hidden on mobile -->
+    <div id="nav-links" style="display:flex;gap:6px;align-items:center">
+      <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
+      <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none"><i class="ti ti-news" style="font-size:12px"></i> Blog</a>
+      <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none"><i class="ti ti-brand-github" style="font-size:12px"></i> GitHub</a>
+    </div>
+    <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500;white-space:nowrap">
       Analyse my app
     </button>
+    <!-- Burger button — visible on mobile only -->
+    <button id="burger-btn" onclick="toggleBurger()" aria-label="Menu" style="display:none;background:transparent;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 8px;cursor:pointer;color:var(--txt)">
+      <i class="ti ti-menu-2" style="font-size:18px"></i>
+    </button>
+  </div>
+</div>
+<!-- Mobile dropdown menu -->
+<div id="burger-menu" style="display:none;background:var(--sur);border-bottom:0.5px solid var(--bdr);padding:.75rem 1.5rem">
+  <div style="display:flex;flex-direction:column;gap:.5rem">
+    <a href="/about" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
+    <a href="/blog" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
+    <a href="/changelog" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
+    <a href="/privacy" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Privacy</a>
+    <a href="/terms" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">Terms</a>
+    <a href="/ai-disclaimer" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0;border-bottom:0.5px solid var(--bdr)">AI Disclaimer</a>
+    <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:14px;color:var(--txt);text-decoration:none;padding:.5rem 0">GitHub</a>
   </div>
 </div>
 
@@ -2670,9 +2957,12 @@ input:focus{border-color:var(--pu)}
       ⭐ Found Verilay useful? Star us on GitHub
     </a>
     <div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem">
+      <a href="/about" style="font-size:11px;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="font-size:11px;color:var(--mut);text-decoration:none">Blog</a>
+      <a href="/changelog" style="font-size:11px;color:var(--mut);text-decoration:none">Changelog</a>
       <a href="/privacy" style="font-size:11px;color:var(--mut);text-decoration:none">Privacy</a>
       <a href="/terms" style="font-size:11px;color:var(--mut);text-decoration:none">Terms</a>
+      <a href="/ai-disclaimer" style="font-size:11px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
       <a href="mailto:moses@verilay.dev" style="font-size:11px;color:var(--mut);text-decoration:none">Contact</a>
     </div>
   </div>
@@ -2799,6 +3089,24 @@ input:focus{border-color:var(--pu)}
 </div></main>
 
 
+<script>
+function toggleBurger() {
+  var menu = document.getElementById("burger-menu");
+  var btn = document.getElementById("burger-btn");
+  if (!menu) return;
+  var open = menu.style.display === "block";
+  menu.style.display = open ? "none" : "block";
+  btn.innerHTML = open ? '<i class="ti ti-menu-2" style="font-size:18px"></i>' : '<i class="ti ti-x" style="font-size:18px"></i>';
+}
+document.addEventListener("click", function(e) {
+  var menu = document.getElementById("burger-menu");
+  var btn = document.getElementById("burger-btn");
+  if (menu && btn && menu.style.display === "block" && !menu.contains(e.target) && !btn.contains(e.target)) {
+    menu.style.display = "none";
+    btn.innerHTML = '<i class="ti ti-menu-2" style="font-size:18px"></i>';
+  }
+});
+</script>
 </body>
 </html>"""
 
