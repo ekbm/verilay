@@ -88,19 +88,25 @@ def get_analysis_count():
 
 
 def increment_analysis_count(score=None, method=None):
-    """Increment cumulative stats counter — read then increment."""
+    """Increment cumulative stats counter."""
+    print(f"[STATS] increment called — _HAS_SUPABASE={_HAS_SUPABASE}", flush=True)
     if not _HAS_SUPABASE:
+        print("[STATS] no supabase — skipping", flush=True)
         return
     try:
+        print("[STATS] reading current value...", flush=True)
         result = _sb.table("stats").select("value").eq("key", "total_analyses").execute()
+        print(f"[STATS] read result: {result.data}", flush=True)
         if result.data:
             current = result.data[0]["value"] or 0
-            _sb.table("stats").update({"value": current + 1}).eq("key", "total_analyses").execute()
-            print(f"✓ Count: {current + 1}", flush=True)
+            update_result = _sb.table("stats").update({"value": current + 1}).eq("key", "total_analyses").execute()
+            print(f"[STATS] updated to {current + 1} — result: {update_result.data}", flush=True)
         else:
-            _sb.table("stats").insert({"key": "total_analyses", "value": 1}).execute()
+            print("[STATS] no row found — inserting", flush=True)
+            _sb.table("stats").insert({"key": "total_analyses", "value": 207}).execute()
     except Exception as e:
-        print(f"Stats increment failed (non-critical): {e}", flush=True)
+        print(f"[STATS] ERROR: {e}", flush=True)
+
 
 
 def save_report_data(data):
