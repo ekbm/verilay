@@ -1460,11 +1460,11 @@ BLOG_POSTS = [
     {
         "slug": "evident-ai-c-to-b",
         "title": "How Evident-AI Went From C to B",
-        "date": "June 10, 2026",
+        "date": "June 12, 2026",
         "category": "Case Study",
-        "excerpt": "Two critical vulnerabilities, three advice conversations, zero broken features.",
+        "excerpt": "Two real vulnerabilities, one false positive, three advice conversations with Replit. Zero broken features.",
         "medium_url": None,
-        "read_time": "5 min read",
+        "read_time": "6 min read",
         "featured": False,
     },
 ]
@@ -1608,11 +1608,122 @@ def blog():
 </html>"""
 
 
+
+def render_evident_case_study():
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How Evident-AI Went From C to B - Verilay Case Study</title>
+<meta name="description" content="Two real vulnerabilities, one false positive, three advice conversations. Zero broken features.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+.wrap{max-width:680px;margin:0 auto;padding:0 1.5rem 3rem}
+h2{font-size:18px;font-weight:700;margin:2rem 0 .75rem}
+p{color:#4a4846;line-height:1.75;margin-bottom:1rem;font-size:15px}
+.finding{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;margin:.5rem 0}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;margin-right:6px}
+.tag-critical{background:#FCEBEB;color:#A32D2D}
+.tag-false{background:#E1F5EE;color:#085041}
+blockquote{border-left:3px solid #534AB7;padding:.75rem 1rem;margin:1rem 0;background:#EEEDFE;border-radius:0 8px 8px 0;font-size:14px;color:#3C3489;line-height:1.65;font-style:italic}
+.score{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:10px;font-size:22px;font-weight:700}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">
+    <svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    Verilay
+  </a>
+  <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">&#8592; Blog</a>
+</nav>
+<div class="wrap">
+  <div style="margin-bottom:2rem">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:.75rem">
+      <span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;background:#E6F1FB;color:#0C447C">Case Study</span>
+      <span style="font-size:12px;color:#6b6966">June 12, 2026 &middot; 6 min read</span>
+    </div>
+    <h1 style="font-size:28px;font-weight:700;line-height:1.25;margin-bottom:1rem">How Evident-AI Went From C to B</h1>
+    <p style="font-size:16px;color:#6b6966;line-height:1.6">Two real vulnerabilities. One false positive. Three advice conversations with Replit. Zero broken features.</p>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:1.5rem;background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1.25rem;margin-bottom:2rem">
+    <div style="text-align:center"><div class="score" style="background:#FEF9C3;color:#854D0E">C</div><div style="font-size:11px;color:#6b6966;margin-top:.35rem">Before</div></div>
+    <div style="font-size:24px;color:#6b6966">&#8594;</div>
+    <div style="text-align:center"><div class="score" style="background:#EFF6FF;color:#1D4ED8">B</div><div style="font-size:11px;color:#6b6966;margin-top:.35rem">After</div></div>
+    <div style="margin-left:.5rem;font-size:13px;color:#4a4846;line-height:1.6"><strong>2 critical findings fixed</strong><br>1 false positive identified<br>No features broken</div>
+  </div>
+
+  <h2>The app</h2>
+  <p>Evident-AI is a study and document management platform built on Replit using PostgreSQL and OpenAI. Real users, real data, real login system — built without a traditional development background using AI-assisted development.</p>
+  <p>Like most apps built this way it worked perfectly. Users could sign up, upload documents, and use the AI features. But working and secure are two different things.</p>
+
+  <h2>Running the scan</h2>
+  <p>I submitted the Evident-AI GitHub repository to Verilay. The analysis read 18 files including package.json, auth middleware, API routes, database schema, and environment config. The result came back as a C grade with 2 critical findings and 3 warnings.</p>
+  <div style="background:#FCEBEB;border:0.5px solid #E24B4A;border-radius:10px;padding:1rem;margin-bottom:1rem">
+    <div style="font-weight:600;font-size:13px;color:#A32D2D;margin-bottom:.35rem">Score C &mdash; 2 critical findings</div>
+    <div style="font-size:13px;color:#4a4846">Most AI-built apps score C on their first scan. It does not mean the app is broken &mdash; it means there are specific issues worth investigating.</div>
+  </div>
+
+  <h2>The findings</h2>
+  <div class="finding">
+    <div style="margin-bottom:.4rem"><span class="tag tag-critical">Critical</span><strong style="font-size:14px">Dependency vulnerabilities in package.json</strong></div>
+    <p style="font-size:13px;margin-bottom:0">Two packages had known security vulnerabilities &mdash; protobufjs 7.5.4 and @google-cloud/storage 7.18. Both had patched versions available.</p>
+  </div>
+  <div class="finding">
+    <div style="margin-bottom:.4rem"><span class="tag tag-critical">Critical</span><strong style="font-size:14px">API endpoints missing rate limiting</strong></div>
+    <p style="font-size:13px;margin-bottom:0">The OpenAI-powered endpoints had no rate limiting. A malicious user could make hundreds of requests per minute &mdash; running up API costs with no ceiling.</p>
+  </div>
+  <div class="finding">
+    <div style="margin-bottom:.4rem"><span class="tag" style="background:#E1F5EE;color:#085041">False positive</span><strong style="font-size:14px">Missing authentication on admin routes</strong></div>
+    <p style="font-size:13px;margin-bottom:0">Verilay flagged admin routes as potentially unprotected. This was incorrect &mdash; Replit Auth was handling this correctly. The middleware was present but written in a pattern Verilay did not initially recognise.</p>
+  </div>
+
+  <h2>Three conversations with Replit</h2>
+  <p>Instead of asking Replit to fix everything, each prompt asked it to investigate and explain first. This is the advise not fix approach.</p>
+
+  <p><strong>Conversation 1 &mdash; Dependency vulnerabilities:</strong></p>
+  <blockquote>I received a security review flagging protobufjs 7.5.4 and @google-cloud/storage 7.18 as having known vulnerabilities. Can you review these dependencies and advise what the actual risk is for this app, and whether updating them is safe?</blockquote>
+  <p>Replit confirmed both were genuine. It updated protobufjs to 7.6.2 and @google-cloud/storage to 7.19. No features broke.</p>
+
+  <p><strong>Conversation 2 &mdash; Rate limiting:</strong></p>
+  <blockquote>I received a security review noting that the OpenAI API endpoints have no rate limiting. Can you review the current endpoint structure and advise what rate limiting approach would work here without breaking existing functionality?</blockquote>
+  <p>Replit agreed this was a real risk. It added per-user rate limiting &mdash; 10 requests per minute per user with a clear error message when exceeded. Total time: 20 minutes.</p>
+
+  <p><strong>Conversation 3 &mdash; Admin route authentication:</strong></p>
+  <blockquote>I received a security review flagging admin routes as potentially missing authentication. Can you review the auth middleware and confirm whether these routes are actually protected?</blockquote>
+  <p>Replit confirmed the routes were fully protected. The Replit Auth middleware was correctly applied. We marked it as verified in the report &mdash; false positive confirmed.</p>
+
+  <h2>The result</h2>
+  <div style="background:#E1F5EE;border:0.5px solid #1D9E75;border-radius:10px;padding:1rem;margin-bottom:1.5rem">
+    <div style="font-weight:600;font-size:13px;color:#085041;margin-bottom:.35rem">&#x2705; Score B &mdash; properly secured</div>
+    <div style="font-size:13px;color:#4a4846">Both genuine vulnerabilities fixed. False positive identified and verified. No features broken. Total time: under 1 hour.</div>
+  </div>
+
+  <h2>What this shows</h2>
+  <p><strong>Working and secure are different things.</strong> Evident-AI worked perfectly before the scan. Users were logging in, documents were being processed. But two genuine vulnerabilities were sitting there quietly.</p>
+  <p><strong>Not every finding is real.</strong> One of three critical findings was a false positive. Without the verify step &mdash; without asking Replit to investigate before acting &mdash; we might have tried to fix something that was not broken and actually caused a problem.</p>
+  <p><strong>B is the right target.</strong> After fixing two genuine issues Evident-AI scored B. That is the realistic target for an AI-built app. B means properly secured for real users. A requires enterprise-level hardening that goes well beyond what any AI builder can automate.</p>
+
+  <div style="background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;padding:1.5rem;margin-top:2rem;text-align:center">
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">What score does your app get?</div>
+    <div style="font-size:13px;color:#3C3489;margin-bottom:1rem">Free analysis. No login. Takes 2 minutes.</div>
+    <a href="/" style="display:inline-block;font-size:14px;padding:10px 24px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none;font-weight:500">Run a free analysis &#8594;</a>
+  </div>
+</div>
+</body>
+</html>"""
+
 @app.route("/blog/<slug>")
 def blog_post(slug):
     post = next((p for p in BLOG_POSTS if p["slug"] == slug), None)
     if not post:
         return "Post not found", 404
+    if slug == "evident-ai-c-to-b":
+        return render_evident_case_study()
     if post.get("medium_url"):
         return '<meta http-equiv="refresh" content="0;url=' + post["medium_url"] + '">'
     return """<!DOCTYPE html>
