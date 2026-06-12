@@ -1844,7 +1844,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
     <div style="font-size:32px;flex-shrink:0">👋</div>
     <div>
       <div style="font-weight:700;font-size:16px;margin-bottom:.25rem">Moses Ekbote</div>
-      <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.5rem">I build things in my spare time. Verilay, Evident, LogInsight, and BuildStory are all live products built without a traditional development background.</div>
+      <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.5rem">I build things in my spare time. Verilay, Evident, and BuildStory are all live products built without a traditional development background.</div>
       <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.75rem">Follow the journey on <a href="https://medium.com/@mosesekbote" target="_blank" style="color:#534AB7">Medium</a>.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a href="https://medium.com/@mosesekbote" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">Medium</a>
@@ -1859,10 +1859,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">Evident AI &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">AI-powered study and document management platform. Built on Replit with PostgreSQL and OpenAI.</div>
     </a>
-    <a href="https://loginsight.com.au" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
-      <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">LogInsight &#x2197;</div>
-      <div style="font-size:12px;color:#6b6966;line-height:1.5">Log analysis and environment monitoring tool. Plain-English explanations for complex server logs.</div>
-    </a>
+
     <a href="https://buildstory.com.au" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">BuildStory &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">Document your build journey. Track what you built, why, and what you learned along the way.</div>
@@ -1874,7 +1871,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
   </div>
 
   <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Why Verilay exists</h2>
-  <p>I built several apps using AI platforms — Evident, LogInsight, BuildStory. Real apps with real users, databases, payments, and login systems.</p>
+  <p>I built several apps using AI platforms — Evident, BuildStory. Real apps with real users, databases, payments, and login systems.</p>
   <p>One day I ran a security scan and found my database was publicly accessible. No authentication. Anyone with the URL could download everything.</p>
   <p>I went looking for tools to check my other apps. What I found were security scanners written for developers — full of terms like "JWT verification bypass" and "insufficient input sanitization." I understood the words but not the sentences. I had no idea what to actually do.</p>
   <p>So I built what I wished existed: a tool that reads your code and explains what it found in plain English — then helps you investigate safely with your AI builder before touching anything.</p>
