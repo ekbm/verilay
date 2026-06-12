@@ -1243,7 +1243,7 @@ def analyse_stream():
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
             report_id = save_report_data(partial)
             try:
-                increment_analysis_count(score=data.get("health", {}).get("score"), method=method)
+                increment_analysis_count(score=s1.get("health", {}).get("score"), method=method)
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
             yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
