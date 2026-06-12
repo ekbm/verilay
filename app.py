@@ -1450,13 +1450,12 @@ BLOG_POSTS = [
     {
         "slug": "advise-not-fix-non-developer-security",
         "title": "Why Advise Not Fix Is the Only Safe Approach for Non-Developer Security",
-        "date": "Coming June 17, 2026",
+        "date": "June 17, 2026",
         "category": "Philosophy",
         "excerpt": "Three real conversations that proved the model and what the B grade actually means.",
-        "medium_url": None,
+        "medium_url": "https://medium.com/@mosesekbote/why-advise-not-fix-is-the-only-safe-approach-for-non-developer-security-a7abf901d2ff",
         "read_time": "7 min read",
         "featured": False,
-        "coming_soon": True,
     },
     {
         "slug": "evident-ai-c-to-b",
