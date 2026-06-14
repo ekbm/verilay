@@ -1404,13 +1404,18 @@ def feedback():
         data = request.get_json()
         helpful = data.get("helpful")
         comment = data.get("comment", "")
+        email = (data.get("email") or "").strip()
         report_id = data.get("report_id", "")
-        print(f"Feedback: helpful={helpful} report={report_id} comment={comment[:100]}", flush=True)
+        print(f"Feedback: helpful={helpful} report={report_id} email={email} comment={comment[:100]}", flush=True)
         if _HAS_SUPABASE and report_id:
             try:
-                _sb.table("reports").update({
-                    "data": {**get_report_data(report_id), "feedback_helpful": helpful, "feedback_comment": comment}
-                }).eq("id", report_id).execute()
+                merged = dict(get_report_data(report_id) or {})
+                merged["feedback_helpful"] = helpful
+                if comment:
+                    merged["feedback_comment"] = comment
+                if email:
+                    merged["feedback_email"] = email
+                _sb.table("reports").update({"data": merged}).eq("id", report_id).execute()
             except:
                 pass
         return jsonify({"ok": True})
@@ -1787,6 +1792,7 @@ li{margin-bottom:.35rem}
     <li>The analysis results — findings, score, and layer breakdown</li>
     <li>Your IP address for rate limiting (not stored permanently)</li>
     <li>If you join the waitlist — your email address</li>
+    <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
   </ul>
 
   <h2>What we do not collect</h2>
@@ -1799,7 +1805,7 @@ li{margin-bottom:.35rem}
 
   <h2>How your data is stored</h2>
   <p>Analysis reports are stored in Supabase (hosted in the EU) linked to a random report ID. Reports are accessible only via your unique share link. We do not publish, share, or sell individual report data.</p>
-  <p>Free tier reports auto-delete after 24 hours. You can delete your report at any time using the Delete Report button on your report page.</p>
+  <p>Reports are kept so your share link keeps working and so we can improve the product. You can delete your report at any time using the Delete Report button on your report page, which removes the submitted code and findings.</p>
 
   <h2>Statistics</h2>
   <p>We track aggregate statistics — total analyses run, score distribution (how many A/B/C/D/F grades), and analysis method. This data is anonymised and used to improve the product.</p>
@@ -1807,10 +1813,13 @@ li{margin-bottom:.35rem}
   <h2>Waitlist emails</h2>
   <p>If you join the waitlist, your email is stored in Supabase and used only to notify you when Pro features launch. You can request deletion by emailing moses@verilay.dev.</p>
 
+  <h2>Feedback</h2>
+  <p>If you rate a report and choose to leave a comment or email, these are stored with that report in Supabase. Email is optional and used only to follow up about the feedback you left — for example to let you know an issue was fixed. You can request deletion by emailing moses@verilay.dev.</p>
+
   <h2>Your rights</h2>
   <ul>
     <li>Delete your report anytime using the Delete Report button</li>
-    <li>Request deletion of waitlist email at moses@verilay.dev</li>
+    <li>Request deletion of waitlist or feedback email at moses@verilay.dev</li>
     <li>No account means no account data to delete</li>
   </ul>
 
@@ -2149,6 +2158,13 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 14, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Minified production code no longer flagged</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Verilay no longer treats minified or bundled JavaScript as a problem. Shipping minified code is how every production app is built — it's a sign things are working, not a security risk. It will never lower your score or show as a warning again.</p>
   </div>
 
   <div class="entry">
@@ -3150,7 +3166,7 @@ input:focus{border-color:var(--pu)}
       <button id="btn-copy-share" style="font-size:11px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer;flex-shrink:0">Copy link</button>
       <button id="delete-report-btn" onclick="deleteReport()" style="display:none;font-size:11px;padding:5px 10px;border-radius:20px;background:transparent;color:var(--mut);border:0.5px solid var(--bdr);cursor:pointer;flex-shrink:0">Delete report</button>
     </div>
-    <div style="font-size:10px;color:var(--grt);opacity:.8">&#x1F512; Report stored securely. Your findings are private and never shared publicly. Free reports auto-delete after 24 hours.</div>
+    <div style="font-size:10px;color:var(--grt);opacity:.8">&#x1F512; Report stored securely. Your findings are private and never shared publicly. Delete anytime with the Delete Report button.</div>
     <div id="badge-section" style="display:none;margin-top:4px">
       <div style="font-size:11px;color:var(--grt);margin-bottom:4px;font-weight:500">Add this badge to your GitHub README:</div>
       <input id="badge-code" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:10px;font-family:var(--mono);background:white;color:var(--mut)">
@@ -3193,6 +3209,8 @@ input:focus{border-color:var(--pu)}
     </div>
     <div id="feedback-text-area" style="display:none;margin-top:.5rem">
       <textarea id="feedback-text" placeholder="What could be better? (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:12px;font-family:inherit;resize:vertical;min-height:60px;background:var(--bg);color:var(--txt)"></textarea>
+      <input id="feedback-email" type="email" placeholder="Your email — only if you'd like us to follow up (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:12px;font-family:inherit;margin-top:6px;box-sizing:border-box;background:var(--bg);color:var(--txt)" />
+      <div style="font-size:10px;color:var(--mut);margin-top:4px;text-align:left">We'll only use your email to follow up about this feedback.</div>
       <button onclick="sendFeedbackText()" style="margin-top:6px;font-size:12px;padding:5px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Send feedback</button>
     </div>
     <div id="feedback-thanks" style="display:none;font-size:13px;color:var(--mut)">Thanks for the feedback! 🙏</div>
