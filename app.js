@@ -1741,40 +1741,50 @@ function toggleCheck(id) {
 }
 
 // Feedback functions
+var lastFeedbackHelpful = null;
+
 function submitFeedback(helpful) {
+  lastFeedbackHelpful = helpful;
   var upBtn = document.getElementById('btn-feedback-up');
   var downBtn = document.getElementById('btn-feedback-down');
   if (upBtn) upBtn.style.background = helpful ? '#EAF3DE' : 'none';
   if (downBtn) downBtn.style.background = !helpful ? '#FCEBEB' : 'none';
-  if (!helpful) {
-    var ta = document.getElementById('feedback-text-area');
-    if (ta) ta.style.display = 'block';
-  } else {
-    sendFeedback(true, '');
-  }
+  // Record the rating immediately so it's never lost, even if they skip the email step
+  postFeedback({ helpful: helpful, comment: '', email: '' });
+  // Reveal the optional follow-up (comment + email) for BOTH thumbs up and down
+  var txt = document.getElementById('feedback-text');
+  if (txt) txt.placeholder = helpful ? 'What did you like? (optional)' : 'What could be better? (optional)';
+  var ta = document.getElementById('feedback-text-area');
+  if (ta) ta.style.display = 'block';
 }
 
 function sendFeedbackText() {
   var text = document.getElementById('feedback-text');
-  sendFeedback(false, text ? text.value : '');
-}
-
-function sendFeedback(helpful, comment) {
-  fetch('/feedback', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      helpful: helpful,
-      comment: comment,
-      report_id: savedReportId || ''
-    })
-  }).catch(function() {});
+  var emailEl = document.getElementById('feedback-email');
+  postFeedback({
+    helpful: lastFeedbackHelpful,
+    comment: text ? text.value : '',
+    email: emailEl ? emailEl.value : ''
+  });
   var ta = document.getElementById('feedback-text-area');
   if (ta) ta.style.display = 'none';
   var thanks = document.getElementById('feedback-thanks');
   if (thanks) thanks.style.display = 'block';
   var btns = document.getElementById('btn-feedback-up');
   if (btns) btns.parentElement.style.display = 'none';
+}
+
+function postFeedback(payload) {
+  fetch('/feedback', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      helpful: payload.helpful,
+      comment: payload.comment || '',
+      email: payload.email || '',
+      report_id: savedReportId || ''
+    })
+  }).catch(function() {});
 }
 
 // Ask AI about report
