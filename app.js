@@ -1295,7 +1295,7 @@ function renderPart2(data) {
   html += 'Copy each prompt, read what ' + whereToGo + ' says, then paste their response back here to verify. ';
   html += '<strong>Do not apply changes until ' + whereToGo + ' confirms it is safe.</strong>';
   html += '</div>';
-  html += '<div style="font-size:11px;color:var(--mut);margin-bottom:.75rem">Note: advice prompts group related issues together — you may see fewer prompts than the number of findings above. Each prompt covers the most impactful fixes first.</div>';
+  html += '<div style="font-size:11px;color:var(--mut);margin-bottom:.75rem">Note: there is one advice prompt per finding, with critical issues listed first. Take each to your AI builder to review and advise — don\'t apply changes until it confirms what\'s genuinely needed.</div>';
 
   (data.top_fixes||[]).forEach(function(f, fi) {
     // Choose the right platform prompt
