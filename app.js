@@ -788,6 +788,115 @@ function updateHealthDisplay() {
   if (grid) grid.innerHTML = healthCardsHTML(h, true);
   var banner = document.getElementById('score-banner');
   if (banner) banner.innerHTML = scoreBannerHTML(h.score, true);
+  var vb = document.getElementById('verdict-banner');
+  if (vb) vb.innerHTML = verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null);
+}
+
+function filesCoverageHTML(data) {
+  var analysed = data.files_analysed || [];
+  var read = data.files_read || analysed.length;
+  if (!read) return '';
+  var total = data.files_total || read;
+  var uncovered = Math.max(0, total - read);
+  var partial = uncovered >= 15;
+
+  var listItems = analysed.map(function(p) {
+    return '<div style="font-family:monospace;font-size:11px;color:var(--mut);padding:2px 0">' + esc(p) + '</div>';
+  }).join('');
+
+  var html = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+  html += '<div><strong>Files analysed: ' + read + ' of ' + total + '</strong></div>';
+  if (analysed.length) {
+    html += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
+  }
+  html += '</div>';
+  html += '<div id="filelist" style="display:none;margin-top:8px;max-height:200px;overflow:auto;border-top:0.5px solid var(--bdr);padding-top:8px">' + listItems + '</div>';
+
+  html += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">';
+  if (partial) {
+    html += 'Verilay reads the files most likely to carry security risk — a first-pass scan, not a full audit. <strong>' + uncovered + ' files were not analysed.</strong> Static scans also cannot run your code or read your live database dashboard, so treat this as a starting point, not a clean bill of health.';
+  } else {
+    html += 'Near-complete coverage of this codebase. This is still a first-pass surface scan — it cannot run your code or read your live database dashboard, so for apps handling real users or payments, get a deeper review before launch.';
+  }
+  html += '</div>';
+
+  if (partial) {
+    html += '<div id="deepscan-eoi" style="margin-top:10px;border-top:0.5px solid var(--bdr);padding-top:10px">';
+    html += '<div style="font-size:11px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> Deeper analysis is coming — register interest, no commitment.</div>';
+    html += '<div style="display:flex;gap:6px"><input id="deepscan-email" type="email" placeholder="your@email.com" style="flex:1;font-size:12px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)"><button onclick="submitDeepScanInterest()" style="font-size:12px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer">Notify me</button></div>';
+    html += '<div id="deepscan-msg" style="font-size:11px;margin-top:6px;color:var(--gr);display:none"></div>';
+    html += '</div>';
+  }
+
+  html += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">For apps handling real users or sensitive data, a deeper review is worth it before launch — a dependency scanner (e.g. Snyk), AI code review (e.g. CodeRabbit), or a developer security audit.</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function toggleFileList() {
+  var el = document.getElementById('filelist');
+  var btn = document.getElementById('filelist-toggle');
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    if (btn) btn.textContent = 'Hide files';
+  } else {
+    el.style.display = 'none';
+    if (btn) btn.textContent = 'Show files';
+  }
+}
+
+async function submitDeepScanInterest() {
+  var email = document.getElementById('deepscan-email');
+  var btn = email ? email.nextElementSibling : null;
+  var msg = document.getElementById('deepscan-msg');
+  if (!email || !msg) return;
+  var val = (email.value || '').trim();
+  if (!val || val.indexOf('@') === -1) {
+    msg.style.display = 'block'; msg.style.color = '#E24B4A';
+    msg.textContent = 'Please enter a valid email.';
+    return;
+  }
+  try {
+    await fetch('/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: val, source: 'deep_scan' })
+    });
+  } catch (e) {}
+  msg.style.display = 'block'; msg.style.color = 'var(--gr)';
+  msg.textContent = "Thanks — we'll let you know when deeper scans are ready.";
+  email.style.display = 'none';
+  if (btn) btn.style.display = 'none';
+}
+
+function verdictBannerHTML(score, prevScore) {
+  var map = {
+    A: ['#EAF3DE','#27500A','ti-circle-check','Production ready','No critical or warning findings — keep dependencies current as you add features.'],
+    B: ['#EAF3DE','#27500A','ti-circle-check','Safe to launch','The realistic target for AI-built apps. See the score guide below for how to reach A.'],
+    C: ['#FAEEDA','#633806','ti-alert-triangle','Needs work before going live','Address the critical findings below, then re-run to update the score.'],
+    D: ['#FCEBEB','#A32D2D','ti-alert-circle','Not ready to launch','Fix the critical findings below before launching with real users.'],
+    F: ['#FCEBEB','#A32D2D','ti-alert-circle','Not ready to launch','Several critical findings — fix these before launching with real users.']
+  };
+  var v = map[score] || map.C;
+  var html = '<div class="prod-banner" style="background:' + v[0] + ';color:' + v[1] + '">';
+  html += '<i class="ti ' + v[2] + '" style="font-size:26px"></i>';
+  html += '<div style="flex:1"><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + v[3] + '</div>';
+  html += '<div style="font-size:12px;opacity:.85">' + v[4] + '</div></div>';
+  if (prevScore && prevScore !== score) {
+    var scores = ['F','D','C','B','A'];
+    var prevIdx = scores.indexOf(prevScore);
+    var currIdx = scores.indexOf(score);
+    if (currIdx > prevIdx) {
+      html += '<div style="background:#1D9E75;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▲ ' + prevScore + ' → ' + score + ' Improved!</div>';
+    } else if (currIdx < prevIdx) {
+      html += '<div style="background:#E24B4A;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▼ ' + prevScore + ' → ' + score + '</div>';
+    }
+  }
+  html += '</div>';
+  return html;
 }
 
 function renderReport(data) {
@@ -810,12 +919,6 @@ function renderReport(data) {
   if (hasLayers) { h = healthFromLayers(data.layers); }
   var pr = data.prod_ready || {};
 
-  var pbMap = {
-    ready: ['#EAF3DE','#27500A','ti-circle-check','Production ready'],
-    needs_work: ['#FAEEDA','#633806','ti-alert-triangle','Needs work before going live'],
-    not_ready: ['#FCEBEB','#A32D2D','ti-alert-circle','Not production ready']
-  };
-  var pb = pbMap[pr.verdict] || pbMap.needs_work;
 
   var html = '';
 
@@ -823,21 +926,7 @@ function renderReport(data) {
     html += '<div style="background:var(--orl);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px;font-size:12px;color:var(--ort)"><strong>Surface scan only.</strong> Use GitHub or ZIP for a full analysis.</div>';
   }
 
-  html += '<div class="prod-banner" style="background:' + pb[0] + ';color:' + pb[1] + '">';
-  html += '<i class="ti ' + pb[2] + '" style="font-size:26px"></i>';
-  html += '<div style="flex:1"><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + pb[3] + '</div>';
-  html += '<div style="font-size:12px;opacity:.85">' + esc(pr.reason||'') + '</div></div>';
-  if (data.prev_score && data.prev_score !== h.score) {
-    var scores = ['F','D','C','B','A'];
-    var prevIdx = scores.indexOf(data.prev_score);
-    var currIdx = scores.indexOf(h.score);
-    if (currIdx > prevIdx) {
-      html += '<div style="background:#1D9E75;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▲ ' + data.prev_score + ' → ' + h.score + ' Improved!</div>';
-    } else if (currIdx < prevIdx) {
-      html += '<div style="background:#E24B4A;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▼ ' + data.prev_score + ' → ' + h.score + '</div>';
-    }
-  }
-  html += '</div>';
+  html += '<div id="verdict-banner">' + (hasLayers ? verdictBannerHTML(h.score, data.prev_score) : '') + '</div>';
 
   // Static site recommendation
   var pr = data.prod_ready || {};
@@ -854,16 +943,7 @@ function renderReport(data) {
     html += '</div></div>';
   }
 
-  // Scope notice - always shown, sets honest expectations
-  html += '<div style="background:var(--bg);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
-  html += '<i class="ti ti-info-circle" style="font-size:16px;color:var(--mut);flex-shrink:0;margin-top:1px"></i>';
-  html += '<div style="font-size:12px;color:var(--mut);line-height:1.55">';
-  html += '<strong style="color:var(--txt)">What Verilay covers:</strong> This is a first-pass overview of your codebase - great for understanding what was built and catching obvious issues. ';
-  html += 'For apps handling real users or sensitive data, we recommend a deeper review: ';
-  html += '<a href="https://snyk.io" target="_blank" style="color:var(--pu);text-decoration:underline">Snyk</a> for dependency vulnerabilities, ';
-  html += '<a href="https://coderabbit.ai" target="_blank" style="color:var(--pu);text-decoration:underline">CodeRabbit</a> for code review, ';
-  html += 'or a developer security audit before going live with real user data.';
-  html += '</div></div>';
+  // (Scope/limitations notice consolidated into the files-coverage block below.)
 
   // Ask AI button
   html += '<div style="margin:.75rem 0;padding:.85rem 1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
@@ -892,6 +972,8 @@ function renderReport(data) {
   html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers) + '</div></div>';
 
   html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers) + '</div>';
+
+  html += filesCoverageHTML(data);
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';
