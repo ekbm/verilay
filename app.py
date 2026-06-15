@@ -1242,6 +1242,8 @@ def analyse_stream():
             # ── Step 1: Stack + overview ────────────────────────────────
             s1 = analyse_step1(files, tree, repo_name, method)
             s1["files_read"] = len(files)
+            s1["files_total"] = len(tree) if tree else len(files)
+            s1["files_analysed"] = sorted(files.keys())
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             count = get_analysis_count()
             s1["analysis_count"] = count
