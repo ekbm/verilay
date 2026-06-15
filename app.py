@@ -1048,34 +1048,59 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "If the score is A or B with no critical issues, say 'No critical fixes needed' for FIX titles. "
         "Do NOT invent generic fixes that are not supported by the findings above.\n\n"
         "Respond ONLY with key:value pairs, one per line, no other text.\n\n"
-        "IMPORTANT: Generate EXACTLY one advice prompt per critical or warning finding. "
-        "If there are 2 critical findings generate 2 prompts. If there are 3 warnings generate 3 more prompts. "
-        "Total prompts must equal total critical + warning count. Never group multiple findings into one prompt.\\n\\n"
-        "FIX_1_TITLE: title of the first critical or warning finding\\n"
+        "COVERAGE — read carefully: Generate ONE advice prompt per critical or warning finding. "
+        "List ALL critical findings FIRST (each as its own prompt), then warnings. "
+        "NEVER omit or merge a critical finding — every critical MUST get its own prompt, even if you keep others brief. "
+        "Produce up to 8 prompts total, one per finding, ordered criticals first then warnings.\\n"
+        "For each finding output six keys with the literal numbered names below. Leave a whole block blank only if there is no finding at that position.\\n"
+        "FIX_1_TITLE: short title of the highest-severity finding\\n"
+        "FIX_1_SEV: critical|warning\\n"
         "FIX_1_WHY: why this specific finding matters\\n"
         "FIX_1_HOW: 2-3 investigation steps for this finding only\\n"
         "FIX_1_EFFORT: 5 minutes|30 minutes|1 hour|1 day\\n"
-        "FIX_1_PROMPT: advice prompt specific to this one finding — paste into " + platform + ". Begin: I received a security review flagging [specific issue]. Please review and advise without making changes yet\\n"
-        "FIX_2_TITLE: title of second finding (empty if only 1 finding)\\n"
+        "FIX_1_PROMPT: advice prompt specific to this finding — paste into " + platform + ". Begin: I received a security review flagging [specific issue]. Please review and advise without making changes yet\\n"
+        "FIX_2_TITLE: next finding, criticals before warnings (empty if none)\\n"
+        "FIX_2_SEV: critical|warning\\n"
         "FIX_2_WHY: why\\n"
         "FIX_2_HOW: how\\n"
         "FIX_2_EFFORT: effort\\n"
-        "FIX_2_PROMPT: advice prompt specific to this second finding only\\n"
-        "FIX_3_TITLE: title of third finding (empty if fewer than 3)\\n"
+        "FIX_2_PROMPT: advice prompt specific to this finding only\\n"
+        "FIX_3_TITLE: next finding (empty if none)\\n"
+        "FIX_3_SEV: critical|warning\\n"
         "FIX_3_WHY: why\\n"
         "FIX_3_HOW: how\\n"
         "FIX_3_EFFORT: effort\\n"
-        "FIX_3_PROMPT: advice prompt specific to this third finding only\\n"
-        "FIX_4_TITLE: title of fourth finding (empty if fewer than 4)\\\\n"
-        "FIX_4_WHY: why\\\\n"
-        "FIX_4_HOW: how\\\\n"
-        "FIX_4_EFFORT: 5 minutes|30 minutes|1 hour|1 day\\\\n"
-        "FIX_4_PROMPT: advice prompt for " + platform + " — specific to fourth finding\\\\n"
-        "FIX_5_TITLE: title of fifth finding (empty if fewer than 5)\\\\n"
-        "FIX_5_WHY: why\\\\n"
-        "FIX_5_HOW: how\\\\n"
-        "FIX_5_EFFORT: 5 minutes|30 minutes|1 hour|1 day\\\\n"
-        "FIX_5_PROMPT: advice prompt for " + platform + " — specific to fifth finding\\\\n"
+        "FIX_3_PROMPT: advice prompt specific to this finding only\\n"
+        "FIX_4_TITLE: next finding (empty if none)\\n"
+        "FIX_4_SEV: critical|warning\\n"
+        "FIX_4_WHY: why\\n"
+        "FIX_4_HOW: how\\n"
+        "FIX_4_EFFORT: effort\\n"
+        "FIX_4_PROMPT: advice prompt specific to this finding only\\n"
+        "FIX_5_TITLE: next finding (empty if none)\\n"
+        "FIX_5_SEV: critical|warning\\n"
+        "FIX_5_WHY: why\\n"
+        "FIX_5_HOW: how\\n"
+        "FIX_5_EFFORT: effort\\n"
+        "FIX_5_PROMPT: advice prompt specific to this finding only\\n"
+        "FIX_6_TITLE: next finding (empty if none)\\n"
+        "FIX_6_SEV: critical|warning\\n"
+        "FIX_6_WHY: why\\n"
+        "FIX_6_HOW: how\\n"
+        "FIX_6_EFFORT: effort\\n"
+        "FIX_6_PROMPT: advice prompt specific to this finding only\\n"
+        "FIX_7_TITLE: next finding (empty if none)\\n"
+        "FIX_7_SEV: critical|warning\\n"
+        "FIX_7_WHY: why\\n"
+        "FIX_7_HOW: how\\n"
+        "FIX_7_EFFORT: effort\\n"
+        "FIX_7_PROMPT: advice prompt specific to this finding only\\n"
+        "FIX_8_TITLE: next finding (empty if none)\\n"
+        "FIX_8_SEV: critical|warning\\n"
+        "FIX_8_WHY: why\\n"
+        "FIX_8_HOW: how\\n"
+        "FIX_8_EFFORT: effort\\n"
+        "FIX_8_PROMPT: advice prompt specific to this finding only\\n"
         "SEC_SECRETS: true|false (are secrets exposed in repo)\n"
         "SEC_AUTH: true|false (is auth properly configured)\n"
         "SEC_RLS: true|false (is row level security configured)\n"
@@ -1098,12 +1123,16 @@ def analyse_step4(repo_name, built_with, findings_summary):
         return val.lower() not in ("false", "no", "0")
 
     fixes = []
-    for i in range(1, 5):
+    for i in range(1, 9):
         title = lines.get(f"FIX_{i}_TITLE", "")
-        if not title or title.lower() in ("next fix", ""):
-            break
+        if not title or title.lower() in ("next fix", "next finding", ""):
+            continue
+        sev = lines.get(f"FIX_{i}_SEV", "warning").strip().lower()
+        if sev not in ("critical", "warning"):
+            sev = "warning"
         fixes.append({
             "priority": i,
+            "severity": sev,
             "title": title,
             "why_it_matters": lines.get(f"FIX_{i}_WHY", ""),
             "how_to_fix": lines.get(f"FIX_{i}_HOW", ""),
@@ -1111,6 +1140,11 @@ def analyse_step4(repo_name, built_with, findings_summary):
             "lovable_prompt": lines.get(f"FIX_{i}_PROMPT", ""),
             "general_prompt": lines.get(f"FIX_{i}_PROMPT", "")
         })
+    # Criticals must always appear first, regardless of the order the model returned them in.
+    # Python's sort is stable, so within each severity the model's ordering is preserved.
+    fixes.sort(key=lambda f: 0 if f["severity"] == "critical" else 1)
+    for idx, f in enumerate(fixes, 1):
+        f["priority"] = idx
 
     return {
         "part2_loaded": True,
@@ -1455,7 +1489,7 @@ BLOG_POSTS = [
     {
         "slug": "advise-not-fix-non-developer-security",
         "title": "Why Advise Not Fix Is the Only Safe Approach for Non-Developer Security",
-        "date": "June 17, 2026",
+        "date": "June 14, 2026",
         "category": "Philosophy",
         "excerpt": "Three real conversations that proved the model and what the B grade actually means.",
         "medium_url": "https://medium.com/@mosesekbote/why-advise-not-fix-is-the-only-safe-approach-for-non-developer-security-a7abf901d2ff",
