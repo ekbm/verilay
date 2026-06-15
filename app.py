@@ -279,6 +279,22 @@ KEYWORDS = ["auth","login","database","db","schema","route","api","config","secr
 MAX_FILE_CHARS = 5000
 MAX_FILES = 25
 
+def grade_from_counts(critical, warnings):
+    """Derive the letter grade from actual finding counts.
+    Rubric: A=0 critical+0 warnings, B=0 critical+1-3 warnings,
+    C=1-2 critical or 4+ warnings, D=3-5 critical, F=6+ critical."""
+    if critical >= 6:
+        return "F"
+    if critical >= 3:
+        return "D"
+    if critical >= 1:
+        return "C"
+    if warnings >= 4:
+        return "C"
+    if warnings >= 1:
+        return "B"
+    return "A"
+
 def fetch_github(repo_url):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
@@ -1273,9 +1289,27 @@ def analyse_stream():
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
+            # Derive the score and counts FROM the actual layer findings rather than
+            # step 1's separate guess, so the header can never contradict the layers
+            # and the grade is a deterministic result of counting, not a re-rolled judgment.
+            _crit = _warn = _pass = 0
+            for _layer in partial["layers"]:
+                for _f in _layer.get("expert", {}).get("findings", []):
+                    _sev = (_f.get("severity") or "").lower()
+                    if _sev == "critical":
+                        _crit += 1
+                    elif _sev == "warning":
+                        _warn += 1
+                    elif _sev == "passing":
+                        _pass += 1
+            partial.setdefault("health", {})
+            partial["health"]["critical"] = _crit
+            partial["health"]["warnings"] = _warn
+            partial["health"]["passing"] = _pass
+            partial["health"]["score"] = grade_from_counts(_crit, _warn)
             report_id = save_report_data(partial)
             try:
-                increment_analysis_count(score=s1.get("health", {}).get("score"), method=method)
+                increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
             yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
