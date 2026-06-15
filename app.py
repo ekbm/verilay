@@ -460,6 +460,7 @@ def call_claude(prompt, max_tokens=2500):
         with client.messages.stream(
             model="claude-sonnet-4-5",
             max_tokens=max_tokens,
+            temperature=0,
             messages=[{"role": "user", "content": prompt_str}]
         ) as stream:
             for text in stream.text_stream:
@@ -477,6 +478,7 @@ def call_claude(prompt, max_tokens=2500):
             json={
                 "model": "claude-sonnet-4-5",
                 "max_tokens": max_tokens,
+                "temperature": 0,
                 "stream": True,
                 "messages": [{"role": "user", "content": prompt}]
             },
@@ -550,6 +552,7 @@ def call_claude_text(prompt, max_tokens=800):
         with client.messages.stream(
             model="claude-sonnet-4-5",
             max_tokens=max_tokens,
+            temperature=0,
             messages=[{"role": "user", "content": str(prompt)}]
         ) as stream:
             for text in stream.text_stream:
@@ -559,7 +562,7 @@ def call_claude_text(prompt, max_tokens=800):
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-            json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"stream":True,
+            json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"temperature":0,"stream":True,
                   "messages":[{"role":"user","content":str(prompt)}]},
             stream=True, timeout=90
         )
