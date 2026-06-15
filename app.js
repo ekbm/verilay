@@ -704,6 +704,92 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function gradeFromCounts(critical, warnings) {
+  if (critical >= 6) return 'F';
+  if (critical >= 3) return 'D';
+  if (critical >= 1) return 'C';
+  if (warnings >= 4) return 'C';
+  if (warnings >= 1) return 'B';
+  return 'A';
+}
+
+function healthFromLayers(layers) {
+  var c = 0, w = 0, p = 0;
+  (layers || []).forEach(function(l) {
+    (((l.expert || {}).findings) || []).forEach(function(f) {
+      if (f.severity === 'critical') c++;
+      else if (f.severity === 'warning') w++;
+      else if (f.severity === 'passing') p++;
+    });
+  });
+  return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
+}
+
+function healthCardsHTML(h, hasLayers) {
+  var hlbls = ['critical', 'warnings', 'passing', 'score'];
+  if (!hasLayers) {
+    return hlbls.map(function(lbl) {
+      var val = lbl === 'score' ? '···' : '–';
+      var sub = lbl === 'score' ? 'calculating' : lbl;
+      return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:10px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
+    }).join('');
+  }
+  var hvals = [h.critical || 0, h.warnings || 0, h.passing || 0, h.score || '?'];
+  var scoreBgCol = h.score === 'A' ? ['#E1F5EE', '#085041'] :
+                   h.score === 'B' ? ['#EFF6FF', '#1D4ED8'] :
+                   h.score === 'C' ? ['#FEF9C3', '#854D0E'] :
+                   h.score === 'D' ? ['#FEF2F2', '#991B1B'] :
+                   h.score === 'F' ? ['#FEF2F2', '#7F1D1D'] : ['var(--bll)', 'var(--blt)'];
+  var hcols = [['var(--rdl)', 'var(--rdt)'], ['var(--orl)', 'var(--ort)'], ['var(--grl)', 'var(--grt)'], scoreBgCol];
+  return hvals.map(function(v, i) {
+    return '<div class="hc" style="background:' + hcols[i][0] + '"><div style="font-size:18px;font-weight:600;color:' + hcols[i][1] + '">' + v + '</div><div style="font-size:10px;color:' + hcols[i][1] + ';margin-top:1px">' + hlbls[i] + '</div></div>';
+  }).join('');
+}
+
+function scoreBannerHTML(score, hasLayers) {
+  if (!hasLayers) {
+    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--blt)"><i class="ti ti-loader"></i> Running deep analysis — your score appears once all layers are checked.</div>';
+  }
+  if (!score || score === 'A') return '';
+  var scoreBg = '', scoreBdr = '', scoreMsg = '';
+  if (score === 'B') {
+    scoreBg = '#EFF6FF'; scoreBdr = '#4A90D9';
+    scoreMsg = '🎯 <strong>Score B — Safe to launch.</strong> This is the realistic target for AI-built apps. ' +
+      'A score requires developer-level hardening that goes beyond what AI builders can do automatically.<br><br>' +
+      '<strong>To reach A, verify these with your AI builder:</strong><br>' +
+      '✓ RLS enabled on all Supabase tables<br>' +
+      '✓ No secrets or API keys in frontend code<br>' +
+      '✓ All protected routes have auth middleware<br>' +
+      '✓ Dependencies have no critical vulnerabilities<br>' +
+      '✓ Webhook endpoints validate signatures<br>' +
+      '✓ Payment endpoints properly scoped';
+  } else if (score === 'C') {
+    scoreBg = '#FEF9C3'; scoreBdr = '#EAB308';
+    scoreMsg = '🎯 <strong>Score C — Almost there.</strong> Fix the critical issues above and you will reach B. ' +
+      'That is the realistic goal for AI-built apps — not A.<br><br>' +
+      '<strong>Your path to B:</strong><br>' +
+      '1. Use the advice prompts below to investigate each critical finding<br>' +
+      '2. Take findings to your AI builder and ask them to verify<br>' +
+      '3. Paste their response back here to update your score<br>' +
+      '4. Once all criticals are verified or fixed — re-run for updated score';
+  } else if (score === 'D' || score === 'F') {
+    scoreBg = '#FEF2F2'; scoreBdr = '#EF4444';
+    scoreMsg = '🎯 <strong>Score ' + score + ' — Not ready to launch.</strong> Fix critical issues first using the advice prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
+  }
+  return '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6">' + scoreMsg + '</div>';
+}
+
+function updateHealthDisplay() {
+  var layers = Object.keys(currentLayers).map(function(k) { return currentLayers[k]; });
+  if (!layers.length) return;
+  var h = healthFromLayers(layers);
+  if (currentReport) currentReport.health = h;
+  var grid = document.getElementById('health-grid');
+  if (grid) grid.innerHTML = healthCardsHTML(h, true);
+  var banner = document.getElementById('score-banner');
+  if (banner) banner.innerHTML = scoreBannerHTML(h.score, true);
+}
+
 function renderReport(data) {
   currentReport = data;
   // Load verifications from saved report data
@@ -716,12 +802,12 @@ function renderReport(data) {
 
   var isSurf = data.analysis_depth === 'surface';
   var h = data.health || {};
-  // Client-side score correction — ensures score matches actual counts
-  var critical = parseInt(h.critical || 0);
-  var warnings = parseInt(h.warnings || 0);
-  if (critical === 0 && warnings === 0) h.score = 'A';
-  else if (critical === 0 && warnings <= 3) h.score = 'B';
-  else if (critical <= 2) { if (h.score === 'D' || h.score === 'F') {} else h.score = 'C'; }
+  // When the deep-analysis layers are present, derive the score and counts from the
+  // actual findings (same rubric as the server) so the header always matches the layers.
+  // When they aren't yet (live step-1 view), leave h as-is — the cards will show a
+  // "calculating" state until the layers arrive and updateHealthDisplay() fills them in.
+  var hasLayers = !!(data.layers && data.layers.length);
+  if (hasLayers) { h = healthFromLayers(data.layers); }
   var pr = data.prod_ready || {};
 
   var pbMap = {
@@ -796,19 +882,6 @@ function renderReport(data) {
     return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(s.name||'') + ' ' + esc(s.version||'') + '</span>';
   }).join('');
 
-  var hvals = [h.critical||0, h.warnings||0, h.passing||0, h.score||'?'];
-  var hlbls = ['critical','warnings','passing','score'];
-  // Score box colour based on actual corrected score
-  var scoreBgCol = h.score === 'A' ? ['#E1F5EE','#085041'] :
-                   h.score === 'B' ? ['#EFF6FF','#1D4ED8'] :
-                   h.score === 'C' ? ['#FEF9C3','#854D0E'] :
-                   h.score === 'D' ? ['#FEF2F2','#991B1B'] :
-                   h.score === 'F' ? ['#FEF2F2','#7F1D1D'] : ['var(--bll)','var(--blt)'];
-  var hcols = [['var(--rdl)','var(--rdt)'],['var(--orl)','var(--ort)'],['var(--grl)','var(--grt)'],scoreBgCol];
-  var hcards = hvals.map(function(v,i) {
-    return '<div class="hc" style="background:' + hcols[i][0] + '"><div style="font-size:18px;font-weight:600;color:' + hcols[i][1] + '">' + v + '</div><div style="font-size:10px;color:' + hcols[i][1] + ';margin-top:1px">' + hlbls[i] + '</div></div>';
-  }).join('');
-
   html += '<div class="rh">';
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
   html += '<div style="font-size:16px;font-weight:600">' + esc(data.repo||'') + '</div>';
@@ -816,44 +889,9 @@ function renderReport(data) {
   html += '</div>';
   html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
-  html += '<div class="hg">' + hcards + '</div></div>';
+  html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers) + '</div></div>';
 
-  // Realistic score guide for vibe-coded apps
-  if (h.score && h.score !== 'A') {
-    var scoreMsg = '';
-    var scoreBg = '';
-    var scoreBdr = '';
-    if (h.score === 'A') {
-      scoreBg = '#F0FDF4'; scoreBdr = '#1D9E75';
-      scoreMsg = '🏆 <strong>Score A — Excellent.</strong> Your app has no critical or warning findings. This is outstanding — most AI-built apps score B or C. Keep dependencies updated and review your security posture as you add new features.';
-    } else if (h.score === 'B') {
-      scoreBg = '#EFF6FF'; scoreBdr = '#4A90D9';
-      scoreMsg = '🎯 <strong>Score B — Safe to launch.</strong> This is the realistic target for AI-built apps. ' +
-        'A score requires developer-level hardening that goes beyond what AI builders can do automatically.<br><br>' +
-        '<strong>To reach A, verify these with your AI builder:</strong><br>' +
-        '✓ RLS enabled on all Supabase tables<br>' +
-        '✓ No secrets or API keys in frontend code<br>' +
-        '✓ All protected routes have auth middleware<br>' +
-        '✓ Dependencies have no critical vulnerabilities<br>' +
-        '✓ Webhook endpoints validate signatures<br>' +
-        '✓ Payment endpoints properly scoped';
-    } else if (h.score === 'C') {
-      scoreBg = '#FEF9C3'; scoreBdr = '#EAB308';
-      scoreMsg = '🎯 <strong>Score C — Almost there.</strong> Fix the critical issues above and you will reach B. ' +
-        'That is the realistic goal for AI-built apps — not A.<br><br>' +
-        '<strong>Your path to B:</strong><br>' +
-        '1. Use the advice prompts below to investigate each critical finding<br>' +
-        '2. Take findings to your AI builder and ask them to verify<br>' +
-        '3. Paste their response back here to update your score<br>' +
-        '4. Once all criticals are verified or fixed — re-run for updated score';
-    } else if (h.score === 'D' || h.score === 'F') {
-      scoreBg = '#FEF2F2'; scoreBdr = '#EF4444';
-      scoreMsg = '🎯 <strong>Score ' + h.score + ' — Not ready to launch.</strong> Fix critical issues first using the fix prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
-    }
-    if (scoreMsg) {
-      html += '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6">' + scoreMsg + '</div>';
-    }
-  }
+  html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers) + '</div>';
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';
@@ -1229,6 +1267,9 @@ function appendLayers(newLayers) {
     var firstBtn = document.querySelector('#layer-nav .lb');
     if (firstBtn) firstBtn.click();
   }
+
+  // Now that real findings are in, compute the score/counts from them and fill the header.
+  updateHealthDisplay();
 }
 
 function renderPart2(data) {
