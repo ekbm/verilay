@@ -295,6 +295,18 @@ def grade_from_counts(critical, warnings):
         return "B"
     return "A"
 
+def verdict_from_score(score):
+    """Derive the launch-readiness verdict from the computed score, so it can never
+    contradict the grade. Returns (label, color, reason). Mirrors the live app.js view."""
+    m = {
+        "A": ("Production Ready", "#1D9E75", "No critical or warning findings — keep dependencies current as you add features."),
+        "B": ("Safe to Launch",   "#1D9E75", "The realistic target for AI-built apps. See the score guide for how to reach A."),
+        "C": ("Needs Work",       "#EF9F27", "Address the critical findings below, then re-run to update the score."),
+        "D": ("Not Ready",        "#E24B4A", "Fix the critical findings below before launching with real users."),
+        "F": ("Not Ready",        "#A32D2D", "Several critical findings — fix these before launching with real users."),
+    }
+    return m.get(score, m["C"])
+
 def fetch_github(repo_url):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
@@ -2402,8 +2414,7 @@ Run a new analysis &rarr;</a>
     fixes = data.get("top_fixes", [])
     so = data.get("second_opinion", {})
 
-    verdict_label = {"ready":"Production Ready","needs_work":"Needs Work","not_ready":"Not Ready"}.get(pr.get("verdict","needs_work"),"Needs Work")
-    verdict_color = {"ready":"#1D9E75","needs_work":"#EF9F27","not_ready":"#E24B4A"}.get(pr.get("verdict","needs_work"),"#EF9F27")
+    verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
     score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
     sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE"}
     sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A"}
@@ -2449,7 +2460,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
   <div style="font-size:20px;font-weight:700;margin-bottom:.25rem">{data.get('repo','')}</div>
   <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
   <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
-  <div style="font-size:13px;color:#555">{pr.get('reason','')}</div>
+  <div style="font-size:13px;color:#555">{verdict_reason}</div>
 </div>""")
 
     # Score grid
@@ -2548,11 +2559,12 @@ def build_markdown(data):
     repo = data.get("repo","unknown")
     h = data.get("health",{})
     pr = data.get("prod_ready",{})
+    md_label, _mdc, md_reason = verdict_from_score(h.get("score","C"))
     lines = [f"# Verilay Report: {repo}",
              f"Generated: {data.get('generated_at','')}","",
              "## Production Verdict",
-             f"**{{'ready':'Production Ready','needs_work':'Needs Work','not_ready':'Not Ready'}}.get(pr.get('verdict','needs_work'),'Needs Work')}}** ({pr.get('confidence','?')} confidence)",
-             pr.get("reason",""),"",
+             f"**{md_label}**",
+             md_reason,"",
              f"## Health: {h.get('score','?')} — Critical: {h.get('critical',0)}, Warnings: {h.get('warnings',0)}, Passing: {h.get('passing',0)}","",
              "## Stack"]
     for s in data.get("stack",[]): lines.append(f"- **{s.get('name','')} {s.get('version','')}** ({s.get('category','')}) — {s.get('plain_english','')}")
