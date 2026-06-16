@@ -630,7 +630,7 @@ function handleStreamEvent(evt) {
       var lb = document.getElementById('steps23-loading');
       if (lb) lb.style.display = 'none';
       var p2 = document.getElementById('p2-banner');
-      if (p2) p2.style.display = 'block';
+      if (p2 && !(currentReport && currentReport.preview_only)) p2.style.display = 'block';
       break;
     case 'error':
       stopMsgs();
@@ -1030,9 +1030,11 @@ function renderReport(data) {
   html += '<div class="panel on" id="p-layers">';
   html += '<div class="ll">';
   html += '<div class="lnav" id="layer-nav">';
-  html += '<div id="layers-loading" style="font-size:11px;color:var(--mut);padding:.5rem .25rem;display:flex;align-items:center;gap:6px">';
-  html += '<div style="width:14px;height:14px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
-  html += 'Loading layers...</div>';
+  if (!isPreview) {
+    html += '<div id="layers-loading" style="font-size:11px;color:var(--mut);padding:.5rem .25rem;display:flex;align-items:center;gap:6px">';
+    html += '<div style="width:14px;height:14px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
+    html += 'Loading layers...</div>';
+  }
   html += lbtns;
   html += '</div>';
   html += '<div class="ca">';
@@ -1043,7 +1045,9 @@ function renderReport(data) {
   // Only show spinner if no layers loaded yet
   var hasLayers = data.layers && data.layers.length > 0;
   html += '<div id="layer-content" style="padding:.75rem 0">';
-  if (!hasLayers) {
+  if (isPreview) {
+    html += '<div style="font-size:12px;color:var(--mut);line-height:1.5">No layer-by-layer analysis for a URL preview. Scan your GitHub repo or upload a ZIP to get the full breakdown.</div>';
+  } else if (!hasLayers) {
     html += '<div style="font-size:12px;color:var(--mut);display:flex;align-items:center;gap:8px">';
     html += '<div style="width:16px;height:16px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
     html += 'Analysing your codebase - layers will appear shortly...</div>';
