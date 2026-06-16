@@ -725,8 +725,15 @@ function healthFromLayers(layers) {
   return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
 }
 
-function healthCardsHTML(h, hasLayers) {
+function healthCardsHTML(h, hasLayers, isPreview) {
   var hlbls = ['critical', 'warnings', 'passing', 'score'];
+  if (isPreview) {
+    return hlbls.map(function(lbl) {
+      var val = lbl === 'score' ? 'n/a' : '–';
+      var sub = lbl === 'score' ? 'not graded' : lbl;
+      return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:10px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
+    }).join('');
+  }
   if (!hasLayers) {
     return hlbls.map(function(lbl) {
       var val = lbl === 'score' ? '···' : '–';
@@ -746,7 +753,10 @@ function healthCardsHTML(h, hasLayers) {
   }).join('');
 }
 
-function scoreBannerHTML(score, hasLayers) {
+function scoreBannerHTML(score, hasLayers, isPreview) {
+  if (isPreview) {
+    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--blt)"><i class="ti ti-eye"></i> <strong>This was a quick URL preview — not a graded analysis.</strong> A URL scan only sees what the site serves to a browser, not your source code. To get a real score, scan your GitHub repo or upload a ZIP.</div>';
+  }
   if (!hasLayers) {
     return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--blt)"><i class="ti ti-loader"></i> Running deep analysis — your score appears once all layers are checked.</div>';
   }
@@ -940,6 +950,7 @@ function renderReport(data) {
   // "calculating" state until the layers arrive and updateHealthDisplay() fills them in.
   var hasLayers = !!(data.layers && data.layers.length);
   if (hasLayers) { h = healthFromLayers(data.layers); }
+  var isPreview = !!data.preview_only;
   var pr = data.prod_ready || {};
 
 
@@ -949,7 +960,7 @@ function renderReport(data) {
     html += '<div style="background:var(--orl);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px;font-size:12px;color:var(--ort)"><strong>Surface scan only.</strong> Use GitHub or ZIP for a full analysis.</div>';
   }
 
-  html += '<div id="verdict-banner">' + (hasLayers ? verdictBannerHTML(h.score, data.prev_score) : '') + '</div>';
+  html += '<div id="verdict-banner">' + (!isPreview && hasLayers ? verdictBannerHTML(h.score, data.prev_score) : '') + '</div>';
 
   // Static site recommendation
   var pr = data.prod_ready || {};
@@ -992,9 +1003,9 @@ function renderReport(data) {
   html += '</div>';
   html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
-  html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers) + '</div></div>';
+  html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers, isPreview) + '</div></div>';
 
-  html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers) + '</div>';
+  html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview) + '</div>';
 
   html += filesCoverageHTML(data);
 
