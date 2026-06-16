@@ -278,6 +278,10 @@ def smart_file_selection(files, max_files=25):
 KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
 MAX_FILE_CHARS = 5000
 MAX_FILES = 25
+# A URL scan only sees what the site serves to a browser (built/minified output),
+# never source. When it returns this few files, a full layer analysis is wasted work
+# and would grade from near-nothing — so we return an honest, ungraded preview instead.
+THIN_URL_FILES = 3
 
 def grade_from_counts(critical, warnings):
     """Derive the letter grade from actual finding counts.
@@ -1259,7 +1263,33 @@ def analyse_stream():
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             count = get_analysis_count()
             s1["analysis_count"] = count
+
+            # Thin URL scan → ungraded preview. A URL exposes almost no real code,
+            # so running the full layer analysis is wasted time and money, and grading
+            # from near-zero findings would produce a misleading "A". Stop here with an
+            # honest, explicitly ungraded preview that points the user to GitHub/ZIP.
+            is_thin_url = (method == "url" and len(files) <= THIN_URL_FILES)
+            if is_thin_url:
+                s1["preview_only"] = True
+                s1.setdefault("health", {})
+                s1["health"]["score"] = None
+                s1["health"]["critical"] = None
+                s1["health"]["warnings"] = None
+                s1["health"]["passing"] = None
+
             yield json.dumps({"event":"step1","data":s1}) + "\n"
+
+            if is_thin_url:
+                preview = dict(s1)
+                preview["layers"] = []
+                report_id = save_report_data(preview)
+                try:
+                    increment_analysis_count(score=None, method=method)
+                except Exception as _inc_err:
+                    print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
+                yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
+                yield json.dumps({"event":"layers_complete","data":{}}) + "\n"
+                return
 
             # ── Steps 2 + 3 in parallel ────────────────────────────────
             yield json.dumps({"event":"status","data":"Analysing layers in parallel..."}) + "\n"
@@ -2414,8 +2444,17 @@ Run a new analysis &rarr;</a>
     fixes = data.get("top_fixes", [])
     so = data.get("second_opinion", {})
 
-    verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
-    score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
+    is_preview = bool(data.get("preview_only")) or h.get("score") is None
+    if is_preview:
+        verdict_label = "Preview — not graded"
+        verdict_color = "#6b6966"
+        verdict_reason = "A URL scan only sees what the site serves to a browser, not your source code. Scan your GitHub repo or upload a ZIP for a real review."
+        score_display = "n/a"
+        score_color = "#999"
+    else:
+        verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
+        score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
+        score_display = h.get("score","?")
     sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE"}
     sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A"}
 
@@ -2465,7 +2504,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
 
     # Score grid
     out.append(f"""<div class="sg">
-  <div class="sb"><div class="sn" style="color:{score_color}">{h.get('score','?')}</div><div class="sl">Score</div></div>
+  <div class="sb"><div class="sn" style="color:{score_color}">{score_display}</div><div class="sl">Score</div></div>
   <div class="sb"><div class="sn" style="color:#E24B4A">{h.get('critical',0)}</div><div class="sl">Critical</div></div>
   <div class="sb"><div class="sn" style="color:#EF9F27">{h.get('warnings',0)}</div><div class="sl">Warnings</div></div>
   <div class="sb"><div class="sn" style="color:#1D9E75">{h.get('passing',0)}</div><div class="sl">Passing</div></div>
