@@ -796,13 +796,36 @@ function filesCoverageHTML(data) {
   var analysed = data.files_analysed || [];
   var read = data.files_read || analysed.length;
   if (!read) return '';
-  var total = data.files_total || read;
-  var uncovered = Math.max(0, total - read);
-  var partial = uncovered >= 15;
 
   var listItems = analysed.map(function(p) {
     return '<div style="font-family:monospace;font-size:11px;color:var(--mut);padding:2px 0">' + esc(p) + '</div>';
   }).join('');
+
+  // URL scans only see what the site serves to a browser (built/minified output),
+  // not the source tree — so we never show an "X of N" coverage claim for them.
+  if (data.input_method === 'url') {
+    var u = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
+    u += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+    u += '<div><strong>URL preview — ' + read + ' file' + (read === 1 ? '' : 's') + ' served by the live site</strong></div>';
+    if (analysed.length) {
+      u += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
+    }
+    u += '</div>';
+    u += '<div id="filelist" style="display:none;margin-top:8px;max-height:200px;overflow:auto;border-top:0.5px solid var(--bdr);padding-top:8px">' + listItems + '</div>';
+    u += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">';
+    u += 'A URL scan only sees what the site serves to a browser — usually built or minified output, not your source code. This is a quick preview, not a full review.';
+    if (read <= 3) {
+      u += ' <strong>This site served very little analysable code, so there\'s not much here to go on.</strong>';
+    }
+    u += ' To properly check your own app, scan its GitHub repo or upload a ZIP — that\'s where Verilay reads your actual source.';
+    u += '</div>';
+    u += '</div>';
+    return u;
+  }
+
+  var total = data.files_total || read;
+  var uncovered = Math.max(0, total - read);
+  var partial = uncovered >= 15;
 
   var html = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
