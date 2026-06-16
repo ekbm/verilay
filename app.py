@@ -2234,6 +2234,27 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 16, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">More consistent, accurate scores</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Re-running the same app now gives you the same grade. Your score is calculated directly from the findings, so the headline grade and verdict always match the detailed results below them.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 16, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">See exactly what was analysed</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Every report now shows how many of your files were analysed, with the full list a click away — so you always know precisely what the scan covered.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 16, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Clearer guidance on every finding</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Every critical issue now gets its own advice prompt, with the most important issues listed first — so you always know what to tackle, and in what order.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 14, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Minified production code no longer flagged</div>
     <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
