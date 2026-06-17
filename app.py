@@ -868,7 +868,7 @@ def analyse_step2(files, repo_name):
         "FILES:\\n" + ftext + "\\n\\n" +
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
-        "- verify_jwt=false in config.toml: Lovable Cloud default\n"
+        "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -957,7 +957,7 @@ def analyse_step3(files, repo_name):
         "FILES:\n" + ftext + "\n\n" +
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
-        "- verify_jwt=false in config.toml: Lovable Cloud default\n"
+        "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -1054,7 +1054,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "- import.meta.env usage: do NOT flag as hardcoded values\n" +
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
-        "- verify_jwt=false in config.toml: Lovable Cloud default\n"
+        "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -1082,6 +1082,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "Frame every prompt as: investigate this area, advise what you find, suggest the minimal safe change if any.\n"
         "If the score is A or B with no critical issues, say 'No critical fixes needed' for FIX titles. "
         "Do NOT invent generic fixes that are not supported by the findings above.\n\n"
+        "WHOLE-REPO DIRECTION: Verilay analysed only a SAMPLE of the codebase, not every file. In each advice prompt, instruct the AI builder to check this class of issue across the ENTIRE repository — not only the flagged location — and to confirm WITH EVIDENCE per file (e.g. 'for EVERY edge function, confirm it verifies the caller and filters queries by the authenticated user, and LIST any that do not') rather than answering yes/no. This surfaces issues in files Verilay did not read. GROUNDING RULE: state specifics (file names, exact patterns) ONLY about files actually shown in the analysis above; for everything else, ask the builder to check the PATTERN across all files — never invent a specific file or finding you were not shown.\n\n"
         "Respond ONLY with key:value pairs, one per line, no other text.\n\n"
         "COVERAGE — read carefully: Generate ONE advice prompt per critical or warning finding. "
         "List ALL critical findings FIRST (each as its own prompt), then warnings. "
