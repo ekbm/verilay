@@ -1549,6 +1549,36 @@ def stats():
 
 BLOG_POSTS = [
     {
+        "slug": "beyond-the-prompt-ai-app-works",
+        "title": "Beyond the Prompt: How to Make Sure Your AI-Built App Actually Works",
+        "date": "June 18, 2026",
+        "category": "Guide",
+        "excerpt": "A jargon-free guide to testing your AI-built app: the 'try to break it' method, what production-ready really means, and when a human second opinion is worth it.",
+        "medium_url": "https://medium.com/@mosesekbote/beyond-the-prompt-how-to-make-sure-your-ai-built-app-actually-works-472968116646",
+        "read_time": "4 min read",
+        "featured": False,
+    },
+    {
+        "slug": "ai-app-now-what-4-step-checklist",
+        "title": "I Built an App with AI&hellip; Now What? The 4-Step Checklist Before You Launch",
+        "date": "June 17, 2026",
+        "category": "Guide",
+        "excerpt": "The non-developer checklist before you launch: the fake-identity test, the chaos test, the device reality check, and a launch safety net.",
+        "medium_url": "https://medium.com/@mosesekbote/i-built-an-app-with-ai-now-what-the-4-step-checklist-before-you-launch-7ebe5879c095",
+        "read_time": "5 min read",
+        "featured": False,
+    },
+    {
+        "slug": "ran-own-security-tool-different-grade",
+        "title": "I Ran My Own Security Tool on My Own App &mdash; and Got a Different Grade Every Time",
+        "date": "June 17, 2026",
+        "category": "Story",
+        "excerpt": "My own tool gave my own app a different grade every time. What inconsistent AI scoring taught me &mdash; and how I fixed it.",
+        "medium_url": "https://medium.com/@mosesekbote/i-ran-my-own-security-tool-on-my-own-app-and-got-a-different-grade-every-time-5b153447f49c",
+        "read_time": "6 min read",
+        "featured": False,
+    },
+    {
         "slug": "built-ai-apps-no-idea-secure",
         "title": "I Built Several AI Apps and Had No Idea If Any of Them Were Secure",
         "date": "June 10, 2026",
@@ -1596,6 +1626,7 @@ CAT_COLORS = {
     "Philosophy": ("#FAEEDA", "#633806"),
     "Case Study": ("#E6F1FB", "#0C447C"),
     "Feature": ("#FCEBEB", "#A32D2D"),
+    "Guide": ("#DEF1F0", "#0B5E57"),
 }
 
 BLOG_CSS = """
