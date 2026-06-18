@@ -1039,8 +1039,10 @@ function renderReport(data) {
   html += '</div>';
   html += '<div class="ca">';
   html += '<div id="mode-toggle" class="mt" style="display:none">';
+  html += '<span style="font-size:11px;color:var(--mut);align-self:center;margin-right:2px">View:</span>';
   html += '<button class="mb on" data-mode="expert">Expert</button>';
   html += '<button class="mb" data-mode="learner">Learner</button>';
+  html += '<span style="flex-basis:100%;font-size:10px;color:var(--mut);line-height:1.4;margin-top:1px">New to this? <strong style="font-weight:600">Learner</strong> explains everything in plain English &mdash; no jargon.</span>';
   html += '</div>';
   // Only show spinner if no layers loaded yet
   var hasLayers = data.layers && data.layers.length > 0;
@@ -1198,7 +1200,14 @@ function renderLayer() {
       html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:15px;flex-shrink:0;margin-top:1px"></i>';
       html += '<div><div style="font-weight:500;margin-bottom:2px">' + esc(f.plain_title||'') + '</div>';
       html += '<div>' + esc(f.plain_detail||'') + '</div>';
-      if (f.real_world_impact) html += '<div style="font-size:11px;margin-top:4px;font-style:italic">' + esc(f.real_world_impact) + '</div>';
+      if (f.real_world_impact && (f.severity === 'critical' || f.severity === 'warning')) {
+        var riskAccent = f.severity === 'critical' ? '#E24B4A' : '#EF9F27';
+        var riskBg = f.severity === 'critical' ? '#FDECEC' : '#FFF4E5';
+        var riskTx = f.severity === 'critical' ? '#8a2a29' : '#7a4a00';
+        html += '<div style="margin-top:6px;padding:8px 11px;background:' + riskBg + ';border-left:3px solid ' + riskAccent + ';border-radius:6px;font-size:12px;color:' + riskTx + ';line-height:1.5"><strong>&#9888;&#65039; What could go wrong:</strong> ' + esc(f.real_world_impact) + '</div>';
+      } else if (f.real_world_impact) {
+        html += '<div style="font-size:11px;margin-top:4px;font-style:italic">' + esc(f.real_world_impact) + '</div>';
+      }
       if (f.action) html += '<div style="margin-top:5px;font-size:11px;font-weight:500">Action: ' + esc(f.action) + '</div>';
       // Learner mode — understand only, action happens in Expert mode
       if (f.severity === 'critical' || f.severity === 'warning') {
