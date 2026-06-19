@@ -1549,6 +1549,26 @@ def stats():
 
 BLOG_POSTS = [
     {
+        "slug": "trust-ai-app-real-user-data",
+        "title": "Can You Trust an AI-Built App with Real User Data?",
+        "date": "June 19, 2026",
+        "category": "Guide",
+        "excerpt": "When can you safely go solo with a Lovable or Replit app, and when should you get a second opinion before trusting it with real user data?",
+        "medium_url": "https://medium.com/@mosesekbote/can-you-trust-an-ai-built-app-with-real-user-data-dcdca90ae5a6",
+        "read_time": "4 min read",
+        "featured": False,
+    },
+    {
+        "slug": "3-ways-test-ai-generated-software",
+        "title": "3 Ways Non-Developers Can Test AI-Generated Software",
+        "date": "June 18, 2026",
+        "category": "Guide",
+        "excerpt": "Three no-code testing tricks to stress-test your AI-built app before launch: the double-submit test, the malicious-input test, and the mobile audit.",
+        "medium_url": "https://medium.com/@mosesekbote/3-ways-non-developers-can-test-ai-generated-software-3d898f5a578a",
+        "read_time": "5 min read",
+        "featured": False,
+    },
+    {
         "slug": "beyond-the-prompt-ai-app-works",
         "title": "Beyond the Prompt: How to Make Sure Your AI-Built App Actually Works",
         "date": "June 18, 2026",
