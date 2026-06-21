@@ -276,7 +276,7 @@ def smart_file_selection(files, max_files=25):
 
     return selected[:max_files]
 KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
-MAX_FILE_CHARS = 5000
+MAX_FILE_CHARS = 120000
 MAX_FILES = 25
 # A URL scan only sees what the site serves to a browser (built/minified output),
 # never source. When it returns this few files, a full layer analysis is wasted work
@@ -474,7 +474,7 @@ def fetch_url(live_url):
     r.raise_for_status()
     domain = live_url.split("/")[2]
     name = domain.replace(".lovable.app","").replace(".replit.app","")
-    files = {"index.html": r.text[:20000], "_meta.txt": f"LIVE URL SCAN: {live_url}"}
+    files = {"index.html": r.text[:120000], "_meta.txt": f"LIVE URL SCAN: {live_url}"}
     return files, [], name
 
 # ── Claude API ─────────────────────────────────────────────────────────────────
@@ -561,7 +561,7 @@ def sanitise_for_prompt(content):
     return "".join(c for c in content if ord(c) >= 32 or c in "\n\t")
 
 
-def files_for(files, keys, max_total=10000):
+def files_for(files, keys, max_total=250000):
     """Build file text block from selected keys, capped at max_total chars."""
     out = ""
     total = 0
@@ -745,7 +745,7 @@ def analyse_step1(files, tree, repo_name, method):
     stack_keys = [k for k in files if any(sf in k for sf in
         ["package.json","requirements","Procfile","vite","tsconfig",".gitignore","Dockerfile"])]
     ftext = files_for(files, stack_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:4000]
+    ftext = ftext[:250000]
     is_surface = method == "url"
 
     prompt = (
@@ -861,7 +861,7 @@ def analyse_step2(files, repo_name):
     sec_keys = [k for k in files if any(w in k.lower() for w in
         ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
     ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:5000]
+    ftext = ftext[:250000]
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
@@ -950,7 +950,7 @@ def analyse_step3(files, repo_name):
     if "package.json" in files and "package.json" not in api_keys:
         api_keys.insert(0, "package.json")
     ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:5000]
+    ftext = ftext[:250000]
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
@@ -2328,8 +2328,14 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 21, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Reads much more of your code</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Verilay now reads far more of each file before grading. Previously, large single-file apps could be cut short, so the scan sometimes only saw the styling and missed the JavaScript or backend logic further down — occasionally misreading a working app as an incomplete one. Your scans now take in much more of the actual code, so the analysis is based on what your app really does.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 16, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">More consistent, accurate scores</div>
     <div><span class="tag improve">Improve</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Re-running the same app now gives you the same grade. Your score is calculated directly from the findings, so the headline grade and verdict always match the detailed results below them.</p>
   </div>
