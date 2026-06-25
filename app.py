@@ -194,6 +194,8 @@ PRIORITY_FILES = [
     "lib/db.ts","lib/database.ts","database.py","src/lib/db.ts",
     "src/integrations/supabase/client.ts","src/lib/supabase.ts",
     "models.py","src/models","db/schema.rb",
+    # Frontend HTML entry points — scanned for hardcoded secrets in <script> tags
+    "index.html","public/index.html","dist/index.html","src/index.html",
     # Main app entry points
     "app.py","main.py","server.js","server.ts","index.js","index.ts",
     "src/app/layout.tsx","src/app/page.tsx",  # Next.js app router
@@ -923,6 +925,10 @@ def analyse_step2(files, repo_name):
         "- Public tools @auth-required:false or @public:true: intentionally public\n"
         "- Local-only apps with no server: no auth/API/DB findings apply\n"
         "ADVICE: investigate and advise first, never suggest competing libraries.\n\n"
+        "SECRET DETECTION: actively scan ALL files — including index.html and any .html/.js files — for hardcoded API keys or secrets inside <script> tags or variable assignments. "
+        "Look for patterns like sk-ant-, sk-proj-, OPENAI_API_KEY=, AIza, Bearer tokens, Stripe sk_, Twilio AC, and any string matching [A-Za-z0-9_\\-]{20,} assigned to a variable named key, secret, token, apiKey, api_key, or authToken. "
+        "If found in an HTML or frontend file visible to users, flag as CRITICAL with the filename, variable name, and first 6 characters of the value only. "
+        "Exception: import.meta.env.* and process.env.* patterns are safe — never flag these.\n"
         "- EXTERNAL SCRIPTS: if app.js/main.js referenced via <script src=> tag — JS is present externally, NEVER flag as missing. Also if the HTML source shows /static/app.js or any external .js reference, the JavaScript IS fully present.\\n"
         "- URL SCAN TRUNCATION: URL scans only fetch partial HTML — truncated CSS like .ll{{display:gr is normal. NEVER flag truncated URL content as broken or incomplete code.\\n"
         "- AI-POWERED TOOLS: if Anthropic/OpenAI/Gemini API present — AI IS the analysis engine, NEVER flag missing Prism/CodeMirror/AST parsers.\\n"
