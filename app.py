@@ -473,8 +473,42 @@ def fetch_url(live_url):
         raise ValueError(f"The website returned a server error ({r.status_code}). It may be down — try again later.")
     r.raise_for_status()
     domain = live_url.split("/")[2]
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
     name = domain.replace(".lovable.app","").replace(".replit.app","")
-    files = {"index.html": r.text[:120000], "_meta.txt": f"LIVE URL SCAN: {live_url}"}
+    html_text = r.text[:120000]
+
+    # Capture security-relevant HTTP response headers
+    sec_headers = {}
+    for h in ["Content-Security-Policy","X-Frame-Options","X-Content-Type-Options",
+              "Strict-Transport-Security","Referrer-Policy","Permissions-Policy"]:
+        if h.lower() in {k.lower(): v for k, v in r.headers.items()}:
+            sec_headers[h] = r.headers.get(h)
+    headers_text = "\n".join(f"{k}: {v}" for k, v in sec_headers.items()) or "No security headers detected"
+
+    files = {
+        "index.html": html_text,
+        "_meta.txt": f"LIVE URL SCAN: {live_url}",
+        "_headers.txt": f"HTTP SECURITY HEADERS:\n{headers_text}"
+    }
+
+    # Extract and fetch up to 3 JS bundle files referenced in the HTML
+    import re as _re
+    js_refs = _re.findall(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']', html_text)
+    fetched = 0
+    for js_src in js_refs:
+        if fetched >= 3:
+            break
+        try:
+            js_url = js_src if js_src.startswith("http") else base_url + ("" if js_src.startswith("/") else "/") + js_src
+            js_r = requests.get(js_url, timeout=10, headers=_headers)
+            if js_r.status_code == 200:
+                js_name = js_src.split("/")[-1].split("?")[0] or f"bundle_{fetched+1}.js"
+                # Only keep first 40000 chars per JS file to stay within token budget
+                files[js_name] = js_r.text[:40000]
+                fetched += 1
+        except Exception:
+            pass
+
     return files, [], name
 
 # ── Claude API ─────────────────────────────────────────────────────────────────
@@ -802,6 +836,11 @@ def analyse_step1(files, tree, repo_name, method):
         "For URL scans: present findings as 'potential issue — verify manually' not confirmed vulnerabilities. "
         "Never mark something as critical from a URL scan unless it is clearly visible in the HTML/JS (e.g. actual API key in source). "
         "Do NOT flag missing auth or missing backend config from a URL scan — those cannot be assessed without seeing the code.\n"
+        "SECRET DETECTION IN URL SCANS: actively scan index.html and any JS bundle files for hardcoded API keys or secrets. "
+        "Look for patterns like sk-ant-, sk-proj-, OPENAI_API_KEY=, AIza, Bearer tokens, Stripe sk_, Twilio AC, and any string matching [A-Za-z0-9_]{20,} assigned to a variable named key, secret, token, apiKey, or api_key inside <script> tags or JS files. "
+        "If found, flag as CRITICAL with the exact variable name and partial value (first 6 chars only). "
+        "SECURITY HEADERS: a _headers.txt file is included with the HTTP response headers. Flag missing Content-Security-Policy or Strict-Transport-Security as a warning. "
+        "If all security headers are absent, flag as a warning — 'No security headers detected'.\n"
         "Do NOT flag meta http-equiv cache tags as security issues — real caching is controlled by HTTP response headers not meta tags.\n"
         "AUTH POSTURE HEADERS: If you see @auth-required: false or @public: true in function comments → that function is intentionally public, never flag it. "
         "If you see @auth-method: in-code → auth is validated in the function code, not the gateway — never flag verify_jwt=false for these functions. "
