@@ -597,6 +597,222 @@ def sanitise_for_prompt(content):
     return "".join(c for c in content if ord(c) >= 32 or c in "\n\t")
 
 
+# ════════════════════════════════════════════════════════════════════
+# ASK VERILAY — Stage 1 (anonymous, IP-rate-limited plain-English Q&A)
+# ════════════════════════════════════════════════════════════════════
+
+ASK_VERILAY_SYSTEM = (
+    "You are Ask Verilay, a friendly assistant that helps non-developers who have "
+    "built apps using AI tools like Lovable, Bolt, Replit, v0, and Cursor.\n\n"
+    "WHO YOU ARE TALKING TO: The person is almost certainly NOT a developer. They built "
+    "their app by describing what they wanted to an AI tool. They may not know technical "
+    "terms and are often anxious about whether their app is safe, working, or ready to "
+    "launch. Treat every question as coming from a smart person who simply hasn't learned "
+    "the jargon yet.\n\n"
+    "YOUR VOICE: Plain English, no unexplained jargon (if you must use a technical term, "
+    "define it in everyday words in the same sentence). Warm, encouraging, calm. Never "
+    "condescending, never alarmist. Use a short concrete analogy when it helps. Be concise: "
+    "lead with the direct answer, then the steps. When the answer is a process, give clear "
+    "numbered steps a non-developer can follow.\n\n"
+    "WHAT YOU HELP WITH: Building, fixing, understanding, securing, and launching apps made "
+    "with AI tools. If a question is clearly OUTSIDE this scope (taxes, legal, medical, "
+    "general life questions, writing their marketing copy), gently say it's outside what you "
+    "help with and point them to a more suitable resource. Do not answer out-of-scope "
+    "questions even if you could.\n\n"
+    "MOST IMPORTANT RULE — BE HONEST ABOUT WHAT YOU CAN'T SEE: You CANNOT see the person's "
+    "actual app, code, or account. You only have their question. For GENERAL 'how do I / what "
+    "is / why does' questions, answer fully and confidently with clear steps. For questions "
+    "about THEIR SPECIFIC app ('why is MY app slow?', 'is MY setup secure?'), do NOT guess and "
+    "present it as fact — give the general answer clearly labelled as general, and tell them how "
+    "to find out for their specific case (run a Verilay scan, or paste a question into their AI "
+    "builder). Never claim something about their app is secure/safe/broken when you haven't seen "
+    "it.\n\n"
+    "SAFETY: If unsure, say so plainly rather than inventing an answer — a confident wrong answer "
+    "is worse than 'I'm not certain, but here's how to find out reliably.' Don't help with anything "
+    "designed to harm or break into systems. Always end leaving the person feeling capable, not "
+    "overwhelmed."
+)
+
+ASK_RATE_LIMIT = 3          # free questions allowed per window
+ASK_RATE_WINDOW_HOURS = 1   # window length
+
+
+def _client_ip():
+    """Best-effort real client IP behind Cloudflare / proxies."""
+    cf = request.headers.get("CF-Connecting-IP")
+    if cf:
+        return cf.strip()
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def ask_rate_check(ip):
+    """Per-IP hourly limit via Supabase. Returns (allowed: bool, remaining: int).
+    Fails OPEN (allows) if Supabase is unavailable — see note to maintainer."""
+    if not _HAS_SUPABASE:
+        return True, ASK_RATE_LIMIT  # no store available → don't block users
+    bucket = datetime.utcnow().strftime("%Y-%m-%dT%H")  # one bucket per hour (UTC)
+    key = f"{ip}|{bucket}"
+    try:
+        res = _sb.table("ask_usage").select("count").eq("id", key).execute()
+        rows = res.data or []
+        used = rows[0]["count"] if rows else 0
+        if used >= ASK_RATE_LIMIT:
+            return False, 0
+        if rows:
+            _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
+        else:
+            _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
+        return True, max(0, ASK_RATE_LIMIT - (used + 1))
+    except Exception:
+        return True, ASK_RATE_LIMIT  # store error → fail open rather than break the feature
+
+
+def call_claude_text(system, prompt, max_tokens=1500):
+    """Like call_claude but returns PLAIN TEXT (no JSON parsing) and supports a system prompt.
+    Used by Ask Verilay, which answers in plain English, not structured JSON."""
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("No ANTHROPIC_API_KEY set.")
+    prompt_str = str(prompt)
+    if _HAS_SDK:
+        client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
+        raw = ""
+        with client.messages.stream(
+            model="claude-sonnet-4-5",
+            max_tokens=max_tokens,
+            temperature=0,
+            system=system,
+            messages=[{"role": "user", "content": prompt_str}]
+        ) as stream:
+            for text in stream.text_stream:
+                raw += text
+        return raw.strip()
+    # raw requests fallback
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+        },
+        json={
+            "model": "claude-sonnet-4-5",
+            "max_tokens": max_tokens,
+            "temperature": 0,
+            "system": system,
+            "messages": [{"role": "user", "content": prompt_str}]
+        },
+        timeout=90
+    )
+    if not resp.ok:
+        raise ValueError(f"Claude API {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    parts = data.get("content", [])
+    return "".join(p.get("text", "") for p in parts if p.get("type") == "text").strip()
+
+
+@app.route("/ask", methods=["POST"])
+def ask_verilay():
+    try:
+        body = request.get_json(silent=True) or {}
+        question = (body.get("question") or "").strip()
+        if not question:
+            return jsonify({"ok": False, "error": "Please type a question."}), 400
+        if len(question) > 1000:
+            question = question[:1000]
+
+        ip = _client_ip()
+        allowed, remaining = ask_rate_check(ip)
+        if not allowed:
+            return jsonify({
+                "ok": False,
+                "limit_reached": True,
+                "error": f"You've reached the free limit of {ASK_RATE_LIMIT} questions per hour. "
+                         f"Please try again later."
+            }), 429
+
+        answer = call_claude_text(ASK_VERILAY_SYSTEM, question, max_tokens=1500)
+        return jsonify({"ok": True, "answer": answer, "remaining": remaining})
+    except Exception as e:
+        return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
+
+
+ASK_PAGE_HTML = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask Verilay</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;margin:0;font-size:15px;line-height:1.6}
+.wrap{max-width:680px;margin:0 auto;padding:2rem 1.25rem 7rem;min-height:100vh}
+.top{margin-bottom:1.25rem}
+.top h1{font-size:22px;font-weight:700;margin:0 0 .35rem}
+.top p{font-size:13px;color:#6b6966;margin:0}
+.msgs{display:flex;flex-direction:column;gap:.85rem}
+.m{padding:.8rem 1rem;border-radius:12px;max-width:90%;white-space:pre-wrap;word-wrap:break-word}
+.m.you{align-self:flex-end;background:#1a1917;color:#fff;border-bottom-right-radius:3px}
+.m.v{align-self:flex-start;background:#fff;border:0.5px solid #e8e6e0;border-bottom-left-radius:3px}
+.m.note{align-self:center;background:#fdf6e3;border:0.5px solid #f0e0b0;color:#7a6a30;font-size:13px;text-align:center;max-width:100%}
+.hint{font-size:12px;color:#9a9894;margin:.4rem 2px 0}
+.bar{position:fixed;bottom:0;left:0;right:0;background:#f8f8f7;border-top:0.5px solid #e8e6e0;padding:.75rem 1.25rem}
+.bar .inner{max-width:680px;margin:0 auto;display:flex;gap:.5rem;align-items:flex-end}
+#q{flex:1;border:0.5px solid #d8d6d0;border-radius:10px;padding:.7rem .85rem;font-size:15px;font-family:inherit;resize:none;max-height:140px;background:#fff;color:#1a1917}
+#q:focus{outline:none;border-color:#1a1917}
+#send{background:#1a1917;color:#fff;border:none;border-radius:10px;padding:.7rem 1.1rem;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+#send:disabled{opacity:.45;cursor:default}
+.dots span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#b0aeaa;margin:0 1px;animation:b 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+@keyframes b{0%,60%,100%{opacity:.3}30%{opacity:1}}
+</style></head><body>
+<div class="wrap">
+  <div class="top">
+    <h1>Ask Verilay</h1>
+    <p>Plain-English answers about apps built with AI tools &mdash; building, fixing, securing, launching. Free, no jargon. I can't see your specific app, so I'll be honest about what's general advice vs. what needs checking.</p>
+  </div>
+  <div class="msgs" id="msgs">
+    <div class="m v">Hi! Ask me anything about your AI-built app &mdash; like &ldquo;How do I back up my code to GitHub?&rdquo; or &ldquo;How do I add payments?&rdquo;</div>
+  </div>
+  <div class="hint">Free: 3 questions per hour.</div>
+</div>
+<div class="bar"><div class="inner">
+  <textarea id="q" rows="1" placeholder="Type your question..." maxlength="1000"></textarea>
+  <button id="send" onclick="ask()">Ask</button>
+</div></div>
+<script>
+var msgs=document.getElementById('msgs'),q=document.getElementById('q'),send=document.getElementById('send'),busy=false;
+q.addEventListener('input',function(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,140)+'px';});
+q.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask();}});
+function add(cls,text){var d=document.createElement('div');d.className='m '+cls;d.textContent=text;msgs.appendChild(d);d.scrollIntoView({behavior:'smooth',block:'end'});return d;}
+function ask(){
+  if(busy)return;
+  var text=q.value.trim();
+  if(!text)return;
+  add('you',text);
+  q.value='';q.style.height='auto';
+  busy=true;send.disabled=true;
+  var load=document.createElement('div');load.className='m v';load.innerHTML='<span class="dots"><span></span><span></span><span></span></span>';msgs.appendChild(load);load.scrollIntoView({behavior:'smooth',block:'end'});
+  fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:text})})
+    .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
+    .then(function(res){
+      load.remove();
+      if(res.j.ok){add('v',res.j.answer);}
+      else if(res.j.limit_reached){add('note',res.j.error);}
+      else{add('note',res.j.error||'Something went wrong. Please try again.');}
+    })
+    .catch(function(){load.remove();add('note','Could not reach the server. Please try again.');})
+    .finally(function(){busy=false;send.disabled=false;q.focus();});
+}
+</script>
+</body></html>"""
+
+
+@app.route("/ask-verilay")
+def ask_verilay_page():
+    return ASK_PAGE_HTML
+
+
 def files_for(files, keys, max_total=250000):
     """Build file text block from selected keys, capped at max_total chars."""
     out = ""
@@ -2896,6 +3112,7 @@ input:focus{border-color:var(--pu)}
   <div style="display:flex;align-items:center;gap:8px">
     <!-- Desktop nav links — hidden on mobile -->
     <div id="nav-links" style="display:flex;gap:6px;align-items:center">
+      <a href="/ask-verilay" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Ask Verilay</a>
       <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Blog</a>
       <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">GitHub</a>
@@ -2913,6 +3130,7 @@ input:focus{border-color:var(--pu)}
 <!-- Mobile dropdown menu — CSS controlled -->
 <div id="burger-menu" style="background:var(--sur);border-bottom:0.5px solid var(--bdr);padding:.75rem 1.5rem;display:none">
   <div style="display:flex;flex-direction:column;gap:.5rem">
+    <a href="/ask-verilay" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Ask Verilay</a>
     <a href="/about" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
     <a href="/blog" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
     <a href="/changelog" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
@@ -3452,6 +3670,7 @@ input:focus{border-color:var(--pu)}
       ⭐ Found Verilay useful? Star us on GitHub
     </a>
     <div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem">
+      <a href="/ask-verilay" style="font-size:11px;color:var(--mut);text-decoration:none">Ask Verilay</a>
       <a href="/about" style="font-size:11px;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="font-size:11px;color:var(--mut);text-decoration:none">Blog</a>
       <a href="/changelog" style="font-size:11px;color:var(--mut);text-decoration:none">Changelog</a>
