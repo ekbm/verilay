@@ -736,7 +736,8 @@ def ask_verilay():
         answer = call_claude_text(ASK_VERILAY_SYSTEM, question, max_tokens=1500)
         return jsonify({"ok": True, "answer": answer, "remaining": remaining})
     except Exception as e:
-        return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
+        import traceback
+        return jsonify({"ok": False, "error": "DEBUG: " + repr(e), "trace": traceback.format_exc()[-600:]}), 500
 
 
 ASK_PAGE_HTML = """<!DOCTYPE html>
