@@ -670,9 +670,10 @@ def ask_rate_check(ip):
         return True, ASK_RATE_LIMIT  # store error → fail open rather than break the feature
 
 
-def call_claude_text(system, prompt, max_tokens=1500):
-    """Like call_claude but returns PLAIN TEXT (no JSON parsing) and supports a system prompt.
-    Used by Ask Verilay, which answers in plain English, not structured JSON."""
+def ask_claude_call(system, prompt, max_tokens=1500):
+    """Returns PLAIN TEXT (no JSON parsing) and supports a system prompt.
+    Used by Ask Verilay, which answers in plain English, not structured JSON.
+    (Named uniquely to avoid colliding with the existing call_claude_text.)"""
     if not ANTHROPIC_API_KEY:
         raise ValueError("No ANTHROPIC_API_KEY set.")
     prompt_str = str(prompt)
@@ -733,11 +734,10 @@ def ask_verilay():
                          f"Please try again later."
             }), 429
 
-        answer = call_claude_text(ASK_VERILAY_SYSTEM, question, max_tokens=1500)
+        answer = ask_claude_call(ASK_VERILAY_SYSTEM, question, max_tokens=1500)
         return jsonify({"ok": True, "answer": answer, "remaining": remaining})
-    except Exception as e:
-        import traceback
-        return jsonify({"ok": False, "error": "DEBUG: " + repr(e), "trace": traceback.format_exc()[-600:]}), 500
+    except Exception:
+        return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
 
 
 ASK_PAGE_HTML = """<!DOCTYPE html>
