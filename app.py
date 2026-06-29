@@ -731,7 +731,8 @@ def ask_verilay():
                 "ok": False,
                 "limit_reached": True,
                 "error": f"You've reached the free limit of {ASK_RATE_LIMIT} questions per hour. "
-                         f"Please try again later."
+                         f"More is coming soon. In the meantime, you can run a free Verilay scan of "
+                         f"your app, or check back in a little while."
             }), 429
 
         answer = ask_claude_call(ASK_VERILAY_SYSTEM, question, max_tokens=1500)
@@ -740,7 +741,7 @@ def ask_verilay():
         return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
 
 
-ASK_PAGE_HTML = """<!DOCTYPE html>
+ASK_PAGE_HTML = r"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ask Verilay</title>
@@ -756,6 +757,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .m.you{align-self:flex-end;background:#1a1917;color:#fff;border-bottom-right-radius:3px}
 .m.v{align-self:flex-start;background:#fff;border:0.5px solid #e8e6e0;border-bottom-left-radius:3px}
 .m.note{align-self:center;background:#fdf6e3;border:0.5px solid #f0e0b0;color:#7a6a30;font-size:13px;text-align:center;max-width:100%}
+.m.v{white-space:normal}
+.m.v h3{font-size:15px;font-weight:700;color:#0B5E57;margin:.9em 0 .3em;line-height:1.35}
+.m.v h4{font-size:14px;font-weight:700;color:#0B5E57;margin:.7em 0 .25em}
+.m.v p{margin:.5em 0}
+.m.v p:first-child{margin-top:0}
+.m.v ul,.m.v ol{margin:.4em 0;padding-left:1.3em}
+.m.v li{margin:.2em 0}
+.m.v strong{font-weight:700;color:#1a1917}
+.m.v hr{border:none;border-top:0.5px solid #e8e6e0;margin:.9em 0}
 .hint{font-size:12px;color:#9a9894;margin:.4rem 2px 0}
 .bar{position:fixed;bottom:0;left:0;right:0;background:#f8f8f7;border-top:0.5px solid #e8e6e0;padding:.75rem 1.25rem}
 .bar .inner{max-width:680px;margin:0 auto;display:flex;gap:.5rem;align-items:flex-end}
@@ -785,7 +795,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 var msgs=document.getElementById('msgs'),q=document.getElementById('q'),send=document.getElementById('send'),busy=false;
 q.addEventListener('input',function(){q.style.height='auto';q.style.height=Math.min(q.scrollHeight,140)+'px';});
 q.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask();}});
-function add(cls,text){var d=document.createElement('div');d.className='m '+cls;d.textContent=text;msgs.appendChild(d);d.scrollIntoView({behavior:'smooth',block:'end'});return d;}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function inl(s){return s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');}
+function md(t){
+  var ls=esc(t).split('\n'),out=[],lt=null;
+  function cl(){if(lt){out.push('</'+lt+'>');lt=null;}}
+  function op(type){if(lt!==type){cl();out.push('<'+type+'>');lt=type;}}
+  for(var i=0;i<ls.length;i++){
+    var l=ls[i];
+    if(/^###\s+/.test(l)){cl();out.push('<h4>'+inl(l.replace(/^###\s+/,''))+'</h4>');}
+    else if(/^##\s+/.test(l)){cl();out.push('<h3>'+inl(l.replace(/^##\s+/,''))+'</h3>');}
+    else if(/^#\s+/.test(l)){cl();out.push('<h3>'+inl(l.replace(/^#\s+/,''))+'</h3>');}
+    else if(/^---+\s*$/.test(l)){cl();out.push('<hr>');}
+    else if(/^\s*[-*]\s+/.test(l)){op('ul');out.push('<li>'+inl(l.replace(/^\s*[-*]\s+/,''))+'</li>');}
+    else if(/^\s*\d+\.\s+/.test(l)){op('ol');out.push('<li>'+inl(l.replace(/^\s*\d+\.\s+/,''))+'</li>');}
+    else if(l.trim()===''){cl();}
+    else{cl();out.push('<p>'+inl(l)+'</p>');}
+  }
+  cl();
+  return out.join('');
+}
+function add(cls,text,isMd){var d=document.createElement('div');d.className='m '+cls;if(isMd){d.innerHTML=md(text);}else{d.textContent=text;}msgs.appendChild(d);d.scrollIntoView({behavior:'smooth',block:'end'});return d;}
 function ask(){
   if(busy)return;
   var text=q.value.trim();
@@ -798,7 +828,7 @@ function ask(){
     .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
     .then(function(res){
       load.remove();
-      if(res.j.ok){add('v',res.j.answer);}
+      if(res.j.ok){add('v',res.j.answer,true);}
       else if(res.j.limit_reached){add('note',res.j.error);}
       else{add('note',res.j.error||'Something went wrong. Please try again.');}
     })
