@@ -778,6 +778,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 @keyframes b{0%,60%,100%{opacity:.3}30%{opacity:1}}
 </style></head><body>
 <div class="wrap">
+  <a href="/" style="display:inline-block;font-size:13px;color:#6b6966;text-decoration:none;margin-bottom:1rem">&larr; Back to scan</a>
   <div class="top">
     <h1>Ask Verilay</h1>
     <p>Plain-English answers about apps built with AI tools &mdash; building, fixing, securing, launching. Free, no jargon. I can't see your specific app, so I'll be honest about what's general advice vs. what needs checking.</p>
@@ -835,6 +836,10 @@ function ask(){
     .catch(function(){load.remove();add('note','Could not reach the server. Please try again.');})
     .finally(function(){busy=false;send.disabled=false;q.focus();});
 }
+(function(){
+  var m=location.search.match(/[?&]q=([^&]+)/);
+  if(m){q.value=decodeURIComponent(m[1].replace(/\+/g,' '));ask();}
+})();
 </script>
 </body></html>"""
 
@@ -3203,6 +3208,19 @@ input:focus{border-color:var(--pu)}
     </div>
   </div>
 
+  <!-- Ask Verilay prompt -->
+  <div style="max-width:600px;margin:0 auto 2.5rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.5rem 1.5rem 1.35rem;text-align:center">
+    <div style="font-size:16px;font-weight:600;margin-bottom:.3rem">💬 Or just ask us anything</div>
+    <div style="font-size:13px;color:var(--mut);margin-bottom:1.1rem;line-height:1.6">New to building with AI? Ask Verilay answers your questions in plain English — free, no jargon.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+      <a href="/ask-verilay?q=How%20do%20I%20back%20up%20my%20code%20to%20GitHub%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">How do I back up my code to GitHub?</a>
+      <a href="/ask-verilay?q=How%20do%20I%20add%20payments%20to%20my%20app%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">How do I add payments?</a>
+      <a href="/ask-verilay?q=Is%20my%20app%20safe%20to%20launch%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">Is my app safe to launch?</a>
+      <a href="/ask-verilay?q=Why%20is%20my%20app%20slow%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">Why is my app slow?</a>
+    </div>
+    <a href="/ask-verilay" style="display:inline-block;margin-top:1.1rem;font-size:13px;color:var(--pu);text-decoration:none;font-weight:500">Open Ask Verilay &rarr;</a>
+  </div>
+
   <!-- Problem → Solution strip -->
   <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:2.5rem">
     <div style="background:var(--sur);padding:1.25rem 1.4rem">
@@ -3748,6 +3766,16 @@ input:focus{border-color:var(--pu)}
   </div>
 
   <div id="p2-results"></div>
+
+  <div style="margin-top:1.5rem;padding:1.25rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center">
+    <div style="font-size:14px;font-weight:600;margin-bottom:.3rem">💬 Want to understand or fix something?</div>
+    <div style="font-size:12px;color:var(--mut);margin-bottom:.9rem;line-height:1.6">Ask Verilay explains things in plain English and helps you act on your results — free. (It can't see your specific report, but it can answer your questions and point you to what to check.)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+      <a href="/ask-verilay?q=How%20do%20I%20fix%20common%20security%20issues%20in%20an%20AI-built%20app%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">How do I fix common security issues?</a>
+      <a href="/ask-verilay?q=What%20does%20my%20Verilay%20grade%20mean%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">What does my grade mean?</a>
+      <a href="/ask-verilay?q=Is%20my%20app%20safe%20to%20launch%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">Is my app safe to launch?</a>
+    </div>
+  </div>
 
   <div class="bottom-cta">
     <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
