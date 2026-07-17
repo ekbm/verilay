@@ -993,7 +993,7 @@ function renderReport(data) {
     q1label = 'How do I fix common issues?'; q1 = 'How do I fix common security issues in an AI-built app?';
   }
   function chip(label, q) {
-    return '<a href="/ask-verilay?q=' + encodeURIComponent(q) + '" style="font-size:12px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap">' + esc(label) + '</a>';
+    return '<a href="/ask-verilay?q=' + encodeURIComponent(q) + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap">' + esc(label) + '</a>';
   }
   html += '<div style="margin:.75rem 0;padding:1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r)">';
   html += '<div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
@@ -1001,7 +1001,7 @@ function renderReport(data) {
   html += '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:.85rem">';
   html += chip(q1label, q1);
   html += chip('What does my grade mean?', 'What does my Verilay grade mean?');
-  html += '<a href="/ask-verilay" style="font-size:12px;color:var(--pu);background:transparent;border:0.5px solid var(--pu);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap;font-weight:500">Open Ask Verilay &rarr;</a>';
+  html += '<a href="/ask-verilay" target="_blank" rel="noopener" style="font-size:12px;color:var(--pu);background:transparent;border:0.5px solid var(--pu);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap;font-weight:500">Open Ask Verilay &rarr;</a>';
   html += '</div>';
   html += '<button onclick="askAIAboutReport()" style="font-size:12px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Open Claude with my findings &rarr;</button>';
   html += '<span style="font-size:10px;color:var(--put);opacity:.7;margin-left:8px">Free Claude.ai account &mdash; digs into your specific code</span>';
