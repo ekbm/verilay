@@ -778,7 +778,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 @keyframes b{0%,60%,100%{opacity:.3}30%{opacity:1}}
 </style></head><body>
 <div class="wrap">
-  <a href="/" style="display:inline-block;font-size:13px;color:#6b6966;text-decoration:none;margin-bottom:1rem">&larr; Back to scan</a>
+  <a href="/" onclick="window.close();" style="display:inline-block;font-size:13px;color:#6b6966;text-decoration:none;margin-bottom:1rem">&#10005; Close</a>
   <div class="top">
     <h1>Ask Verilay</h1>
     <p>Plain-English answers about apps built with AI tools &mdash; building, fixing, securing, launching. Free, no jargon. I can't see your specific app, so I'll be honest about what's general advice vs. what needs checking.</p>
