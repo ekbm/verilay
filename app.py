@@ -1158,6 +1158,14 @@ def analyse_step2(files, repo_name):
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
+        "WRITING FOR NON-TECHNICAL USERS (applies to ALL plain-English / Learner fields — WHAT, ANALOGY, DOES, CONNECTS, CONCEPT, PLAIN, IMPACT, A):\n"
+        "- Assume the reader has NEVER coded and does not know what a database, API, server, or authentication is. Imagine explaining to a plumber, a hairdresser, or a shop owner who built an app to run their small business.\n"
+        "- Do NOT assume any baseline. If you use a technical word at all, immediately explain it in everyday terms in the same sentence.\n"
+        "- Write a short, warm PARAGRAPH (about 3-5 sentences), NOT one or two clipped lines. Enough to actually teach, but never a wall of text.\n"
+        "- Ground every explanation in an everyday, real-life example the reader already understands (a shop, a job diary, a locked door, a filing cabinet, a receptionist taking messages). Prefer examples from ordinary life over anything technical.\n"
+        "- For anything risky, give a concrete real-world consequence in plain terms (e.g. 'a stranger could open your customer list and read everyone's home address and phone number', not 'unauthorised data access').\n"
+        "- In the DOES/CONNECTS fields, you may name the actual tool found (e.g. Supabase) ONCE, but immediately explain what it is in plain words — never leave a technical name unexplained.\n"
+        "- No jargon, no acronyms left undefined. If your explanation would confuse a smart person who has never touched software, rewrite it simpler.\n\n"
         "FILES:\\n" + ftext + "\\n\\n" +
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
@@ -1192,7 +1200,7 @@ def analyse_step2(files, repo_name):
         "AUTH_F1_PLAIN: same finding in plain English a 10-year-old would understand\n"
         "AUTH_F1_IMPACT: specific real-world consequence if not fixed (e.g. a stranger could log in as any user)\n"
         "AUTH_F1_ACTION: exact step to fix this in Lovable or Replit\n"
-        "AUTH_WHAT: what the auth layer IS in plain English (1-2 sentences, no jargon, written for someone who has never coded)\n"
+        "AUTH_WHAT: what the auth layer IS, following the non-technical writing rules above (short warm paragraph, everyday example, no unexplained jargon)\n"
         "AUTH_ANALOGY: a vivid UNIQUE analogy specific to what THIS exact app does. NEVER use generic analogies like bouncer, front door, or receptionist. Instead use something specific to the app domain — e.g. for a construction app use site security guard checking trade licences, for a recipe app use a kitchen pass system, for a legal app use courthouse security. Make it memorable and directly relevant to what users of THIS app would understand\n"
         "AUTH_DOES: what auth specifically does in THIS app — mention actual libraries/services found in the code (Supabase, JWT, sessions etc)\n"
         "AUTH_CONNECTS: explain in plain English how auth connects to other parts — like how the bouncer talks to the guest list (database)\n"
@@ -1251,6 +1259,14 @@ def analyse_step3(files, repo_name):
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
+        "WRITING FOR NON-TECHNICAL USERS (applies to ALL plain-English / Learner fields — WHAT, ANALOGY, DOES, CONNECTS, CONCEPT, PLAIN, IMPACT, A):\n"
+        "- Assume the reader has NEVER coded and does not know what a database, API, server, or authentication is. Imagine explaining to a plumber, a hairdresser, or a shop owner who built an app to run their small business.\n"
+        "- Do NOT assume any baseline. If you use a technical word at all, immediately explain it in everyday terms in the same sentence.\n"
+        "- Write a short, warm PARAGRAPH (about 3-5 sentences), NOT one or two clipped lines. Enough to actually teach, but never a wall of text.\n"
+        "- Ground every explanation in an everyday, real-life example the reader already understands (a shop, a job diary, a locked door, a filing cabinet, a receptionist taking messages). Prefer examples from ordinary life over anything technical.\n"
+        "- For anything risky, give a concrete real-world consequence in plain terms (e.g. 'a stranger could open your customer list and read everyone's home address and phone number', not 'unauthorised data access').\n"
+        "- In the DOES/CONNECTS fields, you may name the actual tool found (e.g. Supabase) ONCE, but immediately explain what it is in plain words — never leave a technical name unexplained.\n"
+        "- No jargon, no acronyms left undefined. If your explanation would confuse a smart person who has never touched software, rewrite it simpler.\n\n"
         "FILES:\n" + ftext + "\n\n" +
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
