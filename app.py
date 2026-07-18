@@ -3783,16 +3783,6 @@ input:focus{border-color:var(--pu)}
 
   <div id="p2-results"></div>
 
-  <div style="margin-top:1.5rem;padding:1.25rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center">
-    <div style="font-size:14px;font-weight:600;margin-bottom:.3rem">💬 Want to understand or fix something?</div>
-    <div style="font-size:12px;color:var(--mut);margin-bottom:.9rem;line-height:1.6">Ask Verilay explains things in plain English and helps you act on your results — free. (It can't see your specific report, but it can answer your questions and point you to what to check.)</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
-      <a href="/ask-verilay?q=How%20do%20I%20fix%20common%20security%20issues%20in%20an%20AI-built%20app%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">How do I fix common security issues?</a>
-      <a href="/ask-verilay?q=What%20does%20my%20Verilay%20grade%20mean%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">What does my grade mean?</a>
-      <a href="/ask-verilay?q=Is%20my%20app%20safe%20to%20launch%3F" style="font-size:12.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">Is my app safe to launch?</a>
-    </div>
-  </div>
-
   <div class="bottom-cta">
     <div style="font-size:13px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
     <div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Run Verilay on any GitHub repo, ZIP file, or live URL</div>
