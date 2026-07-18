@@ -2025,7 +2025,7 @@ def blog():
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2130,7 +2130,7 @@ blockquote{border-left:3px solid #534AB7;padding:.75rem 1rem;margin:1rem 0;backg
 <body>
 <nav>
   <a href="/" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">
-    <svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg>
     Verilay
   </a>
   <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">&#8592; Blog</a>
@@ -2231,7 +2231,7 @@ def blog_post(slug):
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">Back to blog</a>
 </nav>
 <div class="wrap" style="max-width:680px">
@@ -2266,7 +2266,7 @@ li{margin-bottom:.35rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2346,7 +2346,7 @@ li{margin-bottom:.35rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2440,7 +2440,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2559,7 +2559,7 @@ li{margin-bottom:.4rem}
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -2644,7 +2644,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
 </head>
 <body>
 <nav>
-  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
+  <a href="/" style="font-weight:700;font-size:17px;text-decoration:none;color:#1a1917"><svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg> <span style="font-weight:700;font-size:17px;color:#1a1917">Verilay</span></a>
   <a href="/" style="font-size:13px;color:#6b6966;text-decoration:none">Back to app</a>
 </nav>
 <div class="wrap">
@@ -3157,7 +3157,7 @@ input:focus{border-color:var(--pu)}
 <!-- ── Nav ─────────────────────────────────────────────────── -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem;min-width:0;overflow:hidden">
   <div style="display:flex;align-items:center;gap:8px">
-    <svg width="28" height="28" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="#534AB7" opacity="0.15"/><path d="M22 4L5 11v12c0 11 7.5 21 17 23.5C31.5 44 39 34 39 23V11L22 4z" fill="none" stroke="#534AB7" stroke-width="2.5" stroke-linejoin="round"/><path d="M15 23l5 5 9-10" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <svg width="28" height="28" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg>
     <span style="font-size:18px;font-weight:700;color:var(--pu)">Verilay</span>
     <span style="font-size:10px;color:var(--mut);background:var(--bg);border:0.5px solid var(--bdr);padding:2px 7px;border-radius:20px;margin-left:2px">verification layer</span>
   </div>
