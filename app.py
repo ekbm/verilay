@@ -24,6 +24,7 @@ sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
+from verilay_url_guard import safe_get, validate_url, BlockedURL
 try:
     import anthropic as _anthropic
     _HAS_SDK = True
@@ -52,7 +53,11 @@ load_dotenv()
 # - Rate limiting (10/hour per IP)
 # - Gunicorn production server (see Procfile)
 # - Full error handling on all routes with try/except
-# - SSRF protection on live URL scanner
+# - SSRF protection on all outbound fetches: scheme and port restricted, DNS
+#   resolved and every returned address checked against private/loopback/
+#   link-local/CGNAT/reserved ranges, redirects followed manually with every
+#   hop revalidated, and script-src URLs extracted from fetched pages put
+#   through the same checks (see verilay_url_guard.py)
 # END SUMMARY
 
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
@@ -356,6 +361,12 @@ def fetch_github(repo_url):
             raise ValueError(f"{blocked.split('.')[0].title()} support coming soon. Use ZIP upload instead.")
     owner = parts[1] if parts[0]=="github.com" else parts[0]
     repo  = (parts[2] if parts[0]=="github.com" else parts[1]).replace(".git","")
+    # owner and repo are interpolated straight into an API URL below, so make sure
+    # they actually look like GitHub names and cannot carry path segments.
+    import re as _re_gh
+    if not _re_gh.fullmatch(r"[A-Za-z0-9._-]{1,100}", owner) or \
+       not _re_gh.fullmatch(r"[A-Za-z0-9._-]{1,100}", repo):
+        raise ValueError("That does not look like a valid GitHub repository URL.")
     base  = f"https://api.github.com/repos/{owner}/{repo}"
     hdrs  = {"Accept":"application/vnd.github.v3+json"}
     if GITHUB_TOKEN: hdrs["Authorization"] = f"Bearer {GITHUB_TOKEN}"
@@ -472,28 +483,22 @@ def fetch_zip(zip_bytes, filename):
 
 def fetch_url(live_url):
     from urllib.parse import urlparse
-    import ipaddress
     parsed = urlparse(live_url)
-    host = parsed.hostname or ""
-    if host in ["localhost","127.0.0.1","0.0.0.0","169.254.169.254"]:
-        raise ValueError("Cannot scan internal URLs.")
+    # Full SSRF check: scheme, port, DNS resolution, and EVERY address the
+    # hostname resolves to. See verilay_url_guard.py for what this closes.
     try:
-        ip = ipaddress.ip_address(host)
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
-            raise ValueError("Cannot scan internal IP addresses.")
-    except ValueError as e:
-        if "Cannot scan" in str(e): raise
-    if parsed.scheme not in ("http","https"):
-        raise ValueError("Only http:// and https:// URLs supported.")
+        validate_url(live_url)
+    except BlockedURL as e:
+        raise ValueError(str(e))
     _headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,*/*", "Accept-Language": "en-US,en;q=0.5"}
     try:
-        r = requests.get(live_url, timeout=25, headers=_headers)
+        r = safe_get(live_url, timeout=25, headers=_headers)
     except requests.exceptions.SSLError:
         try:
             # Retry without SSL verification for sites with certificate issues
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            r = requests.get(live_url, timeout=25, headers=_headers, verify=False)
+            r = safe_get(live_url, timeout=25, headers=_headers, verify=False)
         except Exception as ssl_e:
             raise ValueError(f"SSL certificate error — this website has an invalid or untrusted certificate. This is itself a security finding. Error: {str(ssl_e)[:100]}")
     except requests.exceptions.ConnectionError as ce:
@@ -537,7 +542,9 @@ def fetch_url(live_url):
             break
         try:
             js_url = js_src if js_src.startswith("http") else base_url + ("" if js_src.startswith("/") else "/") + js_src
-            js_r = requests.get(js_url, timeout=10, headers=_headers)
+            # These URLs come from the fetched page, not from our user — a hostile
+            # page could point its script tags at an internal address. Same checks apply.
+            js_r = safe_get(js_url, timeout=10, headers=_headers)
             if js_r.status_code == 200:
                 js_name = js_src.split("/")[-1].split("?")[0] or f"bundle_{fetched+1}.js"
                 # Only keep first 40000 chars per JS file to stay within token budget
