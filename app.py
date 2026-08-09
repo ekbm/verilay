@@ -1652,6 +1652,10 @@ def analyse_stream():
             s1["files_total"] = len(tree) if tree else len(files)
             s1["file_breakdown"] = categorise_files(tree if tree else list(files.keys()))
             s1["files_analysed"] = sorted(files.keys())
+            # Attach the scan here, not just to the saved report — otherwise the
+            # verified-findings block only appears when someone reopens a saved
+            # report, and is invisible during the live analysis.
+            s1["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             count = get_analysis_count()
             s1["analysis_count"] = count
@@ -3105,10 +3109,32 @@ def build_markdown(data):
     return "\n".join(lines)
 
 
+def _js_version():
+    """Short hash of app.js, used to cache-bust the <script> tag.
+
+    'Cache-Control: no-cache' alone was not enough — Cloudflare caches .js by
+    file extension, so a deploy could leave users on the previous script while
+    the new HTML expected the new one. A changing query string sidesteps every
+    cache in the chain. Computed once per worker at import time.
+    """
+    import hashlib
+    import os
+    try:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.js")
+        with open(p, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()[:10]
+    except Exception:
+        return "dev"
+
+
+JS_VERSION = _js_version()
+
+
 @app.route("/")
 def index():
     count = get_analysis_count()
-    return render_template_string(HTML, analysis_count=count if count > 0 else "")
+    html = HTML.replace("__JSVER__", JS_VERSION)
+    return render_template_string(html, analysis_count=count if count > 0 else "")
 
 
 @app.route("/static/app.js")
@@ -3119,7 +3145,7 @@ def serve_js():
         with open(js_path, 'r') as f:
             js_content = f.read()
         return Response(js_content, mimetype='application/javascript',
-            headers={'Cache-Control': 'no-cache'})
+            headers={'Cache-Control': 'public, max-age=31536000, immutable'})
     except Exception as e:
         return f"// app.js not found: {e}", 404
 
@@ -3245,7 +3271,7 @@ input:focus{border-color:var(--pu)}
   .ca{min-height:auto}
 }
 </style>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=__JSVER__"></script>
 </head>
 <body>
 <main><div class="wrap">

@@ -906,7 +906,16 @@ function filesCoverageHTML(data) {
 
   var html = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
-  html += '<div><strong>Files analysed: ' + read + ' of ' + total + '</strong></div>';
+  // Two different depths now, and conflating them undersells the product.
+  // scanned  = every file, read directly, checked for exposed keys (certain)
+  // read     = the sample Claude reads for the layer analysis (judgement)
+  var scan = data.secret_scan || {};
+  var scanned = scan.files_scanned || 0;
+  html += '<div><strong>Files analysed: ' + read + ' of ' + total + '</strong>';
+  if (scanned > read) {
+    html += '<span style="color:var(--gr)"> &nbsp;·&nbsp; all ' + scanned + ' checked for exposed keys</span>';
+  }
+  html += '</div>';
   if (analysed.length) {
     html += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
   }
@@ -914,7 +923,10 @@ function filesCoverageHTML(data) {
   html += '<div id="filelist" style="display:none;margin-top:8px;max-height:200px;overflow:auto;border-top:0.5px solid var(--bdr);padding-top:8px">' + listItems + '</div>';
 
   html += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">';
-  if (partial) {
+  if (scanned > read) {
+    html += '<strong>Every one of your ' + scanned + ' files was checked for exposed keys and passwords.</strong> That check reads the actual contents of each file, so its results are facts, not estimates.';
+    html += '<br><br>The <strong>deeper review</strong> — how your login, database, settings and code fit together — covers the ' + read + ' files most likely to carry risk. That part is a first pass, not a full audit, and it cannot run your code or read your live database dashboard. Treat it as a starting point rather than a clean bill of health.';
+  } else if (partial) {
     html += 'Verilay reads the files most likely to carry security risk — a first-pass scan, not a full audit. <strong>' + uncovered + ' files were not analysed.</strong> Static scans also cannot run your code or read your live database dashboard, so treat this as a starting point, not a clean bill of health.';
   } else {
     html += 'Near-complete coverage of this codebase. This is still a first-pass surface scan — it cannot run your code or read your live database dashboard, so for apps handling real users or payments, get a deeper review before launch.';
@@ -923,7 +935,11 @@ function filesCoverageHTML(data) {
 
   if (partial) {
     html += '<div id="deepscan-eoi" style="margin-top:10px;border-top:0.5px solid var(--bdr);padding-top:10px">';
-    html += '<div style="font-size:11px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> Deeper analysis is coming — register interest, no commitment.</div>';
+    if (scanned > read) {
+      html += '<div style="font-size:11px;color:var(--txt);margin-bottom:6px"><strong>Want the deeper review extended across all ' + scanned + ' files?</strong> The key check already covers every file. Extending the full review is coming — register interest, no commitment.</div>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> Deeper analysis is coming — register interest, no commitment.</div>';
+    }
     html += '<div style="display:flex;gap:6px"><input id="deepscan-email" type="email" placeholder="your@email.com" style="flex:1;font-size:12px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)"><button onclick="submitDeepScanInterest()" style="font-size:12px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer">Notify me</button></div>';
     html += '<div id="deepscan-msg" style="font-size:11px;margin-top:6px;color:var(--gr);display:none"></div>';
     html += '</div>';
@@ -932,7 +948,48 @@ function filesCoverageHTML(data) {
   html += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">For apps handling real users or sensitive data, a deeper review is worth it before launch — a dependency scanner (e.g. Snyk), AI code review (e.g. CodeRabbit), or a developer security audit.</div>';
 
   html += '</div>';
+  html += verifiedFindingsHTML(data);
   return html;
+}
+
+// Findings from the deterministic scan. These are a different kind of thing from
+// the layer findings: read directly out of the file, same answer every run, exact
+// line number. Shown separately so the certain and the assessed are never blurred.
+function verifiedFindingsHTML(data) {
+  var scan = data.secret_scan;
+  if (!scan || !scan.files_scanned) return '';
+  var items = scan.findings || [];
+
+  var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
+
+  if (!items.length) {
+    h += '<div><strong style="color:var(--gr)">✓ No exposed keys or passwords found</strong></div>';
+    h += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:6px">';
+    h += 'All ' + scan.files_scanned + ' files were read and checked for API keys, passwords, private keys and database logins written directly into the code. Nothing was found. This check is complete — it is not a sample.';
+    h += '</div></div>';
+    return h;
+  }
+
+  var word = items.length === 1 ? 'finding' : 'findings';
+  h += '<div><strong style="color:var(--rd,#E24B4A)">' + items.length + ' verified ' + word + '</strong>';
+  h += '<span style="color:var(--mut)"> &nbsp;·&nbsp; found by reading all ' + scan.files_scanned + ' of your files</span></div>';
+  h += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:4px">These are certain. Each one was read straight out of the file shown, so unlike the reviewed findings below, they will not change between runs.</div>';
+
+  items.forEach(function(f) {
+    var isCrit = f.severity === 'critical';
+    var col = isCrit ? 'var(--rd,#E24B4A)' : (f.severity === 'warning' ? 'var(--or,#EF9F27)' : 'var(--mut)');
+    h += '<div style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--bdr)">';
+    h += '<div style="font-weight:600;color:' + col + '">' + esc(f.name) + '</div>';
+    h += '<div style="font-family:monospace;font-size:11px;color:var(--mut);margin-top:2px">' + esc(f.file) + ' &middot; line ' + f.line + ' &middot; starts "' + esc(f.preview) + '"</div>';
+    h += '<div style="margin-top:6px;line-height:1.5">' + esc(f.plain) + '</div>';
+    if (f.action) {
+      h += '<div style="margin-top:6px;line-height:1.5"><strong>What to do:</strong> ' + esc(f.action) + '</div>';
+    }
+    h += '</div>';
+  });
+
+  h += '</div>';
+  return h;
 }
 
 function toggleFileList() {
