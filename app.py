@@ -175,16 +175,45 @@ _rate_limit = {}
 def check_rate_limit(ip):
     now = time.time()
     hits = [t for t in _rate_limit.get(ip, []) if now - t < 3600]
-    _rate_limit[ip] = hits
     if len(hits) >= 10:
+        _rate_limit[ip] = hits
         return False, int(3600 - (now - min(hits)))
     hits.append(now)
     _rate_limit[ip] = hits
+    # Drop addresses with nothing left in the window, otherwise every visitor we
+    # have ever had stays in this dict for the life of the process.
+    if len(_rate_limit) > 5000:
+        for _k in [k for k, v in list(_rate_limit.items()) if not v]:
+            _rate_limit.pop(_k, None)
     return True, 0
 
 def get_ip():
-    fwd = request.headers.get("X-Forwarded-For","")
-    return fwd.split(",")[0].strip() if fwd else request.remote_addr or "unknown"
+    """The caller's real address, from a header the caller cannot forge.
+
+    X-Forwarded-For is supplied by the client and only appended to by each proxy
+    in turn, so its FIRST entry is whatever the visitor typed there. Reading that
+    entry meant anyone could send a made-up value and appear as a brand new person
+    on every request — which made the rate limit above decorative, and every
+    analysis it should have blocked costs real Anthropic credits.
+
+    CF-Connecting-IP is set by Cloudflare itself and overwrites anything the
+    visitor supplied, so it is the one value here that cannot be spoofed.
+    """
+    cf = request.headers.get("CF-Connecting-IP", "").strip()
+    if cf:
+        return cf
+    real = request.headers.get("X-Real-IP", "").strip()
+    if real:
+        return real
+    # Last resort. Take the LAST entry, not the first: entries are appended by
+    # each hop, so the tail is the part added by infrastructure we control and
+    # the head is the part the client made up.
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        parts = [p.strip() for p in fwd.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
+    return request.remote_addr or "unknown"
 
 # ── File readers ───────────────────────────────────────────────────────────────
 PRIORITY_FILES = [
@@ -683,14 +712,13 @@ ASK_RATE_WINDOW_HOURS = 1   # window length
 
 
 def _client_ip():
-    """Best-effort real client IP behind Cloudflare / proxies."""
-    cf = request.headers.get("CF-Connecting-IP")
-    if cf:
-        return cf.strip()
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.remote_addr or "unknown"
+    """Real client IP for the Ask Verilay limiter.
+
+    Delegates to get_ip() so there is exactly one implementation. There used to
+    be two, and they had drifted: this one preferred CF-Connecting-IP correctly
+    while get_ip() trusted the spoofable first entry of X-Forwarded-For.
+    """
+    return get_ip()
 
 
 def ask_rate_check(ip):
