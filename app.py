@@ -280,6 +280,41 @@ def smart_file_selection(files, max_files=25):
 KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
 MAX_FILE_CHARS = 120000
 MAX_FILES = 25
+
+
+def categorise_files(paths):
+    """Group repo files into plain-English categories by filename/path only.
+    Pure string matching — no AI, no cost. Returns ordered list of
+    {key, count} for the 'What your app is made of' summary."""
+    buckets = {"data": 0, "config": 0, "libs": 0, "visual": 0, "other": 0}
+    for p in paths:
+        low = p.lower()
+        name = low.split("/")[-1]
+        # Building blocks — vendored / generated / dependency stuff
+        if any(d in low for d in ["node_modules/", "/vendor/", "/dist/", "/build/",
+                                  "components/ui/", "/.next/", "package-lock", "yarn.lock",
+                                  "pnpm-lock"]):
+            buckets["libs"] += 1
+        # Data & logins — the security-relevant parts
+        elif any(k in low for k in ["auth", "login", "session", "supabase", "database",
+                                    "/db/", "schema", "prisma", "migration", "/api/",
+                                    "route", "endpoint", "server", "middleware", "webhook",
+                                    "payment", "stripe", "/models", "password", "token"]):
+            buckets["data"] += 1
+        # Settings & config
+        elif any(k in low for k in [".env", "config", ".json", ".toml", ".yaml", ".yml",
+                                    "vite.", "tsconfig", "tailwind.", "dockerfile",
+                                    ".gitignore", "eslint", "postcss"]):
+            buckets["config"] += 1
+        # Visual & pages — the parts users see
+        elif name.endswith((".tsx", ".jsx", ".vue", ".svelte", ".html", ".css", ".scss")) \
+                or any(d in low for d in ["/pages/", "/views/", "/screens/", "/components/",
+                                         "/layouts/", "/styles/", "/assets/", "/public/"]):
+            buckets["visual"] += 1
+        else:
+            buckets["other"] += 1
+    order = ["visual", "data", "config", "libs", "other"]
+    return [{"key": k, "count": buckets[k]} for k in order if buckets[k] > 0]
 # A URL scan only sees what the site serves to a browser (built/minified output),
 # never source. When it returns this few files, a full layer analysis is wasted work
 # and would grade from near-nothing — so we return an honest, ungraded preview instead.
@@ -1573,6 +1608,7 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             s1["files_read"] = len(files)
             s1["files_total"] = len(tree) if tree else len(files)
+            s1["file_breakdown"] = categorise_files(tree if tree else list(files.keys()))
             s1["files_analysed"] = sorted(files.keys())
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             count = get_analysis_count()
