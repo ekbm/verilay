@@ -802,6 +802,73 @@ function updateHealthDisplay() {
   if (vb) vb.innerHTML = verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null);
 }
 
+function fileBreakdownHTML(data) {
+  var bd = data.file_breakdown || [];
+  var total = data.files_total || 0;
+  if (!bd.length || total < 8) return '';  // skip for tiny apps where it adds nothing
+
+  // Hardcoded, zero-cost explanations. Two registers: plain (Learner) and terse (Expert).
+  var CAT = {
+    visual: {label: 'Visual & pages',
+      plain: 'The buttons, screens and layouts people see and click. These run safely inside your app and don\u2019t expose your data.',
+      expert: 'UI components, pages, styles \u2014 presentational, no data access.'},
+    data: {label: 'Data & logins',
+      plain: 'The parts that handle accounts, user data and connections to other services. This is where security actually matters \u2014 and it\u2019s what Verilay focuses on.',
+      expert: 'Auth, DB, API routes, server & webhook logic \u2014 the security-relevant surface.'},
+    config: {label: 'Settings & config',
+      plain: 'How your app is set up and configured \u2014 the behind-the-scenes settings that tell it how to run.',
+      expert: 'Env, build, config & tooling files.'},
+    libs: {label: 'Building blocks',
+      plain: 'Ready-made pieces from libraries you didn\u2019t write yourself. Widely used and maintained by others.',
+      expert: 'Vendored / generated / dependency files (not your code).'},
+    other: {label: 'Other',
+      plain: 'Everything else \u2014 documentation, images and miscellaneous files.',
+      expert: 'Docs, assets and uncategorised files.'}
+  };
+
+  var rows = bd.map(function(b) {
+    var c = CAT[b.key]; if (!c) return '';
+    return '<div class="fb-row" style="display:flex;gap:10px;padding:.5rem 0;border-top:0.5px solid var(--bdr)">' +
+      '<div style="min-width:44px;font-weight:700;font-size:14px;color:var(--txt)">' + b.count + '</div>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:13px;font-weight:600;margin-bottom:1px">' + esc(c.label) + '</div>' +
+        '<div class="fb-plain" style="font-size:12px;color:var(--mut);line-height:1.5">' + esc(c.plain) + '</div>' +
+        '<div class="fb-expert" style="font-size:12px;color:var(--mut);line-height:1.5;display:none">' + esc(c.expert) + '</div>' +
+      '</div></div>';
+  }).join('');
+
+  var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">';
+  h += '<button onclick="toggleBreakdown()" id="fb-toggle" style="font-size:13px;font-weight:600;background:none;border:none;color:var(--txt);cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">' +
+       '<span id="fb-caret">\u25b8</span> What your app is made of (' + total + ' files)</button>';
+  h += '<button onclick="toggleBreakdownMode()" id="fb-mode" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--mut);cursor:pointer;display:none">Developer view</button>';
+  h += '</div>';
+  h += '<div id="fb-body" style="display:none;margin-top:8px">';
+  h += '<div style="font-size:12px;color:var(--mut);line-height:1.55;margin-bottom:6px">Most of your app is the safe internal machinery \u2014 the visual parts and building blocks that run inside and don\u2019t expose your data. The parts that matter for safety are the smaller <strong>Data &amp; logins</strong> set, which is what Verilay checks first.</div>';
+  h += rows;
+  h += '</div></div>';
+  return h;
+}
+
+function toggleBreakdown() {
+  var b = document.getElementById('fb-body');
+  var c = document.getElementById('fb-caret');
+  var m = document.getElementById('fb-mode');
+  if (!b) return;
+  var open = b.style.display === 'none';
+  b.style.display = open ? 'block' : 'none';
+  if (c) c.textContent = open ? '\u25be' : '\u25b8';
+  if (m) m.style.display = open ? 'inline-block' : 'none';
+}
+
+function toggleBreakdownMode() {
+  var btn = document.getElementById('fb-mode');
+  var toExpert = btn.textContent === 'Developer view';
+  document.querySelectorAll('.fb-plain').forEach(function(e){ e.style.display = toExpert ? 'none' : 'block'; });
+  document.querySelectorAll('.fb-expert').forEach(function(e){ e.style.display = toExpert ? 'block' : 'none'; });
+  btn.textContent = toExpert ? 'Simple view' : 'Developer view';
+}
+
 function filesCoverageHTML(data) {
   var analysed = data.files_analysed || [];
   var read = data.files_read || analysed.length;
@@ -1024,6 +1091,8 @@ function renderReport(data) {
   html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview) + '</div>';
 
   html += filesCoverageHTML(data);
+
+  html += fileBreakdownHTML(data);
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';
