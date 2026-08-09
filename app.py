@@ -2691,6 +2691,13 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 9, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">See what your app is made of</div>
+    <div><span class="tag improve">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Reports now include a plain-English breakdown of your whole app — grouping every file into simple categories like visual pages, data &amp; logins, settings and building blocks. It shows that most of an app is safe internal machinery, and that the parts which matter for security are a smaller set — the ones Verilay checks first. There's a simple view for non-developers and a developer view for more technical detail.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">June 21, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Reads much more of your code</div>
     <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
