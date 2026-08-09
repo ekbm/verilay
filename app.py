@@ -20,7 +20,6 @@ Single-request streaming architecture — no inter-request cache dependency
 """
 
 import os, sys, json, base64, zipfile, io, requests, time, secrets as _secrets, uuid as _uuid, threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
@@ -349,37 +348,6 @@ def verdict_from_score(score):
     }
     return m.get(score, m["C"])
 
-# ── Content-based risk screening (no AI, precision-tuned) ──────────────
-CONTENT_WIDER_NET = 60   # name-ranked candidates to fetch & content-screen before final pick
-CONTENT_RISK_PATTERNS = [
-    # High-signal only — over-flagging is the known failure mode, so keep this tight.
-    "select ", "insert ", "update ", "delete ", " from ", " where ",   # raw SQL
-    "process.env", "os.environ", "getenv", "service_role", "secret", "api_key", "apikey",
-    "authorization", "bearer", "jwt", "signin", "sign_in", "login", "password", "session",
-    "createclient", "supabase", "firebase", "prisma", "mongoose", "sequelize",
-    "fetch(", "axios", "requests.", "urlopen",                          # outbound calls
-    "stripe", "payment", "checkout", "webhook",
-    "dangerouslysetinnerhtml", "eval(", "child_process", "subprocess",
-    "middleware", "req.body", "request.json", "res.json",
-]
-
-
-def content_risk_score(text):
-    """Cheap, no-AI score of what a file ACTUALLY contains. Counts distinct
-    high-signal patterns (capped), so a file full of real data/auth logic
-    outranks one that merely mentions a keyword once."""
-    if not text:
-        return 0
-    low = text.lower()
-    hits = 0
-    for pat in CONTENT_RISK_PATTERNS:
-        if pat in low:
-            hits += 1
-            if hits >= 8:
-                break
-    return hits
-
-
 def fetch_github(repo_url):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
@@ -410,48 +378,26 @@ def fetch_github(repo_url):
         except: return None
 
     files = {}
-    # Step 1 — name-based selection casts a WIDER net than the final cap,
-    # so we have candidates to screen by actual content.
-    wide_paths = smart_file_selection(
+    # Use smart file selection — security-scored prioritisation
+    selected_paths = smart_file_selection(
         {p: True for p in all_files},
-        max_files=CONTENT_WIDER_NET
+        max_files=MAX_FILES
     )
 
-    # Ensure manifests are always kept — swap in if missing
+    # Ensure manifests are always first — swap in if missing
     for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
-        if manifest in all_files and manifest not in wide_paths:
-            if len(wide_paths) >= CONTENT_WIDER_NET:
-                wide_paths[-1] = manifest
+        if manifest in all_files and manifest not in selected_paths:
+            # Replace last item to stay within MAX_FILES
+            if len(selected_paths) >= MAX_FILES:
+                selected_paths[-1] = manifest
             else:
-                wide_paths.insert(0, manifest)
+                selected_paths.insert(0, manifest)
 
-    # Step 2 — fetch the wider set IN PARALLEL (fast; I/O-bound)
-    fetched = {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futs = {pool.submit(fetch_file, p): p for p in wide_paths[:CONTENT_WIDER_NET] if p in all_files}
-        for fut in as_completed(futs):
-            p = futs[fut]
-            try:
-                c = fut.result()
-                if c:
-                    fetched[p] = c
-            except Exception:
-                pass
-
-    # Step 3 — rank the fetched files by ACTUAL content risk, keep the top MAX_FILES.
-    # Manifests/priority files are always kept regardless of content score.
-    always_keep = set()
-    for pf in PRIORITY_FILES:
-        base = pf.split('/')[-1]
-        for p in fetched:
-            if p == pf or p.split('/')[-1] == base:
-                always_keep.add(p)
-
-    ranked = sorted(fetched.keys(),
-                    key=lambda p: (p in always_keep, content_risk_score(fetched[p])),
-                    reverse=True)
-    for p in ranked[:MAX_FILES]:
-        files[p] = fetched[p]
+    # Fetch selected files — hard cap at MAX_FILES
+    for path in selected_paths[:MAX_FILES]:
+        if path in all_files:
+            c = fetch_file(path)
+            if c: files[path] = c
 
     return files, all_files, f"{owner}/{repo}"
 
