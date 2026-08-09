@@ -25,6 +25,9 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
 from verilay_url_guard import safe_get, validate_url, BlockedURL
+from verilay_secret_scan import (
+    scan_repo, to_prompt_block, to_report_dict, fetch_all_files_tarball,
+)
 try:
     import anthropic as _anthropic
     _HAS_SDK = True
@@ -1192,7 +1195,7 @@ def analyse_step1(files, tree, repo_name, method):
     }
 
 
-def analyse_step2(files, repo_name):
+def analyse_step2(files, repo_name, scan_block=""):
     sec_keys = [k for k in files if any(w in k.lower() for w in
         ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
     ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
@@ -1200,6 +1203,7 @@ def analyse_step2(files, repo_name):
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
+        + scan_block +
         "WRITING FOR NON-TECHNICAL USERS (applies to ALL plain-English / Learner fields — WHAT, ANALOGY, DOES, CONNECTS, CONCEPT, PLAIN, IMPACT, A):\n"
         "- Assume the reader has NEVER coded and does not know what a database, API, server, or authentication is. Imagine explaining to a plumber, a hairdresser, or a shop owner who built an app to run their small business.\n"
         "- Do NOT assume any baseline. If you use a technical word at all, immediately explain it in everyday terms in the same sentence.\n"
@@ -1227,10 +1231,12 @@ def analyse_step2(files, repo_name):
         "- Public tools @auth-required:false or @public:true: intentionally public\n"
         "- Local-only apps with no server: no auth/API/DB findings apply\n"
         "ADVICE: investigate and advise first, never suggest competing libraries.\n\n"
-        "SECRET DETECTION: actively scan ALL files — including index.html and any .html/.js files — for hardcoded API keys or secrets inside <script> tags or variable assignments. "
-        "Look for patterns like sk-ant-, sk-proj-, OPENAI_API_KEY=, AIza, Bearer tokens, Stripe sk_, Twilio AC, and any string matching [A-Za-z0-9_\\-]{20,} assigned to a variable named key, secret, token, apiKey, api_key, or authToken. "
-        "If found in an HTML or frontend file visible to users, flag as CRITICAL with the filename, variable name, and first 6 characters of the value only. "
-        "Exception: import.meta.env.* and process.env.* patterns are safe — never flag these.\n"
+        "SECRET DETECTION: do NOT hunt for secrets yourself. A deterministic scanner has already "
+        "checked every file in the repository and its results are in the CONFIRMED SECRET SCAN block "
+        "above — that block is authoritative and complete. Report exactly those findings, at the "
+        "severity given, explained in plain English. Do not add secret findings that are not listed "
+        "there, and do not omit any that are. Note also that import.meta.env.* and process.env.* are "
+        "references, not secrets, and are never findings.\n"
         "- EXTERNAL SCRIPTS: if app.js/main.js referenced via <script src=> tag — JS is present externally, NEVER flag as missing. Also if the HTML source shows /static/app.js or any external .js reference, the JavaScript IS fully present.\\n"
         "- URL SCAN TRUNCATION: URL scans only fetch partial HTML — truncated CSS like .ll{{display:gr is normal. NEVER flag truncated URL content as broken or incomplete code.\\n"
         "- AI-POWERED TOOLS: if Anthropic/OpenAI/Gemini API present — AI IS the analysis engine, NEVER flag missing Prism/CodeMirror/AST parsers.\\n"
@@ -1609,6 +1615,35 @@ def analyse_stream():
             if not files:
                 yield json.dumps({"event":"error","data":"No readable files found. Try ZIP upload."}) + "\n"; return
 
+            # ── Deterministic secret scan ───────────────────────────────
+            # Runs before Claude, over every file we can reach — not the 25-file
+            # sample. Costs nothing and returns the same answer every run. For
+            # GitHub we pull the whole repo as one tarball; ZIP and URL scans
+            # cover the files already fetched.
+            yield json.dumps({"event":"status","data":"Checking every file for exposed keys..."}) + "\n"
+            scan_findings, scan_files_count = [], 0
+            try:
+                if method == "github":
+                    _owner, _, _repo = repo_name.partition("/")
+                    _all_text = fetch_all_files_tarball(_owner, _repo, GITHUB_TOKEN)
+                    scan_findings = scan_repo(_all_text)
+                    scan_files_count = len(_all_text)
+                else:
+                    scan_findings = scan_repo(files)
+                    scan_files_count = len(files)
+            except Exception as _scan_err:
+                # Never let the scan take down an analysis. Fall back to the
+                # sampled files so we still catch something.
+                print(f"Full scan failed, falling back to sample: {_scan_err}", flush=True)
+                try:
+                    scan_findings = scan_repo(files)
+                    scan_files_count = len(files)
+                except Exception as _scan_err2:
+                    print(f"Secret scan skipped entirely: {_scan_err2}", flush=True)
+            scan_block = to_prompt_block(scan_findings, scan_files_count)
+            scan_critical = sum(1 for _f in scan_findings if _f.severity == "critical")
+            scan_warning  = sum(1 for _f in scan_findings if _f.severity == "warning")
+
             yield json.dumps({"event":"status","data":f"Found {len(files)} files — detecting stack..."}) + "\n"
 
             # ── Step 1: Stack + overview ────────────────────────────────
@@ -1639,6 +1674,9 @@ def analyse_stream():
             if is_thin_url:
                 preview = dict(s1)
                 preview["layers"] = []
+                # A key hardcoded into index.html is exactly what a URL scan can prove.
+                # Carry it into the preview — the grade is withheld, the fact is not.
+                preview["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
                 report_id = save_report_data(preview)
                 try:
                     increment_analysis_count(score=None, method=method)
@@ -1658,7 +1696,7 @@ def analyse_stream():
             # Run in parallel with keepalive pings to prevent Railway timeout
             import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                f2 = executor.submit(analyse_step2, files, repo_name)
+                f2 = executor.submit(analyse_step2, files, repo_name, scan_block)
                 f3 = executor.submit(analyse_step3, files, repo_name)
                 # Send keepalive every 20s while waiting — prevents Railway 30s timeout
                 deadline = _time.time() + 90
@@ -1703,11 +1741,19 @@ def analyse_stream():
                         _warn += 1
                     elif _sev == "passing":
                         _pass += 1
+            # The scanner sets a FLOOR the model cannot talk its way under. A key we
+            # verified by reading the file is a fact, so if Claude reported fewer
+            # criticals than the scanner confirmed, the scanner wins. max() rather
+            # than addition, because step 2 was told to include the scanned findings
+            # in its layers — adding would count the same key twice.
+            _crit = max(_crit, scan_critical)
+            _warn = max(_warn, scan_warning)
             partial.setdefault("health", {})
             partial["health"]["critical"] = _crit
             partial["health"]["warnings"] = _warn
             partial["health"]["passing"] = _pass
             partial["health"]["score"] = grade_from_counts(_crit, _warn)
+            partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             report_id = save_report_data(partial)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
