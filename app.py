@@ -4578,6 +4578,17 @@ def validate_startup():
         print("✓ Paywall OFF — deep scan not for sale"
               + (f" ({len(problems)} thing(s) still to configure — see /billing-health)"
                  if problems else " (configuration looks complete)"))
+        # Say this even with the paywall off. A live key sitting in the environment
+        # is one variable away from taking real money, and it is almost always a
+        # mistake while the deep scan is still being built — the Stripe dashboard
+        # has a test/live toggle and restricted keys belong to whichever mode was
+        # showing when you created them.
+        if billing.STRIPE_SECRET_KEY:
+            if billing.is_live_key():
+                print("⚠️  STRIPE_SECRET_KEY is a LIVE key. If you meant test mode, "
+                      "create the key with the dashboard toggled to Test — it starts rk_test_.")
+            else:
+                print("   Stripe key is test mode.")
 
 # Run validation on startup (works with both local and Gunicorn)
 validate_startup()

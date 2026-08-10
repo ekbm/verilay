@@ -691,8 +691,19 @@ def billing_health():
         "webhook_secret": bool(billing.STRIPE_WEBHOOK_SECRET),
         "price_id": bool(billing.STRIPE_PRICE_ID),
         "price": billing.price_label(),
+        "tax_code": billing.DEEP_SCAN_TAX_CODE,
+        # The key's own account. If a price or webhook was created somewhere else,
+        # this is the value that shows why nothing works.
+        "stripe_account_hint": billing.account_hint(),
         "auth_configured": accounts.configured(),
         "secret_key_set": bool(os.getenv("SECRET_KEY", "").strip()),
+        # Distinguishes "SUPABASE_ANON_KEY is set" from "it silently fell back to
+        # the service key", which auth_configured alone cannot tell you.
+        "supabase_anon_key_set": bool(os.getenv("SUPABASE_ANON_KEY", "").strip()),
+        "supabase_keys_distinct": (
+            bool(os.getenv("SUPABASE_ANON_KEY", "").strip())
+            and os.getenv("SUPABASE_ANON_KEY", "").strip() != os.getenv("SUPABASE_KEY", "").strip()
+        ),
         "supabase": _sb() is not None,
         "base_url": billing.BASE_URL,
         "sellable": bool(billing.PAYWALL_ENABLED and billing.configured()

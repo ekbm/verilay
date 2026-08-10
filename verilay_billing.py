@@ -47,12 +47,29 @@ PAYWALL_ENABLED      = _flag("PAYWALL_ENABLED")
 STRIPE_SECRET_KEY    = os.getenv("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
 STRIPE_PRICE_ID      = os.getenv("STRIPE_PRICE_ID", "").strip()
-BASE_URL             = os.getenv("BASE_URL", "https://verilay.dev").rstrip("/")
+# .strip() before .rstrip("/") — pasting a variable into a dashboard field very
+# easily carries a leading space, and " https://verilay.dev/checkout/success" is
+# not a URL Stripe will accept. Whitespace in an environment variable should never
+# be the reason checkout fails.
+BASE_URL             = os.getenv("BASE_URL", "https://verilay.dev").strip().rstrip("/")
 
 # Used only when STRIPE_PRICE_ID is not set, so test mode works before you have
 # created the product in the dashboard.
-PRICE_CENTS = int(os.getenv("DEEP_SCAN_PRICE_CENTS", "1900"))
-PRICE_CURRENCY = os.getenv("DEEP_SCAN_CURRENCY", "aud").lower()
+PRICE_CENTS = int(os.getenv("DEEP_SCAN_PRICE_CENTS", "1900").strip() or "1900")
+PRICE_CURRENCY = os.getenv("DEEP_SCAN_CURRENCY", "aud").strip().lower() or "aud"
+
+# Stripe tax classification for the deep scan. Required, not optional: this
+# account has Managed Payments enabled (Stripe acts as merchant of record and
+# handles tax), and Managed Payments refuses any line item without an eligible
+# product tax code. Without it, checkout fails with "the product tax code is
+# missing" and nobody can buy anything.
+#
+# txcd_10103001 = "Software as a service (SaaS) - business use": software
+# delivered over the internet, not customised for the individual buyer, nothing
+# downloaded. That is what a deep scan is. The business/personal distinction only
+# affects US sales; business use is the right call for a paid pre-launch review of
+# an app someone is about to ship.
+DEEP_SCAN_TAX_CODE = os.getenv("DEEP_SCAN_TAX_CODE", "txcd_10103001").strip() or "txcd_10103001"
 
 ENTITLEMENT_DAYS = 30
 
@@ -69,6 +86,29 @@ if _HAS_STRIPE and STRIPE_SECRET_KEY:
 def is_live_key():
     """True if we are pointed at real money. Used to warn in the startup log."""
     return STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_"))
+
+
+def account_hint():
+    """Which Stripe account this key belongs to, derived from the key itself.
+
+    Stripe embeds the account id in the key: a key body of '51U2khdA0rN41rcGa…'
+    means 'acct_1U2khdA0rN41rcGa'. Nothing secret is revealed — an account id is
+    not a credential — and it answers the one question that is otherwise invisible
+    from outside: whether the key, the price and the webhook all live in the SAME
+    account. They must. Stripe objects never cross accounts, and a key from a
+    sandbox looking at another account's price fails with a bare
+    "No such price", which reads like a typo rather than the real cause.
+
+    A hint, not a promise: it is inferred from the key's shape, so treat a
+    mismatch as a prompt to check the dashboard, not as proof.
+    """
+    parts = STRIPE_SECRET_KEY.split("_")
+    if len(parts) < 3:
+        return None
+    body = parts[2]
+    if not body.startswith("5") or len(body) < 17:
+        return None
+    return "acct_" + body[1:17]
 
 
 def configured():
@@ -161,6 +201,7 @@ def create_checkout_session(repo, email=None, client_ip=None):
                         f"A deep scan of {canonical}, and re-scans whenever you "
                         f"like for {ENTITLEMENT_DAYS} days."
                     ),
+                    "tax_code": DEEP_SCAN_TAX_CODE,
                 },
             },
         }]
