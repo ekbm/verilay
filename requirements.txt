@@ -4,3 +4,4 @@ anthropic>=0.25.0
 python-dotenv>=1.0.0
 gunicorn>=21.2.0
 supabase>=2.0.0
+stripe>=10.0.0

@@ -8,9 +8,11 @@
 #
 # Contact: moses@verilay.dev | github.com/ekbm/verilay
 #
-# @auth-required: false
-# @public: true — Verilay is a public utility tool, no login required by design
-# @auth-method: none — intentionally unauthenticated, all features are public
+# @auth-required: false — the analysis tool is public by design, no login
+# @public: true — every free feature works with no account
+# @auth-method: passwordless email (Supabase Auth) — used ONLY for paid deep-scan
+#   accounts, so a customer's reports are still there when they come back. No
+#   passwords are stored or compared anywhere in this codebase.
 # =============================================================================
 
 #!/usr/bin/env python3
@@ -24,10 +26,30 @@ sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
+
+# Load .env BEFORE importing our own modules. The billing and accounts modules
+# read their configuration at import time, so a load_dotenv() further down the
+# file would leave them blank when running locally — everything would look
+# unconfigured even with a correct .env. Harmless to call twice.
+load_dotenv()
+
 from verilay_url_guard import safe_get, validate_url, BlockedURL
 from verilay_secret_scan import (
     scan_repo, to_prompt_block, to_report_dict, fetch_all_files_tarball,
 )
+# The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
+# Kept in its own modules so the free tool below is unchanged by it. If these
+# imports fail the free app must still boot: nobody losing a free analysis
+# because billing is broken.
+try:
+    import verilay_billing as billing
+    import verilay_paywall as paywall
+    _HAS_PAYWALL = True
+except Exception as _paywall_err:
+    billing = None
+    paywall = None
+    _HAS_PAYWALL = False
+    print(f"⚠️  Paid path not loaded: {_paywall_err}", flush=True)
 try:
     import anthropic as _anthropic
     _HAS_SDK = True
@@ -53,6 +75,11 @@ load_dotenv()
 # - ZIP and live URL analysis modes
 # - 4-step analysis using Anthropic Claude API (streaming)
 # - In-memory report storage with 24hr TTL
+# - Paid path (verilay_paywall.py / verilay_billing.py / verilay_accounts.py):
+#   Stripe Checkout hosted off-site so no card data reaches this server, a
+#   signature-verified /stripe-webhook as the record of truth, purchases stored
+#   with a unique event id so retried webhooks cannot double-record, and
+#   passwordless email sign-in via Supabase Auth for paid accounts only
 # - Rate limiting (10/hour per IP)
 # - Gunicorn production server (see Procfile)
 # - Full error handling on all routes with try/except
@@ -67,8 +94,27 @@ GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", _secrets.token_hex(32))
+
+# SECRET_KEY signs the sign-in cookie, so it matters now in a way it did not when
+# nothing used sessions. The random fallback is per PROCESS, and Gunicorn runs
+# several worker processes: each would invent a different key, so a signed-in user
+# would be thrown out whenever a request happened to land on another worker, and
+# every deploy would log everyone out. Set it in Railway and never change it.
+_SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+_SECRET_KEY_IS_EPHEMERAL = not _SECRET_KEY
+app.secret_key = _SECRET_KEY or _secrets.token_hex(32)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
+
+# Sign-in cookie: 30 days, and hardened. SameSite=Lax rather than Strict because
+# the buyer arrives back from Stripe's domain and a Strict cookie would not be
+# sent on that navigation, logging them out at the worst possible moment.
+from datetime import timedelta as _timedelta
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=_timedelta(days=30),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("COOKIE_INSECURE", "").strip().lower() not in ("1", "true", "yes"),
+)
 
 # ── Report storage ─────────────────────────────────────────────────────────────
 _reports = {}
@@ -112,6 +158,22 @@ def increment_analysis_count(score=None, method=None):
 
 
 
+def _current_uid():
+    """The signed-in account id, or None. None for every anonymous free user.
+
+    Wrapped because it is called from inside the analysis generator, and a missing
+    paid path or a request without a session must never break a free analysis.
+    """
+    if not _HAS_PAYWALL:
+        return None
+    try:
+        import verilay_accounts as _acc
+        u = _acc.current_user()
+        return u["id"] if u else None
+    except Exception:
+        return None
+
+
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
     if _HAS_SUPABASE:
@@ -120,12 +182,14 @@ def save_report_data(data):
             repo = data.get("repo", "")
             prev_score = None
             prev_critical = None
+            prev_row = None
             if repo:
                 try:
                     prev = _sb.table("reports").select("score,data").eq("repo", repo).order("created_at", desc=True).limit(1).execute()
                     if prev.data:
-                        prev_score = prev.data[0].get("score", "")
-                        prev_data = prev.data[0].get("data", {})
+                        prev_row = prev.data[0]
+                        prev_score = prev_row.get("score", "")
+                        prev_data = prev_row.get("data", {})
                         prev_critical = prev_data.get("health", {}).get("critical", None)
                 except:
                     pass
@@ -133,19 +197,36 @@ def save_report_data(data):
             if prev_score:
                 data["prev_score"] = prev_score
                 data["prev_critical"] = prev_critical
-            # Carry forward verifications from previous analysis of same repo
-            if prev.data if prev_score else False:
-                prev_verifications = prev.data[0].get("data", {}).get("verifications", {})
+            # Carry forward verifications from previous analysis of same repo.
+            # This used to read `prev` directly, which is unbound whenever the
+            # lookup above never ran or threw — a NameError swallowed by the outer
+            # except, so carry-forward quietly stopped working and the save looked
+            # like it had failed. prev_row is always defined.
+            if prev_row is not None:
+                prev_verifications = prev_row.get("data", {}).get("verifications", {})
                 if prev_verifications:
                     data["verifications"] = prev_verifications
                     print(f"Carried forward {len(prev_verifications)} verifications from previous analysis", flush=True)
-            _sb.table("reports").insert({
+            row = {
                 "id": report_id,
                 "repo": repo,
                 "data": data,
                 "input_method": data.get("input_method", "github"),
                 "score": data.get("health", {}).get("score", "")
-            }).execute()
+            }
+            # Attach the report to a signed-in account, so paid users can find it
+            # again. Only for signed-in users, which today is nobody — an anonymous
+            # free analysis inserts exactly the same row it always did.
+            _uid = _current_uid()
+            if _uid:
+                try:
+                    _sb.table("reports").insert(dict(row, user_id=_uid)).execute()
+                    return report_id
+                except Exception as _link_err:
+                    # Most likely the user_id column has not been added yet. Saving
+                    # the report matters more than linking it, so fall through.
+                    print(f"Report save with user_id failed, saving unlinked: {_link_err}", flush=True)
+            _sb.table("reports").insert(row).execute()
             return report_id
         except Exception as e:
             print(f"Supabase save failed: {e}")
@@ -214,6 +295,22 @@ def get_ip():
         if parts:
             return parts[-1]
     return request.remote_addr or "unknown"
+
+# ── The paid path ──────────────────────────────────────────────────────────────
+# Registered here rather than at the bottom because it needs get_ip and
+# get_report_data, which are defined above. It adds routes only — /deep-scan,
+# /checkout, /stripe-webhook, /login, /account and friends. Nothing it registers
+# is reachable from the free flow, and PAYWALL_ENABLED gates whether anything is
+# actually for sale.
+if _HAS_PAYWALL:
+    try:
+        paywall.init(app, sb=_sb, get_ip=get_ip, get_report_data=get_report_data)
+        print("✓ Paid path registered"
+              + ("" if billing.PAYWALL_ENABLED else " (paywall OFF — nothing for sale)"),
+              flush=True)
+    except Exception as _bp_err:
+        _HAS_PAYWALL = False
+        print(f"⚠️  Paid path failed to register: {_bp_err}", flush=True)
 
 # ── File readers ───────────────────────────────────────────────────────────────
 PRIORITY_FILES = [
@@ -4434,6 +4531,53 @@ def validate_startup():
         print("\nSet these in Railway environment variables or .env file\n")
     else:
         print("✓ Environment validated — all required keys present")
+
+    # ── Paid path ──────────────────────────────────────────────────────────────
+    # These are only fatal when the paywall is ON. While it is off they are
+    # printed as notes, so the log tells you exactly what is still missing before
+    # you flip the switch — rather than finding out from a customer.
+    if not _HAS_PAYWALL:
+        print("ℹ️  Paid path not loaded — free tool only.")
+        return
+
+    problems = []
+    if _SECRET_KEY_IS_EPHEMERAL:
+        problems.append(
+            "SECRET_KEY is not set. Sign-in cookies are signed with a random "
+            "per-worker key, so signed-in users WILL be logged out at random. "
+            "Set it to a long random string in Railway."
+        )
+    if not billing._HAS_STRIPE:
+        problems.append("The `stripe` package is not installed (add it to requirements.txt).")
+    if not billing.STRIPE_SECRET_KEY:
+        problems.append("STRIPE_SECRET_KEY is not set — checkout cannot be created.")
+    if not billing.STRIPE_WEBHOOK_SECRET:
+        problems.append(
+            "STRIPE_WEBHOOK_SECRET is not set. Without it the webhook rejects "
+            "everything, so payments would never be recorded."
+        )
+    if not _HAS_SUPABASE:
+        problems.append("Supabase is not connected — purchases cannot be stored.")
+    try:
+        import verilay_accounts as _acc
+        if not _acc.configured():
+            problems.append("Supabase auth is not configured — nobody can sign in.")
+    except Exception as _e:
+        problems.append(f"Accounts module unavailable: {_e}")
+
+    if billing.PAYWALL_ENABLED:
+        if problems:
+            print("\n🚨 PAYWALL IS ON but the paid path is incomplete:")
+            for p in problems:
+                print(f"   • {p}")
+            print("   Turn PAYWALL_ENABLED off until these are fixed.\n")
+        else:
+            mode = "LIVE — real money" if billing.is_live_key() else "test mode"
+            print(f"✓ Paywall ON, {billing.price_label()}, Stripe {mode}")
+    else:
+        print("✓ Paywall OFF — deep scan not for sale"
+              + (f" ({len(problems)} thing(s) still to configure — see /billing-health)"
+                 if problems else " (configuration looks complete)"))
 
 # Run validation on startup (works with both local and Gunicorn)
 validate_startup()
