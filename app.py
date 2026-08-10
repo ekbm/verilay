@@ -174,6 +174,41 @@ def _current_uid():
         return None
 
 
+def _account_nav():
+    """The 'Your account' link for the main page. Returns ("", "") when anonymous.
+
+    A paying customer who signs in and then lands on the homepage previously had
+    no sign they were signed in and no way to reach their reports — and the
+    homepage is exactly where they look. Free visitors see nothing at all: the
+    free tool has no accounts and should not start advertising them.
+    """
+    if not _HAS_PAYWALL:
+        return "", ""
+    try:
+        import verilay_accounts as _acc
+        u = _acc.current_user()
+    except Exception:
+        u = None
+    if not u:
+        return "", ""
+    import html as _html
+    email = _html.escape(u.get("email", ""))
+    desktop = (
+        '<a href="/account" title="' + email + '" '
+        'style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;'
+        'border-radius:20px;border:0.5px solid var(--pu);background:var(--pul);color:var(--put);'
+        'text-decoration:none;font-weight:500">'
+        '<i class="ti ti-user-circle" style="font-size:12px"></i> Your account</a>'
+    )
+    mobile = (
+        '<a href="/account" style="font-size:15px;color:var(--put);text-decoration:none;'
+        'padding:.6rem 0;border-bottom:0.5px solid var(--bdr);font-weight:600">'
+        'Your account <span style="font-size:12px;color:var(--mut);font-weight:400">'
+        + email + '</span></a>'
+    )
+    return desktop, mobile
+
+
 def save_report_data(data):
     report_id = _uuid.uuid4().hex[:12]
     if _HAS_SUPABASE:
@@ -3624,7 +3659,10 @@ JS_VERSION = _js_version()
 @app.route("/")
 def index():
     count = get_analysis_count()
-    html = HTML.replace("__JSVER__", JS_VERSION)
+    nav_desktop, nav_mobile = _account_nav()
+    html = (HTML.replace("__JSVER__", JS_VERSION)
+                .replace("__ACCOUNTNAV__", nav_desktop)
+                .replace("__ACCOUNTNAV_MOBILE__", nav_mobile))
     return render_template_string(html, analysis_count=count if count > 0 else "")
 
 
@@ -3777,6 +3815,7 @@ input:focus{border-color:var(--pu)}
   <div style="display:flex;align-items:center;gap:8px">
     <!-- Desktop nav links — hidden on mobile -->
     <div id="nav-links" style="display:flex;gap:6px;align-items:center">
+      __ACCOUNTNAV__
       <a href="/ask-verilay" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Ask Verilay</a>
       <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Blog</a>
@@ -3795,6 +3834,7 @@ input:focus{border-color:var(--pu)}
 <!-- Mobile dropdown menu — CSS controlled -->
 <div id="burger-menu" style="background:var(--sur);border-bottom:0.5px solid var(--bdr);padding:.75rem 1.5rem;display:none">
   <div style="display:flex;flex-direction:column;gap:.5rem">
+    __ACCOUNTNAV_MOBILE__
     <a href="/ask-verilay" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Ask Verilay</a>
     <a href="/about" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
     <a href="/blog" style="font-size:15px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
