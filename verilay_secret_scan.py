@@ -291,6 +291,20 @@ def scan_file(path: str, content: str) -> List[Finding]:
 
                 if _looks_placeholder(value):
                     continue
+                # PK001 (private key header) fires on documentation/example text too —
+                # e.g. a blog post showing "<code>-----BEGIN PRIVATE KEY-----</code>" or
+                # prose explaining what a key looks like. A REAL committed key sits at the
+                # start of its own line and is immediately followed by base64 key material.
+                # Skip the match when it's clearly displayed text, not an actual key.
+                if rule.rule_id == "PK001":
+                    stripped = line.lstrip()
+                    # (a) wrapped in HTML/markdown tags on the same line → it's shown, not stored
+                    if ("<code>" in line or "</code>" in line or "<pre>" in line
+                            or "`" in line or "</p>" in line or "<p>" in line):
+                        continue
+                    # (b) header not at the start of the line → embedded in prose, not a real key block
+                    if not stripped.startswith("-----BEGIN"):
+                        continue
                 if rule.needs_entropy and _shannon(value) < 3.5:
                     continue
                 # Supabase keys are JWTs. The anon key is correct by design, and the
