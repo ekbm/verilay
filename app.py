@@ -4250,7 +4250,7 @@ input:focus{border-color:var(--pu)}
     <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:12px;color:var(--mut);text-decoration:none">
       ⭐ Found Verilay useful? Star us on GitHub
     </a>
-    <div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem">
+    <div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem;flex-wrap:wrap">
       <a href="/ask-verilay" style="font-size:11px;color:var(--mut);text-decoration:none">Ask Verilay</a>
       <a href="/about" style="font-size:11px;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="font-size:11px;color:var(--mut);text-decoration:none">Blog</a>
