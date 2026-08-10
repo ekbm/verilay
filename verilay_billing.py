@@ -234,6 +234,47 @@ def create_checkout_session(repo, email=None, client_ip=None):
     return session.url
 
 
+def _to_plain(obj):
+    """Turn a Stripe library object into an ordinary dict.
+
+    Objects returned by the SDK are NOT reliably dict-like — depending on the
+    installed version, `.get()` may not exist at all, and calling it raises
+    `AttributeError: get` from deep inside the library. Since requirements.txt
+    pins only `stripe>=10.0.0`, a rebuild can quietly change that behaviour, so
+    nothing downstream should touch an SDK object directly.
+
+    Converting once, here, also means the success-page path and the webhook path
+    both work on the same shape: a plain dict of plain values.
+    """
+    if obj is None or isinstance(obj, dict):
+        return obj
+    fn = getattr(obj, "to_dict_recursive", None)
+    if callable(fn):
+        try:
+            d = fn()
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+    # Every Stripe object serialises to JSON via str(), and that is recursive,
+    # so nested pieces like customer_details come back as dicts too.
+    try:
+        d = json.loads(str(obj))
+        if isinstance(d, dict):
+            return d
+    except Exception:
+        pass
+    fn = getattr(obj, "to_dict", None)
+    if callable(fn):
+        try:
+            d = fn()
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+    return None
+
+
 def retrieve_paid_session(session_id):
     """Fetch a Checkout Session and return it only if it is genuinely paid.
 
@@ -244,9 +285,12 @@ def retrieve_paid_session(session_id):
     if not configured() or not session_id:
         return None
     try:
-        s = _stripe.checkout.Session.retrieve(session_id)
+        s = _to_plain(_stripe.checkout.Session.retrieve(session_id))
     except Exception as e:
         print(f"[billing] Session retrieve failed: {e}", flush=True)
+        return None
+    if not s:
+        print("[billing] Session retrieved but could not be read as a dict.", flush=True)
         return None
     if s.get("payment_status") != "paid":
         return None
