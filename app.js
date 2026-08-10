@@ -77,7 +77,7 @@ async function saveReport() {
       var shareUrl = window.location.origin + '/report/' + data.report_id;
       document.getElementById('share-url').value = shareUrl;
       document.getElementById('share-banner').style.display = 'flex';
-      btn.innerHTML = '<i class="ti ti-check" style="font-size:12px"></i> Saved';
+      btn.innerHTML = '<i class="ti ti-check" style="font-size:13px"></i> Saved';
       btn.style.color = 'var(--grt)';
     }
   } catch(e) {
@@ -175,13 +175,13 @@ function renderHistory() {
     var isHidden = idx >= 2;
     return '<div class="history-item" style="display:' + (isHidden ? 'none' : 'flex') + ';background:var(--sur);border:0.5px solid ' + (isLatest ? 'var(--pu)' : 'var(--bdr)') + ';border-radius:var(--r);padding:.65rem .9rem;align-items:center;gap:10px;cursor:pointer" ' +
            'onclick="viewFromHistory(' + idx + ')" title="View report">' +
-           '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
+           '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;background:' + sc + '">' + h.score + '</div>' +
            '<div style="flex:1;min-width:0">' +
-           '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (isLatest ? '<span style="font-size:9px;background:var(--pu);color:#fff;border-radius:10px;padding:1px 6px;margin-right:5px;font-weight:600">LATEST</span>' : '') + esc(h.repo) + '</div>' +
-           '<div style="font-size:11px;color:var(--mut)">' + timeStr + ' &nbsp;·&nbsp; ' + h.critical + ' critical, ' + h.warnings + ' warnings</div>' +
+           '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (isLatest ? '<span style="font-size:12px;background:var(--pu);color:#fff;border-radius:10px;padding:1px 6px;margin-right:5px;font-weight:600">LATEST</span>' : '') + esc(h.repo) + '</div>' +
+           '<div style="font-size:12px;color:var(--mut)">' + timeStr + ' &nbsp;·&nbsp; ' + h.critical + ' critical, ' + h.warnings + ' warnings</div>' +
            '</div>' +
            '<div style="display:flex;gap:6px;flex-shrink:0">' +
-           '<button onclick="event.stopPropagation();viewFromHistory(' + idx + ')" style="font-size:11px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">View</button>' +
+           '<button onclick="event.stopPropagation();viewFromHistory(' + idx + ')" style="font-size:12px;padding:3px 9px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">View</button>' +
 
            '</div>' +
            '</div>';
@@ -731,14 +731,14 @@ function healthCardsHTML(h, hasLayers, isPreview) {
     return hlbls.map(function(lbl) {
       var val = lbl === 'score' ? 'n/a' : '–';
       var sub = lbl === 'score' ? 'not graded' : lbl;
-      return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:10px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
+      return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:12px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
     }).join('');
   }
   if (!hasLayers) {
     return hlbls.map(function(lbl) {
       var val = lbl === 'score' ? '···' : '–';
       var sub = lbl === 'score' ? 'calculating' : lbl;
-      return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:10px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
+      return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:12px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
     }).join('');
   }
   var hvals = [h.critical || 0, h.warnings || 0, h.passing || 0, h.score || '?'];
@@ -749,16 +749,16 @@ function healthCardsHTML(h, hasLayers, isPreview) {
                    h.score === 'F' ? ['#FEF2F2', '#7F1D1D'] : ['var(--bll)', 'var(--blt)'];
   var hcols = [['var(--rdl)', 'var(--rdt)'], ['var(--orl)', 'var(--ort)'], ['var(--grl)', 'var(--grt)'], scoreBgCol];
   return hvals.map(function(v, i) {
-    return '<div class="hc" style="background:' + hcols[i][0] + '"><div style="font-size:18px;font-weight:600;color:' + hcols[i][1] + '">' + v + '</div><div style="font-size:10px;color:' + hcols[i][1] + ';margin-top:1px">' + hlbls[i] + '</div></div>';
+    return '<div class="hc" style="background:' + hcols[i][0] + '"><div style="font-size:18px;font-weight:600;color:' + hcols[i][1] + '">' + v + '</div><div style="font-size:12px;color:' + hcols[i][1] + ';margin-top:1px">' + hlbls[i] + '</div></div>';
   }).join('');
 }
 
 function scoreBannerHTML(score, hasLayers, isPreview) {
   if (isPreview) {
-    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--blt)"><i class="ti ti-eye"></i> <strong>This was a quick URL preview — not a graded analysis.</strong> A URL scan only sees what the site serves to a browser, not your source code. To get a real score, scan your GitHub repo or upload a ZIP.</div>';
+    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--blt)"><i class="ti ti-eye"></i> <strong>This was a quick URL preview — not a graded analysis.</strong> A URL scan only sees what the site serves to a browser, not your source code. To get a real score, scan your GitHub repo or upload a ZIP.</div>';
   }
   if (!hasLayers) {
-    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--blt)"><i class="ti ti-loader"></i> Running deep analysis — your score appears once all layers are checked.</div>';
+    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--blt)"><i class="ti ti-loader"></i> Running deep analysis — your score appears once all layers are checked.</div>';
   }
   if (!score || score === 'A') return '';
   var scoreBg = '', scoreBdr = '', scoreMsg = '';
@@ -786,7 +786,7 @@ function scoreBannerHTML(score, hasLayers, isPreview) {
     scoreBg = '#FEF2F2'; scoreBdr = '#EF4444';
     scoreMsg = '🎯 <strong>Score ' + score + ' — Not ready to launch.</strong> Fix critical issues first using the advice prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
   }
-  return '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px;line-height:1.6">' + scoreMsg + '</div>';
+  return '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6">' + scoreMsg + '</div>';
 }
 
 function updateHealthDisplay() {
@@ -829,22 +829,22 @@ function fileBreakdownHTML(data) {
   var rows = bd.map(function(b) {
     var c = CAT[b.key]; if (!c) return '';
     return '<div class="fb-row" style="display:flex;gap:10px;padding:.5rem 0;border-top:0.5px solid var(--bdr)">' +
-      '<div style="min-width:44px;font-weight:700;font-size:14px;color:var(--txt)">' + b.count + '</div>' +
+      '<div style="min-width:44px;font-weight:700;font-size:15px;color:var(--txt)">' + b.count + '</div>' +
       '<div style="flex:1">' +
-        '<div style="font-size:13px;font-weight:600;margin-bottom:1px">' + esc(c.label) + '</div>' +
-        '<div class="fb-plain" style="font-size:12px;color:var(--mut);line-height:1.5">' + esc(c.plain) + '</div>' +
-        '<div class="fb-expert" style="font-size:12px;color:var(--mut);line-height:1.5;display:none">' + esc(c.expert) + '</div>' +
+        '<div style="font-size:14px;font-weight:600;margin-bottom:1px">' + esc(c.label) + '</div>' +
+        '<div class="fb-plain" style="font-size:13px;color:var(--mut);line-height:1.5">' + esc(c.plain) + '</div>' +
+        '<div class="fb-expert" style="font-size:13px;color:var(--mut);line-height:1.5;display:none">' + esc(c.expert) + '</div>' +
       '</div></div>';
   }).join('');
 
   var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">';
-  h += '<button onclick="toggleBreakdown()" id="fb-toggle" style="font-size:13px;font-weight:600;background:none;border:none;color:var(--txt);cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">' +
+  h += '<button onclick="toggleBreakdown()" id="fb-toggle" style="font-size:14px;font-weight:600;background:none;border:none;color:var(--txt);cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">' +
        '<span id="fb-caret">\u25b8</span> What your app is made of (' + total + ' files)</button>';
-  h += '<button onclick="toggleBreakdownMode()" id="fb-mode" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--mut);cursor:pointer;display:none">Developer view</button>';
+  h += '<button onclick="toggleBreakdownMode()" id="fb-mode" style="font-size:12px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--mut);cursor:pointer;display:none">Developer view</button>';
   h += '</div>';
   h += '<div id="fb-body" style="display:none;margin-top:8px">';
-  h += '<div style="font-size:12px;color:var(--mut);line-height:1.55;margin-bottom:6px">Most of your app is the safe internal machinery \u2014 the visual parts and building blocks that run inside and don\u2019t expose your data. The parts that matter for safety are the smaller <strong>Data &amp; logins</strong> set, which is what Verilay checks first.</div>';
+  h += '<div style="font-size:13px;color:var(--mut);line-height:1.55;margin-bottom:6px">Most of your app is the safe internal machinery \u2014 the visual parts and building blocks that run inside and don\u2019t expose your data. The parts that matter for safety are the smaller <strong>Data &amp; logins</strong> set, which is what Verilay checks first.</div>';
   h += rows;
   h += '</div></div>';
   return h;
@@ -875,21 +875,21 @@ function filesCoverageHTML(data) {
   if (!read) return '';
 
   var listItems = analysed.map(function(p) {
-    return '<div style="font-family:monospace;font-size:11px;color:var(--mut);padding:2px 0">' + esc(p) + '</div>';
+    return '<div style="font-family:monospace;font-size:12px;color:var(--mut);padding:2px 0">' + esc(p) + '</div>';
   }).join('');
 
   // URL scans only see what the site serves to a browser (built/minified output),
   // not the source tree — so we never show an "X of N" coverage claim for them.
   if (data.input_method === 'url') {
-    var u = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
+    var u = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';
     u += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
     u += '<div><strong>URL preview — ' + read + ' file' + (read === 1 ? '' : 's') + ' served by the live site</strong></div>';
     if (analysed.length) {
-      u += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
+      u += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:12px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
     }
     u += '</div>';
     u += '<div id="filelist" style="display:none;margin-top:8px;max-height:200px;overflow:auto;border-top:0.5px solid var(--bdr);padding-top:8px">' + listItems + '</div>';
-    u += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">';
+    u += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:8px">';
     u += 'A URL scan only sees what the site serves to a browser — usually built or minified output, not your source code. This is a quick preview, not a full review.';
     if (read <= 3) {
       u += ' <strong>This site served very little analysable code, so there\'s not much here to go on.</strong>';
@@ -904,7 +904,7 @@ function filesCoverageHTML(data) {
   var uncovered = Math.max(0, total - read);
   var partial = uncovered >= 15;
 
-  var html = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
+  var html = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
   // Two different depths now, and conflating them undersells the product.
   // scanned  = every file, read directly, checked for exposed keys (certain)
@@ -917,12 +917,12 @@ function filesCoverageHTML(data) {
   }
   html += '</div>';
   if (analysed.length) {
-    html += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:11px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
+    html += '<button onclick="toggleFileList()" id="filelist-toggle" style="font-size:12px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--bdr);background:var(--bg);color:var(--txt);cursor:pointer">Show files</button>';
   }
   html += '</div>';
   html += '<div id="filelist" style="display:none;margin-top:8px;max-height:200px;overflow:auto;border-top:0.5px solid var(--bdr);padding-top:8px">' + listItems + '</div>';
 
-  html += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">';
+  html += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:8px">';
   if (scanned > read) {
     html += '<strong>Every one of your ' + scanned + ' files was checked for exposed keys and passwords.</strong> That check reads the actual contents of each file, so its results are facts, not estimates.';
     html += '<br><br>The <strong>deeper review</strong> — how your login, database, settings and code fit together — covers the ' + read + ' files most likely to carry risk. That part is a first pass, not a full audit, and it cannot run your code or read your live database dashboard. Treat it as a starting point rather than a clean bill of health.';
@@ -936,16 +936,16 @@ function filesCoverageHTML(data) {
   if (partial) {
     html += '<div id="deepscan-eoi" style="margin-top:10px;border-top:0.5px solid var(--bdr);padding-top:10px">';
     if (scanned > read) {
-      html += '<div style="font-size:11px;color:var(--txt);margin-bottom:6px"><strong>Want the deeper review extended across all ' + scanned + ' files?</strong> The key check already covers every file. Extending the full review is coming — register interest, no commitment.</div>';
+      html += '<div style="font-size:12px;color:var(--txt);margin-bottom:6px"><strong>Want the deeper review extended across all ' + scanned + ' files?</strong> The key check already covers every file. Extending the full review is coming — register interest, no commitment.</div>';
     } else {
-      html += '<div style="font-size:11px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> Deeper analysis is coming — register interest, no commitment.</div>';
+      html += '<div style="font-size:12px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> Deeper analysis is coming — register interest, no commitment.</div>';
     }
-    html += '<div style="display:flex;gap:6px"><input id="deepscan-email" type="email" placeholder="your@email.com" style="flex:1;font-size:12px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)"><button onclick="submitDeepScanInterest()" style="font-size:12px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer">Notify me</button></div>';
-    html += '<div id="deepscan-msg" style="font-size:11px;margin-top:6px;color:var(--gr);display:none"></div>';
+    html += '<div style="display:flex;gap:6px"><input id="deepscan-email" type="email" placeholder="your@email.com" style="flex:1;font-size:13px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)"><button onclick="submitDeepScanInterest()" style="font-size:13px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer">Notify me</button></div>';
+    html += '<div id="deepscan-msg" style="font-size:12px;margin-top:6px;color:var(--gr);display:none"></div>';
     html += '</div>';
   }
 
-  html += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:8px">For apps handling real users or sensitive data, a deeper review is worth it before launch — a dependency scanner (e.g. Snyk), AI code review (e.g. CodeRabbit), or a developer security audit.</div>';
+  html += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:8px">For apps handling real users or sensitive data, a deeper review is worth it before launch — a dependency scanner (e.g. Snyk), AI code review (e.g. CodeRabbit), or a developer security audit.</div>';
 
   html += '</div>';
   html += verifiedFindingsHTML(data);
@@ -960,11 +960,11 @@ function verifiedFindingsHTML(data) {
   if (!scan || !scan.files_scanned) return '';
   var items = scan.findings || [];
 
-  var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:12px">';
+  var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';
 
   if (!items.length) {
     h += '<div><strong style="color:var(--gr)">✓ No exposed keys or passwords found</strong></div>';
-    h += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:6px">';
+    h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
     h += 'All ' + scan.files_scanned + ' files were read and checked for API keys, passwords, private keys and database logins written directly into the code. Nothing was found. This check is complete — it is not a sample.';
     h += '</div></div>';
     return h;
@@ -973,14 +973,14 @@ function verifiedFindingsHTML(data) {
   var word = items.length === 1 ? 'finding' : 'findings';
   h += '<div><strong style="color:var(--rd,#E24B4A)">' + items.length + ' verified ' + word + '</strong>';
   h += '<span style="color:var(--mut)"> &nbsp;·&nbsp; found by reading all ' + scan.files_scanned + ' of your files</span></div>';
-  h += '<div style="color:var(--mut);font-size:11px;line-height:1.5;margin-top:4px">These are certain. Each one was read straight out of the file shown, so unlike the reviewed findings below, they will not change between runs.</div>';
+  h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:4px">These are certain. Each one was read straight out of the file shown, so unlike the reviewed findings below, they will not change between runs.</div>';
 
   items.forEach(function(f) {
     var isCrit = f.severity === 'critical';
     var col = isCrit ? 'var(--rd,#E24B4A)' : (f.severity === 'warning' ? 'var(--or,#EF9F27)' : 'var(--mut)');
     h += '<div style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--bdr)">';
     h += '<div style="font-weight:600;color:' + col + '">' + esc(f.name) + '</div>';
-    h += '<div style="font-family:monospace;font-size:11px;color:var(--mut);margin-top:2px">' + esc(f.file) + ' &middot; line ' + f.line + ' &middot; starts "' + esc(f.preview) + '"</div>';
+    h += '<div style="font-family:monospace;font-size:12px;color:var(--mut);margin-top:2px">' + esc(f.file) + ' &middot; line ' + f.line + ' &middot; starts "' + esc(f.preview) + '"</div>';
     h += '<div style="margin-top:6px;line-height:1.5">' + esc(f.plain) + '</div>';
     if (f.action) {
       h += '<div style="margin-top:6px;line-height:1.5"><strong>What to do:</strong> ' + esc(f.action) + '</div>';
@@ -1040,16 +1040,16 @@ function verdictBannerHTML(score, prevScore) {
   var v = map[score] || map.C;
   var html = '<div class="prod-banner" style="background:' + v[0] + ';color:' + v[1] + '">';
   html += '<i class="ti ' + v[2] + '" style="font-size:26px"></i>';
-  html += '<div style="flex:1"><div style="font-size:15px;font-weight:600;margin-bottom:2px">' + v[3] + '</div>';
-  html += '<div style="font-size:12px;opacity:.85">' + v[4] + '</div></div>';
+  html += '<div style="flex:1"><div style="font-size:16px;font-weight:600;margin-bottom:2px">' + v[3] + '</div>';
+  html += '<div style="font-size:13px;opacity:.85">' + v[4] + '</div></div>';
   if (prevScore && prevScore !== score) {
     var scores = ['F','D','C','B','A'];
     var prevIdx = scores.indexOf(prevScore);
     var currIdx = scores.indexOf(score);
     if (currIdx > prevIdx) {
-      html += '<div style="background:#1D9E75;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▲ ' + prevScore + ' → ' + score + ' Improved!</div>';
+      html += '<div style="background:#1D9E75;color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;white-space:nowrap">▲ ' + prevScore + ' → ' + score + ' Improved!</div>';
     } else if (currIdx < prevIdx) {
-      html += '<div style="background:#E24B4A;color:#fff;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;white-space:nowrap">▼ ' + prevScore + ' → ' + score + '</div>';
+      html += '<div style="background:#E24B4A;color:#fff;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600;white-space:nowrap">▼ ' + prevScore + ' → ' + score + '</div>';
     }
   }
   html += '</div>';
@@ -1081,7 +1081,7 @@ function renderReport(data) {
   var html = '';
 
   if (isSurf) {
-    html += '<div style="background:var(--orl);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px;font-size:12px;color:var(--ort)"><strong>Surface scan only.</strong> Use GitHub or ZIP for a full analysis.</div>';
+    html += '<div style="background:var(--orl);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px;font-size:13px;color:var(--ort)"><strong>Surface scan only.</strong> Use GitHub or ZIP for a full analysis.</div>';
   }
 
   html += '<div id="verdict-banner">' + (!isPreview && hasLayers ? verdictBannerHTML(h.score, data.prev_score) : '') + '</div>';
@@ -1092,11 +1092,11 @@ function renderReport(data) {
     html += '<div style="background:#EFF6FF;border:0.5px solid #3B82F6;border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
     html += '<i class="ti ti-topology-star" style="color:#3B82F6;font-size:16px;margin-top:1px;flex-shrink:0"></i>';
     html += '<div>';
-    html += '<div style="font-size:13px;font-weight:600;color:#1D4ED8;margin-bottom:2px">💡 Could this be a static site?</div>';
+    html += '<div style="font-size:14px;font-weight:600;color:#1D4ED8;margin-bottom:2px">💡 Could this be a static site?</div>';
     if (pr.static_recommendation === 'yes') {
-      html += '<div style="font-size:12px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'This app may not need a database or server — it could be simpler and cheaper to host as a static site on Netlify or Vercel for free.') + '</div>';
+      html += '<div style="font-size:13px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'This app may not need a database or server — it could be simpler and cheaper to host as a static site on Netlify or Vercel for free.') + '</div>';
     } else {
-      html += '<div style="font-size:12px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'Parts of this app could potentially be simplified. A static approach would reduce complexity and security risk.') + '</div>';
+      html += '<div style="font-size:13px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'Parts of this app could potentially be simplified. A static approach would reduce complexity and security risk.') + '</div>';
     }
     html += '</div></div>';
   }
@@ -1117,18 +1117,18 @@ function renderReport(data) {
     q1label = 'How do I fix common issues?'; q1 = 'How do I fix common security issues in an AI-built app?';
   }
   function chip(label, q) {
-    return '<a href="/ask-verilay?q=' + encodeURIComponent(q) + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap">' + esc(label) + '</a>';
+    return '<a href="/ask-verilay?q=' + encodeURIComponent(q) + '" target="_blank" rel="noopener" style="font-size:13px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap">' + esc(label) + '</a>';
   }
   html += '<div style="margin:.75rem 0;padding:1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r)">';
-  html += '<div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
-  html += '<div style="font-size:12px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay for quick plain-English answers here, or open Claude with your findings to dig into your specific app.</div>';
+  html += '<div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
+  html += '<div style="font-size:13px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay for quick plain-English answers here, or open Claude with your findings to dig into your specific app.</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:.85rem">';
   html += chip(q1label, q1);
   html += chip('What does my grade mean?', 'What does my Verilay grade mean?');
-  html += '<a href="/ask-verilay" target="_blank" rel="noopener" style="font-size:12px;color:var(--pu);background:transparent;border:0.5px solid var(--pu);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap;font-weight:500">Open Ask Verilay &rarr;</a>';
+  html += '<a href="/ask-verilay" target="_blank" rel="noopener" style="font-size:13px;color:var(--pu);background:transparent;border:0.5px solid var(--pu);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap;font-weight:500">Open Ask Verilay &rarr;</a>';
   html += '</div>';
-  html += '<button onclick="askAIAboutReport()" style="font-size:12px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Open Claude with my findings &rarr;</button>';
-  html += '<span style="font-size:10px;color:var(--put);opacity:.7;margin-left:8px">Free Claude.ai account &mdash; digs into your specific code</span>';
+  html += '<button onclick="askAIAboutReport()" style="font-size:13px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Open Claude with my findings &rarr;</button>';
+  html += '<span style="font-size:12px;color:var(--put);opacity:.7;margin-left:8px">Free Claude.ai account &mdash; digs into your specific code</span>';
   html += '</div>';
 
   var pills = (data.stack||[]).map(function(s) {
@@ -1139,9 +1139,9 @@ function renderReport(data) {
   html += '<div class="rh">';
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
   html += '<div style="font-size:16px;font-weight:600">' + esc(data.repo||'') + '</div>';
-  html += '<span style="font-size:10px;background:var(--pu);color:#fff;border-radius:10px;padding:2px 8px;font-weight:600">Current</span>';
+  html += '<span style="font-size:12px;background:var(--pu);color:#fff;border-radius:10px;padding:2px 8px;font-weight:600">Current</span>';
   html += '</div>';
-  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
+  html += '<div style="font-size:13px;color:var(--mut);margin-bottom:.65rem">' + esc(data.built_with||'') + '  .  ' + (data.files_read||0) + ' files  .  ' + (data.generated_at||'') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
   html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers, isPreview) + '</div></div>';
 
@@ -1173,7 +1173,7 @@ function renderReport(data) {
   html += '<div class="ll">';
   html += '<div class="lnav" id="layer-nav">';
   if (!isPreview) {
-    html += '<div id="layers-loading" style="font-size:11px;color:var(--mut);padding:.5rem .25rem;display:flex;align-items:center;gap:6px">';
+    html += '<div id="layers-loading" style="font-size:12px;color:var(--mut);padding:.5rem .25rem;display:flex;align-items:center;gap:6px">';
     html += '<div style="width:14px;height:14px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
     html += 'Loading layers...</div>';
   }
@@ -1181,18 +1181,18 @@ function renderReport(data) {
   html += '</div>';
   html += '<div class="ca">';
   html += '<div id="mode-toggle" class="mt" style="display:none">';
-  html += '<span style="font-size:11px;color:var(--mut);align-self:center;margin-right:2px">View:</span>';
+  html += '<span style="font-size:12px;color:var(--mut);align-self:center;margin-right:2px">View:</span>';
   html += '<button class="mb on" data-mode="expert">Expert</button>';
   html += '<button class="mb" data-mode="learner">Learner</button>';
-  html += '<span style="flex-basis:100%;font-size:10px;color:var(--mut);line-height:1.4;margin-top:1px">New to this? <strong style="font-weight:600">Learner</strong> explains everything in plain English &mdash; no jargon.</span>';
+  html += '<span style="flex-basis:100%;font-size:12px;color:var(--mut);line-height:1.4;margin-top:1px">New to this? <strong style="font-weight:600">Learner</strong> explains everything in plain English &mdash; no jargon.</span>';
   html += '</div>';
   // Only show spinner if no layers loaded yet
   var hasLayers = data.layers && data.layers.length > 0;
   html += '<div id="layer-content" style="padding:.75rem 0">';
   if (isPreview) {
-    html += '<div style="font-size:12px;color:var(--mut);line-height:1.5">No layer-by-layer analysis for a URL preview. Scan your GitHub repo or upload a ZIP to get the full breakdown.</div>';
+    html += '<div style="font-size:13px;color:var(--mut);line-height:1.5">No layer-by-layer analysis for a URL preview. Scan your GitHub repo or upload a ZIP to get the full breakdown.</div>';
   } else if (!hasLayers) {
-    html += '<div style="font-size:12px;color:var(--mut);display:flex;align-items:center;gap:8px">';
+    html += '<div style="font-size:13px;color:var(--mut);display:flex;align-items:center;gap:8px">';
     html += '<div style="width:16px;height:16px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>';
     html += 'Analysing your codebase - layers will appear shortly...</div>';
     html += '</div>';
@@ -1201,7 +1201,7 @@ function renderReport(data) {
 
   var scards = (data.stack||[]).map(function(s) {
     var c = catColors(s.category);
-    return '<div class="sc"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px;font-weight:500">' + esc(s.name||'') + '</span><span class="pill" style="font-size:10px;background:' + c[0] + ';color:' + c[1] + '">' + esc(s.category||'') + '</span></div><div style="font-size:11px;color:var(--mut);margin-bottom:2px">v' + esc(s.version||'?') + '</div><div style="font-size:11px;color:var(--mut);line-height:1.4">' + esc(s.plain_english||'') + '</div></div>';
+    return '<div class="sc"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px"><span style="font-size:13px;font-weight:500">' + esc(s.name||'') + '</span><span class="pill" style="font-size:12px;background:' + c[0] + ';color:' + c[1] + '">' + esc(s.category||'') + '</span></div><div style="font-size:12px;color:var(--mut);margin-bottom:2px">v' + esc(s.version||'?') + '</div><div style="font-size:12px;color:var(--mut);line-height:1.4">' + esc(s.plain_english||'') + '</div></div>';
   }).join('');
   html += '<div class="panel" id="p-stack"><div class="sg">' + scards + '</div></div>';
 
@@ -1285,16 +1285,16 @@ function renderLayer() {
 
   if (activeMode === 'expert') {
     var ex = layer.expert || {};
-    html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">' + esc(ex.summary||'') + '</div>';
+    html += '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">' + esc(ex.summary||'') + '</div>';
     (ex.findings || []).forEach(function(f, fi) {
       html += '<div class="finding" style="' + sevStyle(f.severity) + '">';
-      html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:15px;flex-shrink:0;margin-top:1px"></i>';
+      html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:16px;flex-shrink:0;margin-top:1px"></i>';
       html += '<div><div style="font-weight:500;margin-bottom:2px">' + esc(f.title||'') + '</div>';
-      html += '<div>' + esc(f.detail||'') + (f.file ? ' <code style="font-size:10px;opacity:.7">' + esc(f.file) + '</code>' : '') + '</div>';
-      if (f.why_it_matters) html += '<div style="font-size:11px;margin-top:4px;opacity:.85"><strong>Why it matters:</strong> ' + esc(f.why_it_matters) + '</div>';
+      html += '<div>' + esc(f.detail||'') + (f.file ? ' <code style="font-size:12px;opacity:.7">' + esc(f.file) + '</code>' : '') + '</div>';
+      if (f.why_it_matters) html += '<div style="font-size:12px;margin-top:4px;opacity:.85"><strong>Why it matters:</strong> ' + esc(f.why_it_matters) + '</div>';
       // Add manual verification note for verify_jwt findings
       if (f.title && f.title.toLowerCase().indexOf('jwt') > -1) {
-        html += '<div style="font-size:11px;margin-top:6px;padding:6px 8px;background:#FEF9C3;border-radius:6px;color:#854D0E">';
+        html += '<div style="font-size:12px;margin-top:6px;padding:6px 8px;background:#FEF9C3;border-radius:6px;color:#854D0E">';
         html += '<strong>⚠️ Needs manual check:</strong> If your edge functions contain <code>getUser()</code> or <code>getClaims()</code> calls, this finding may not apply. ';
         html += 'Ask your AI builder: <em>"Do my edge functions validate auth in-code?"</em>';
         html += '</div>';
@@ -1304,26 +1304,26 @@ function renderLayer() {
         var fKey = (activeLayer + '_' + fi).replace(/[^a-z0-9]/gi, '_').toLowerCase();
         var isVerified = currentVerifications && currentVerifications[fKey];
         if (isVerified) {
-          html += '<div style="margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:11px;color:#166534">';
+          html += '<div style="margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:12px;color:#166534">';
           html += '<strong>✅ Verified by AI builder</strong>';
           if (isVerified.verdict === 'false_positive') html += ' — confirmed not an issue';
           if (isVerified.verdict === 'fixed') html += ' — confirmed fixed';
-          if (isVerified.builder_response) html += '<div style="margin-top:3px;opacity:.8;font-size:10px">' + esc(isVerified.builder_response.substring(0,120)) + (isVerified.builder_response.length > 120 ? '...' : '') + '</div>';
+          if (isVerified.builder_response) html += '<div style="margin-top:3px;opacity:.8;font-size:12px">' + esc(isVerified.builder_response.substring(0,120)) + (isVerified.builder_response.length > 120 ? '...' : '') + '</div>';
           html += '</div>';
         } else {
           html += '<div style="margin-top:8px">';
           var btnDisabled = !window._analysisComplete ? 'opacity:.4;cursor:not-allowed' : 'cursor:pointer';
           var btnClick = !window._analysisComplete ? '' : 'onclick="showVerifyPanel(\''+fKey+'\', this)"';
           var btnTitle = !window._analysisComplete ? 'title="Wait for full analysis to complete"' : '';
-          html += '<button '+btnClick+' '+btnTitle+' style="font-size:11px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);'+btnDisabled+'">✓ Mark as verified</button>';
+          html += '<button '+btnClick+' '+btnTitle+' style="font-size:12px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);'+btnDisabled+'">✓ Mark as verified</button>';
           html += '<div id="verify-panel-'+fKey+'" style="display:none;margin-top:8px;background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem">';
-          html += '<div style="font-size:12px;font-weight:600;margin-bottom:4px">Paste your AI builder response:</div>';
-          html += '<div style="font-size:11px;color:var(--mut);margin-bottom:6px">Take this finding to Lovable or Replit and ask them to verify it. Paste their response here.</div>';
-          html += '<textarea id="verify-text-'+fKey+'" placeholder="Paste Lovable or Replit response here..." style="width:100%;height:70px;font-size:11px;padding:6px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt);resize:vertical;box-sizing:border-box"></textarea>';
+          html += '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Paste your AI builder response:</div>';
+          html += '<div style="font-size:12px;color:var(--mut);margin-bottom:6px">Take this finding to Lovable or Replit and ask them to verify it. Paste their response here.</div>';
+          html += '<textarea id="verify-text-'+fKey+'" placeholder="Paste Lovable or Replit response here..." style="width:100%;height:70px;font-size:12px;padding:6px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt);resize:vertical;box-sizing:border-box"></textarea>';
           html += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
-          html += '<button onclick="submitVerification(\''+fKey+'\', \'false_positive\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:0.5px solid #93C5FD;cursor:pointer">Already handled</button>';
-          html += '<button onclick="submitVerification(\''+fKey+'\', \'fixed\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:#F0FDF4;color:#166534;border:0.5px solid #86EFAC;cursor:pointer">Fixed it</button>';
-          html += '<button onclick="submitVerification(\''+fKey+'\', \'verified\')" style="font-size:11px;padding:4px 12px;border-radius:20px;background:var(--pul);color:var(--put);border:0.5px solid var(--pu);cursor:pointer">Verified — real issue</button>';
+          html += '<button onclick="submitVerification(\''+fKey+'\', \'false_positive\')" style="font-size:12px;padding:4px 12px;border-radius:20px;background:#EFF6FF;color:#1D4ED8;border:0.5px solid #93C5FD;cursor:pointer">Already handled</button>';
+          html += '<button onclick="submitVerification(\''+fKey+'\', \'fixed\')" style="font-size:12px;padding:4px 12px;border-radius:20px;background:#F0FDF4;color:#166534;border:0.5px solid #86EFAC;cursor:pointer">Fixed it</button>';
+          html += '<button onclick="submitVerification(\''+fKey+'\', \'verified\')" style="font-size:12px;padding:4px 12px;border-radius:20px;background:var(--pul);color:var(--put);border:0.5px solid var(--pu);cursor:pointer">Verified — real issue</button>';
           html += '</div></div></div>';
         }
       }
@@ -1331,29 +1331,29 @@ function renderLayer() {
     });
   } else if (activeMode === 'learner') {
     var lrn = layer.learner || {};
-    html += '<div class="learner-label"><i class="ti ti-school" style="font-size:11px"></i> Learner mode</div>';
+    html += '<div class="learner-label"><i class="ti ti-school" style="font-size:12px"></i> Learner mode</div>';
     if (lrn.analogy) html += '<div class="analogy"><i class="ti ti-bulb" style="margin-right:5px"></i><strong>Think of it like this:</strong> ' + esc(lrn.analogy) + '</div>';
     html += '<div class="lc"><div class="lc-title">What is ' + esc(layer.name) + '?</div><div class="lc-body">' + esc(lrn.what_is_it||'') + '</div></div>';
     html += '<div class="lc"><div class="lc-title">In your app specifically</div><div class="lc-body">' + esc(lrn.what_it_does_in_your_app||'') + '</div></div>';
     if (lrn.how_it_connects) html += '<div class="lc"><div class="lc-title">How it connects to other layers</div><div class="lc-body">' + esc(lrn.how_it_connects) + '</div></div>';
-    if (lrn.key_concept) html += '<div style="background:var(--pul);border-radius:8px;padding:.65rem .85rem;margin-bottom:8px;font-size:12px;color:var(--put)"><strong>Key concept:</strong> ' + esc(lrn.key_concept) + '</div>';
+    if (lrn.key_concept) html += '<div style="background:var(--pul);border-radius:8px;padding:.65rem .85rem;margin-bottom:8px;font-size:13px;color:var(--put)"><strong>Key concept:</strong> ' + esc(lrn.key_concept) + '</div>';
     (lrn.findings_plain || []).forEach(function(f) {
       html += '<div class="finding" style="' + sevStyle(f.severity) + '">';
-      html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:15px;flex-shrink:0;margin-top:1px"></i>';
+      html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:16px;flex-shrink:0;margin-top:1px"></i>';
       html += '<div><div style="font-weight:500;margin-bottom:2px">' + esc(f.plain_title||'') + '</div>';
       html += '<div>' + esc(f.plain_detail||'') + '</div>';
       if (f.real_world_impact && (f.severity === 'critical' || f.severity === 'warning')) {
         var riskAccent = f.severity === 'critical' ? '#E24B4A' : '#EF9F27';
         var riskBg = f.severity === 'critical' ? '#FDECEC' : '#FFF4E5';
         var riskTx = f.severity === 'critical' ? '#8a2a29' : '#7a4a00';
-        html += '<div style="margin-top:6px;padding:8px 11px;background:' + riskBg + ';border-left:3px solid ' + riskAccent + ';border-radius:6px;font-size:12px;color:' + riskTx + ';line-height:1.5"><strong>&#9888;&#65039; What could go wrong:</strong> ' + esc(f.real_world_impact) + '</div>';
+        html += '<div style="margin-top:6px;padding:8px 11px;background:' + riskBg + ';border-left:3px solid ' + riskAccent + ';border-radius:6px;font-size:13px;color:' + riskTx + ';line-height:1.5"><strong>&#9888;&#65039; What could go wrong:</strong> ' + esc(f.real_world_impact) + '</div>';
       } else if (f.real_world_impact) {
-        html += '<div style="font-size:11px;margin-top:4px;font-style:italic">' + esc(f.real_world_impact) + '</div>';
+        html += '<div style="font-size:12px;margin-top:4px;font-style:italic">' + esc(f.real_world_impact) + '</div>';
       }
-      if (f.action) html += '<div style="margin-top:5px;font-size:11px;font-weight:500">Action: ' + esc(f.action) + '</div>';
+      if (f.action) html += '<div style="margin-top:5px;font-size:12px;font-weight:500">Action: ' + esc(f.action) + '</div>';
       // Learner mode — understand only, action happens in Expert mode
       if (f.severity === 'critical' || f.severity === 'warning') {
-        html += '<div style="margin-top:10px;padding:8px 10px;background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;font-size:11px;color:var(--put);line-height:1.55">';
+        html += '<div style="margin-top:10px;padding:8px 10px;background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;font-size:12px;color:var(--put);line-height:1.55">';
         html += '<strong>💡 What to do next:</strong><br>';
         html += 'If you understand this finding and want to act on it — switch to <strong>Expert mode</strong> above to get an advice prompt you can take to your AI builder.<br><br>';
         html += '<em>Tip: Not sure what to do? Share this report with a developer or technical friend and ask them to review the Expert mode findings with you.</em>';
@@ -1366,16 +1366,16 @@ function renderLayer() {
     var quiz = layer.quiz || [];
     if (quiz.length > 0) {
       html += '<div style="margin-top:.85rem;border-top:0.5px solid var(--bdr);padding-top:.75rem">';
-      html += '<button id="quiz-toggle" style="font-size:12px;font-weight:500;padding:5px 14px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);cursor:pointer;display:flex;align-items:center;gap:5px">';
-      html += '<i class="ti ti-brain" style="font-size:13px"></i> Test your understanding (optional quiz)';
+      html += '<button id="quiz-toggle" style="font-size:13px;font-weight:500;padding:5px 14px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);cursor:pointer;display:flex;align-items:center;gap:5px">';
+      html += '<i class="ti ti-brain" style="font-size:14px"></i> Test your understanding (optional quiz)';
       html += '</button>';
       html += '<div id="quiz-content" style="display:none;margin-top:.65rem">';
       quiz.forEach(function(q, i) {
-        html += '<div class="qcard" style="margin-bottom:7px"><div style="font-size:12px;font-weight:500;margin-bottom:.5rem">' + esc(q.question||'') + '</div>';
+        html += '<div class="qcard" style="margin-bottom:7px"><div style="font-size:13px;font-weight:500;margin-bottom:.5rem">' + esc(q.question||'') + '</div>';
         var hasAnswer = q.answer && q.answer.trim().length > 0;
-        html += '<button id="qbtn-' + i + '" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">' + (hasAnswer ? 'Reveal answer' : 'No answer available') + '</button>';
-        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:12px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer || 'No answer provided for this layer yet.') + '</strong>';
-        if (q.why) html += '<div style="font-size:11px;opacity:.8;margin-top:3px">' + esc(q.why) + '</div>';
+        html += '<button id="qbtn-' + i + '" style="font-size:12px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--put);background:transparent;color:var(--put);cursor:pointer">' + (hasAnswer ? 'Reveal answer' : 'No answer available') + '</button>';
+        html += '<div id="qans-' + i + '" style="display:none;margin-top:.5rem;font-size:13px;color:var(--put);line-height:1.45"><strong>' + esc(q.answer || 'No answer provided for this layer yet.') + '</strong>';
+        if (q.why) html += '<div style="font-size:12px;opacity:.8;margin-top:3px">' + esc(q.why) + '</div>';
         html += '</div></div>';
       });
       html += '</div></div>';
@@ -1418,18 +1418,18 @@ async function runPart2() {
       document.getElementById('p2-results').innerHTML = `
         <div style="background:var(--grl);border:0.5px solid var(--grt);border-radius:var(--r);padding:1.25rem 1.5rem;margin-bottom:1rem">
           <div style="font-size:18px;font-weight:700;color:var(--grt);margin-bottom:.5rem">🎉 Score A — Production Ready!</div>
-          <div style="font-size:13px;color:var(--grt);line-height:1.6">Your app passed all critical checks. This is the best possible result — it means no major security holes were found and your app appears safe to share with real users.</div>
+          <div style="font-size:14px;color:var(--grt);line-height:1.6">Your app passed all critical checks. This is the best possible result — it means no major security holes were found and your app appears safe to share with real users.</div>
         </div>
         <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.25rem 1.5rem;margin-bottom:1rem">
-          <div style="font-size:13px;font-weight:600;margin-bottom:.75rem">💡 What Score A actually means</div>
-          <div style="font-size:13px;color:var(--mut);line-height:1.7">
+          <div style="font-size:14px;font-weight:600;margin-bottom:.75rem">💡 What Score A actually means</div>
+          <div style="font-size:14px;color:var(--mut);line-height:1.7">
             Think of it like a building inspection. Score A means the inspector found no structural problems, the electrics are safe, and it's ready for people to move in.<br><br>
             It does <strong>not</strong> mean the app is perfect — just that the most important safety checks passed. Like a new car passing its roadworthy test — it's safe to drive, but you still need to maintain it over time.
           </div>
         </div>
         <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.25rem 1.5rem;margin-bottom:1rem">
-          <div style="font-size:13px;font-weight:600;margin-bottom:.75rem">🔍 What Verilay checked to give this score</div>
-          <ul style="font-size:13px;color:var(--mut);line-height:1.9;padding-left:1.25rem">
+          <div style="font-size:14px;font-weight:600;margin-bottom:.75rem">🔍 What Verilay checked to give this score</div>
+          <ul style="font-size:14px;color:var(--mut);line-height:1.9;padding-left:1.25rem">
             <li><strong>Auth layer</strong> — are logins and sessions properly secured?</li>
             <li><strong>Config layer</strong> — are secrets and API keys properly hidden?</li>
             <li><strong>Database layer</strong> — is user data protected with proper access rules?</li>
@@ -1439,8 +1439,8 @@ async function runPart2() {
           </ul>
         </div>
         <div style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:1.25rem 1.5rem;margin-bottom:1rem">
-          <div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:.75rem">📚 Keep learning — what to do next</div>
-          <div style="font-size:13px;color:var(--put);line-height:1.7">
+          <div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:.75rem">📚 Keep learning — what to do next</div>
+          <div style="font-size:14px;color:var(--put);line-height:1.7">
             Your app scored A today but apps change as you add features. Good habits to build:<br><br>
             <strong>Re-run Verilay</strong> every time you add a new login method, payment system, or database table.<br>
             <strong>Check your Supabase dashboard</strong> regularly — make sure Row Level Security is on for every new table you create.<br>
@@ -1448,8 +1448,8 @@ async function runPart2() {
           </div>
         </div>
         <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.25rem 1.5rem">
-          <div style="font-size:13px;font-weight:600;margin-bottom:.75rem">🚀 Ready to go live?</div>
-          <div style="font-size:13px;color:var(--mut);line-height:1.7">
+          <div style="font-size:14px;font-weight:600;margin-bottom:.75rem">🚀 Ready to go live?</div>
+          <div style="font-size:14px;color:var(--mut);line-height:1.7">
             For apps handling real users and payments, we still recommend:<br><br>
             • <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> — free dependency vulnerability scanner<br>
             • <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> — AI code review on every update<br>
@@ -1474,21 +1474,21 @@ async function runPart2() {
     var data = await resp.json();
     document.getElementById('p2-loading').style.display = 'none';
     if (data.error) {
-      document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">' + esc(data.error) + '</div>';
+      document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:13px;margin-top:.75rem">' + esc(data.error) + '</div>';
       return;
     }
     window._step4Data = data;
     renderPart2(data);
   } catch(e) {
     document.getElementById('p2-loading').style.display = 'none';
-    document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:12px;margin-top:.75rem">Deep analysis timed out or failed — this can happen with large or complex apps. <a href=\'#\' onclick=\'runPart2();return false;\' style=\'color:var(--rd);font-weight:600\'>Try again</a> or skip and use the advice prompts above.</div>';
+    document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:13px;margin-top:.75rem">Deep analysis timed out or failed — this can happen with large or complex apps. <a href=\'#\' onclick=\'runPart2();return false;\' style=\'color:var(--rd);font-weight:600\'>Try again</a> or skip and use the advice prompts above.</div>';
   }
 }
 
 function showLayerError(msg) {
   var loadingEl = document.getElementById('layers-loading');
   if (loadingEl) {
-    loadingEl.innerHTML = '<i class="ti ti-alert-triangle" style="font-size:13px;color:var(--ort);flex-shrink:0"></i><span style="font-size:11px;color:var(--ort)">' + msg + '</span>';
+    loadingEl.innerHTML = '<i class="ti ti-alert-triangle" style="font-size:14px;color:var(--ort);flex-shrink:0"></i><span style="font-size:12px;color:var(--ort)">' + msg + '</span>';
     loadingEl.style.display = 'flex';
   }
 }
@@ -1563,7 +1563,7 @@ function renderPart2(data) {
       'Hardcoded secrets (like API keys written directly in code) are visible to anyone who views your source. They should always be in environment variables instead.',
       'Green = no hardcoded keys found in visible code. Red = potential secrets detected in source. Surface scans can only check client-side code.']
   ];
-  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Security checklist</div>';
+  html += '<div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Security checklist</div>';
   checks.forEach(function(c) {
     var v = sec[c[0]]; var inv = c[2];
     var pass = (v===null||v===undefined) ? null : (inv ? !v : v);
@@ -1574,15 +1574,15 @@ function renderPart2(data) {
     var checkId = 'check-' + c[0];
     html += '<div class="si" style="background:' + bg + ';color:' + clr + ';cursor:pointer;flex-direction:column;align-items:flex-start" onclick="toggleCheck(\'' + checkId + '\')">';
     html += '<div style="display:flex;align-items:center;gap:8px;width:100%">';
-    html += '<i class="ti ' + ico + '" style="font-size:15px;flex-shrink:0"></i>';
+    html += '<i class="ti ' + ico + '" style="font-size:16px;flex-shrink:0"></i>';
     html += '<span style="flex:1;font-weight:500">' + c[1] + '</span>';
-    html += '<i class="ti ti-chevron-down" style="font-size:12px;opacity:.6" id="' + checkId + '-ico"></i>';
+    html += '<i class="ti ti-chevron-down" style="font-size:13px;opacity:.6" id="' + checkId + '-ico"></i>';
     html += '</div>';
     html += '<div id="' + checkId + '" style="display:none;margin-top:.6rem;padding-top:.6rem;border-top:0.5px solid currentColor;opacity:.8;width:100%">';
-    html += '<div style="font-size:11px;font-weight:600;margin-bottom:.3rem">Why it matters:</div>';
-    html += '<div style="font-size:11px;line-height:1.55;margin-bottom:.5rem">' + esc(c[3]||'') + '</div>';
-    html += '<div style="font-size:11px;font-weight:600;margin-bottom:.3rem">What this result means:</div>';
-    html += '<div style="font-size:11px;line-height:1.55">' + esc(c[4]||'') + '</div>';
+    html += '<div style="font-size:12px;font-weight:600;margin-bottom:.3rem">Why it matters:</div>';
+    html += '<div style="font-size:12px;line-height:1.55;margin-bottom:.5rem">' + esc(c[3]||'') + '</div>';
+    html += '<div style="font-size:12px;font-weight:600;margin-bottom:.3rem">What this result means:</div>';
+    html += '<div style="font-size:12px;line-height:1.55">' + esc(c[4]||'') + '</div>';
     html += '</div>';
     html += '</div>';
   });
@@ -1600,14 +1600,14 @@ function renderPart2(data) {
   if (isBolt) { whereToGo = 'Bolt'; whereDetail = 'Go to bolt.new → open your project → paste in the chat'; }
   if (isV0) { whereToGo = 'v0'; whereDetail = 'Go to v0.dev → open your project → paste in the chat'; }
 
-  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Advice prompts</div>';
-  html += '<div style="background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;padding:.75rem 1rem;margin-bottom:.75rem;font-size:12px;color:var(--put);line-height:1.6">';
+  html += '<div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Advice prompts</div>';
+  html += '<div style="background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;padding:.75rem 1rem;margin-bottom:.75rem;font-size:13px;color:var(--put);line-height:1.6">';
   html += '<strong>How to use these:</strong> ';
   html += whereDetail + '. ';
   html += 'Copy each prompt, read what ' + whereToGo + ' says, then paste their response back here to verify. ';
   html += '<strong>Do not apply changes until ' + whereToGo + ' confirms it is safe.</strong>';
   html += '</div>';
-  html += '<div style="font-size:11px;color:var(--mut);margin-bottom:.75rem">Note: there is one advice prompt per finding, with critical issues listed first. Take each to your AI builder to review and advise — don\'t apply changes until it confirms what\'s genuinely needed.</div>';
+  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Note: there is one advice prompt per finding, with critical issues listed first. Take each to your AI builder to review and advise — don\'t apply changes until it confirms what\'s genuinely needed.</div>';
 
   (data.top_fixes||[]).forEach(function(f, fi) {
     // Choose the right platform prompt
@@ -1631,22 +1631,22 @@ function renderPart2(data) {
     }
 
     html += '<div class="fc"><div style="display:flex;gap:12px;align-items:flex-start">';
-    html += '<div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
+    html += '<div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
     html += '<div style="flex:1">';
-    html += '<div style="font-size:13px;font-weight:500;margin-bottom:3px">' + esc(f.title||'') + '</div>';
-    html += '<div style="font-size:12px;color:var(--mut);margin-bottom:4px;line-height:1.4">' + esc(f.why_it_matters||'') + '</div>';
-    html += '<div style="font-size:11px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:.5rem">' + esc(f.how_to_fix||'') + '</div>';
+    html += '<div style="font-size:14px;font-weight:500;margin-bottom:3px">' + esc(f.title||'') + '</div>';
+    html += '<div style="font-size:13px;color:var(--mut);margin-bottom:4px;line-height:1.4">' + esc(f.why_it_matters||'') + '</div>';
+    html += '<div style="font-size:12px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:.5rem">' + esc(f.how_to_fix||'') + '</div>';
     html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-    html += '<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;background:var(--pul);color:var(--put)">' + esc(f.estimated_effort||'varies') + '</span>';
+    html += '<span style="font-size:12px;font-weight:500;padding:2px 8px;border-radius:20px;background:var(--pul);color:var(--put)">' + esc(f.estimated_effort||'varies') + '</span>';
     if (platformPrompt) {
-      html += '<button id="fix-btn-' + fi + '" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">';
-      html += '<i class="ti ' + platformIcon + '" style="font-size:12px"></i> ' + platformLabel;
+      html += '<button id="fix-btn-' + fi + '" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:4px 12px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">';
+      html += '<i class="ti ' + platformIcon + '" style="font-size:13px"></i> ' + platformLabel;
       html += '</button>';
-      html += '<span id="fix-copied-' + fi + '" style="font-size:11px;color:var(--grt);display:none">✓ Copied! Paste into your AI chat</span>';
+      html += '<span id="fix-copied-' + fi + '" style="font-size:12px;color:var(--grt);display:none">✓ Copied! Paste into your AI chat</span>';
     }
     html += '</div>';
     if (platformPrompt) {
-      html += '<div style="margin-top:.5rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:11px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;line-height:1.5" id="fix-prompt-' + fi + '">' + esc(platformPrompt) + '</div>';
+      html += '<div style="margin-top:.5rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:12px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;line-height:1.5" id="fix-prompt-' + fi + '">' + esc(platformPrompt) + '</div>';
     }
     html += '</div></div></div>';
   });
@@ -1691,8 +1691,8 @@ function renderPart2(data) {
   ];
   // Next steps recommendation
   html += '<div style="background:var(--pul);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0;border-left:3px solid var(--pu)">';
-  html += '<div style="font-size:12px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
-  html += '<div style="font-size:12px;color:var(--put);line-height:1.6">';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
+  html += '<div style="font-size:13px;color:var(--put);line-height:1.6">';
   html += 'Verilay gives you a first-pass overview - good for understanding and catching obvious issues. For production apps we recommend going further:<br>';
   html += '• <a href="https://snyk.io" target="_blank" style="color:var(--pu)">Snyk</a> - free dependency and vulnerability scanning (connects to GitHub)<br>';
   html += '• <a href="https://coderabbit.ai" target="_blank" style="color:var(--pu)">CodeRabbit</a> - AI code review on every pull request (free for open source)<br>';
@@ -1700,15 +1700,15 @@ function renderPart2(data) {
   html += '• Fix all critical issues before going live with real users or payments';
   html += '</div></div>';
 
-  html += '<div style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Second opinion - verify with any AI</div>';
-  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Copy any prompt into Claude or ChatGPT to independently verify findings.</div>';
+  html += '<div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Second opinion - verify with any AI</div>';
+  html += '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">Copy any prompt into Claude or ChatGPT to independently verify findings.</div>';
   soItems.forEach(function(item) {
     if (!item[1]) return;
-    html += '<div class="so-card"><div style="font-size:12px;font-weight:500;margin-bottom:.4rem;display:flex;align-items:center;gap:6px"><i class="ti ' + item[2] + '" style="font-size:14px;color:var(--pu)"></i>' + item[0] + '</div>';
-    html += '<div style="background:var(--bg);border-radius:6px;padding:.6rem .75rem;font-size:11px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:150px;overflow-y:auto;line-height:1.5">' + esc(item[1]) + '</div>';
+    html += '<div class="so-card"><div style="font-size:13px;font-weight:500;margin-bottom:.4rem;display:flex;align-items:center;gap:6px"><i class="ti ' + item[2] + '" style="font-size:15px;color:var(--pu)"></i>' + item[0] + '</div>';
+    html += '<div style="background:var(--bg);border-radius:6px;padding:.6rem .75rem;font-size:12px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:150px;overflow-y:auto;line-height:1.5">' + esc(item[1]) + '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:.5rem">';
-    html += '<a href="https://claude.ai" target="_blank" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open Claude</a>';
-    html += '<a href="https://chat.openai.com" target="_blank" style="font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open ChatGPT</a>';
+    html += '<a href="https://claude.ai" target="_blank" style="font-size:12px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open Claude</a>';
+    html += '<a href="https://chat.openai.com" target="_blank" style="font-size:12px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open ChatGPT</a>';
     html += '</div></div>';
   });
   html += '</div>';
@@ -1771,10 +1771,10 @@ async function submitVerification(findingKey, verdict) {
         panel.style.display = 'none';
         // Show verified state inline
         var verifiedDiv = document.createElement('div');
-        verifiedDiv.style.cssText = 'margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:11px;color:#166534';
+        verifiedDiv.style.cssText = 'margin-top:8px;padding:6px 10px;background:#F0FDF4;border:0.5px solid #22C55E;border-radius:6px;font-size:12px;color:#166534';
         verifiedDiv.innerHTML = '<strong>✅ Verified by AI builder</strong>' +
           (verdict === 'false_positive' ? ' — confirmed not an issue' : verdict === 'fixed' ? ' — confirmed fixed' : ' — verified real issue') +
-          (builderResponse ? '<div style="margin-top:3px;opacity:.8;font-size:10px">' + builderResponse.substring(0,120) + (builderResponse.length > 120 ? '...' : '') + '</div>' : '');
+          (builderResponse ? '<div style="margin-top:3px;opacity:.8;font-size:12px">' + builderResponse.substring(0,120) + (builderResponse.length > 120 ? '...' : '') + '</div>' : '');
         if (panel.parentNode) panel.parentNode.replaceChild(verifiedDiv, panel);
         if (btn) btn.style.display = 'none';
       }
@@ -1885,7 +1885,7 @@ function updateVerifiedScore() {
       if (reportEl) reportEl.insertBefore(banner, reportEl.firstChild);
       existing = banner;
     }
-    existing.style.cssText = 'background:#F0FDF4;border:0.5px solid #22C55E;border-radius:8px;padding:.85rem 1rem;margin-bottom:10px;font-size:12px;color:#166534;line-height:1.6';
+    existing.style.cssText = 'background:#F0FDF4;border:0.5px solid #22C55E;border-radius:8px;padding:.85rem 1rem;margin-bottom:10px;font-size:13px;color:#166534;line-height:1.6';
 
     var improved = scores.indexOf(newScore) > scores.indexOf(originalScore);
     var scoreLine = improved
@@ -1907,19 +1907,19 @@ function showWaitlistNudge(count) {
 
   var nudge = document.createElement('div');
   nudge.id = 'waitlist-nudge';
-  nudge.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:var(--sur);border:0.5px solid var(--pu);border-radius:12px;padding:1.1rem 1.25rem;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;font-size:13px';
+  nudge.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:var(--sur);border:0.5px solid var(--pu);border-radius:12px;padding:1.1rem 1.25rem;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;font-size:14px';
   nudge.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">' +
     '<div style="font-weight:600;color:var(--txt)">Enjoying Verilay? 🎉</div>' +
     '<button onclick="dismissWaitlist()" style="background:none;border:none;cursor:pointer;color:var(--mut);font-size:16px;padding:0;line-height:1">×</button>' +
     '</div>' +
     '<div style="color:var(--mut);margin-bottom:.75rem;line-height:1.5">You\'ve run ' + count + ' analyses. We\'re building <strong>persistent history</strong>, <strong>email reports</strong>, and <strong>saved verifications</strong> so your progress carries forward.</div>' +
-    '<div style="color:var(--mut);font-size:11px;margin-bottom:.65rem">Join the waitlist — free, no commitment.</div>' +
+    '<div style="color:var(--mut);font-size:12px;margin-bottom:.65rem">Join the waitlist — free, no commitment.</div>' +
     '<div style="display:flex;gap:6px">' +
-    '<input id="waitlist-email" type="email" placeholder="your@email.com" style="flex:1;font-size:12px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)">' +
-    '<button onclick="submitWaitlist()" style="font-size:12px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap">Join →</button>' +
+    '<input id="waitlist-email" type="email" placeholder="your@email.com" style="flex:1;font-size:13px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)">' +
+    '<button onclick="submitWaitlist()" style="font-size:13px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap">Join →</button>' +
     '</div>' +
-    '<div id="waitlist-msg" style="font-size:11px;margin-top:6px;color:var(--gr);display:none"></div>';
+    '<div id="waitlist-msg" style="font-size:12px;margin-top:6px;color:var(--gr);display:none"></div>';
 
   document.body.appendChild(nudge);
 }
@@ -2037,7 +2037,7 @@ function updateLayerDot(layerName, allVerified) {
     // Add verified badge next to layer name
     var span = btn.querySelector('span');
     if (span && span.textContent.indexOf('✅') === -1) {
-      span.innerHTML = esc(layerName) + ' <span style="font-size:9px;background:#1D9E75;color:#fff;border-radius:8px;padding:1px 5px;margin-left:4px">verified</span>';
+      span.innerHTML = esc(layerName) + ' <span style="font-size:12px;background:#1D9E75;color:#fff;border-radius:8px;padding:1px 5px;margin-left:4px">verified</span>';
     }
   }
 }
