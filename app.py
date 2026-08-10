@@ -2599,6 +2599,34 @@ a{color:#534AB7}
 """
 
 
+def _externalise_links(html):
+    """Open anything that leaves verilay.dev in a new tab.
+
+    Catches the non-obvious case: a /blog/<slug> link looks internal, but if that
+    post has a medium_url it renders as an immediate redirect, so the reader is
+    silently thrown off-site mid-article. Those get treated as external too.
+
+    Links to self-hosted posts stay in the same tab, which is what you want for
+    ordinary same-site navigation. Anything already carrying a target= is left
+    alone.
+    """
+    import re as _re_lk
+    medium_slugs = {p["slug"] for p in BLOG_POSTS if p.get("medium_url")}
+
+    def _fix(m):
+        tag, href = m.group(0), m.group(1)
+        if "target=" in tag:
+            return tag
+        leaves_site = href.startswith("http")
+        if not leaves_site and href.startswith("/blog/"):
+            leaves_site = href[len("/blog/"):].strip("/") in medium_slugs
+        if not leaves_site:
+            return tag
+        return tag[:-1] + ' target="_blank" rel="noopener">'
+
+    return _re_lk.sub(r'<a\s+href="([^"]+)"[^>]*>', _fix, html)
+
+
 def render_post(post):
     """Render a self-hosted post from its `body` HTML.
 
@@ -2639,7 +2667,7 @@ def render_post(post):
     <p style="font-size:17px;color:#6b6966;line-height:1.6">""" + post.get("excerpt", "") + """</p>
   </div>
   <hr>
-""" + post.get("body", "") + """
+""" + _externalise_links(post.get("body", "")) + """
   <div class="cta">
     <strong>Verilay is free at <a href="/">verilay.dev</a> &mdash; no account needed.</strong><br>
     Paste in a GitHub link, a ZIP from Lovable or Replit, or your live app&rsquo;s address, and
