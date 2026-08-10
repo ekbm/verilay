@@ -1983,6 +1983,250 @@ def stats():
 
 BLOG_POSTS = [
     {
+        "slug": "free-tool-limit-wasnt-real",
+        "title": "My Free Tool Had a Limit. It Turned Out the Limit Wasn&rsquo;t Real.",
+        "date": "August 11, 2026",
+        "category": "Build",
+        "excerpt": "My AI bill went up, so I went looking. The rate limit had been counting a number visitors write themselves — so it had never limited anything.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": False,
+        "body": """
+<p>Verilay is free. No account, no card, paste in your app and get an answer.</p>
+<p>What isn't free is running it. Every analysis makes several calls to Claude, and each one
+costs me somewhere between two and three cents. That's fine when a handful of people use it.
+It's a different conversation when a few hundred do.</p>
+<p>Last week my bill went up enough that I went looking for why. What I found wasn't a surge
+of users. It was a limit that had never worked.</p>
+
+<h2>The thing I thought I had</h2>
+<p>Verilay has always had a rate limit: <strong>ten analyses per hour, per person.</strong>
+More than generous — most people run one, fix something, run it again. Ten is plenty, and it
+means nobody can sit there in a loop spending my money.</p>
+<p>The code was simple enough. For each visitor, keep a list of when they last ran something,
+throw away anything older than an hour, and refuse the eleventh.</p>
+<p>The bit I got wrong was the words <em>each visitor</em>.</p>
+
+<h2>How a website knows who you are</h2>
+<p>When your browser asks a website for a page, it sends along some extra information: what
+browser you're using, what language you prefer, and — if the request passed through anything
+in the middle — where it came from.</p>
+<p>That last one lives in something called <code>X-Forwarded-For</code>. It's a list of
+addresses, added to by each stop along the way, so the final website can work out who
+originally asked.</p>
+<p>Verilay was reading the first name on that list.</p>
+<p>Here's the problem. <strong>The first name on that list is whatever your browser put
+there.</strong> Not what the network worked out. What the visitor themselves supplied.</p>
+<p>It's a clipboard at the door where people write their own name, and I was counting the
+names on the clipboard.</p>
+<p>Anyone who wanted unlimited free analyses only had to write a different name each time.
+Not a clever exploit. Not a tool you'd have to download. Change one line in the request and
+the limit disappears, because every request looks like a brand new person who has never
+visited before.</p>
+<p>The limit had been there since the beginning. It just wasn't limiting anything.</p>
+
+<h2>And then it got slightly worse</h2>
+<p>While I was in there I found a second, smaller version of the same problem.</p>
+<p>To handle several people at once, Verilay doesn't run as one program. It runs as four
+identical copies, and whichever one is free takes your request.</p>
+<p>Each copy keeps its own list of who's been doing what. And they don't talk to each
+other.</p>
+<p>So even for an honest visitor who wasn't faking anything, "ten per hour" was really up to
+forty — ten at each of four doors, none of the doormen aware the others exist.</p>
+
+<h2>The fix</h2>
+<p>For the first problem, the fix was small. Verilay sits behind Cloudflare, and Cloudflare
+adds its own record of where a request genuinely came from — one the visitor can't write on,
+because Cloudflare overwrites anything they put there. Read that instead of the clipboard and
+the limit starts working.</p>
+<p>There was a small indignity here. Verilay had <strong>two</strong> functions doing this
+same job, in two different parts of the code. One of them already did it correctly. The two
+had been written at different times and drifted apart, and I'd been looking at the wrong one
+for months. There's now only one, and the other calls it.</p>
+<p>The four-doors problem is a bigger fix — the copies need somewhere shared to keep the
+count — and I haven't done it yet. It's on the list. But it's a four-times-too-loose problem,
+not an infinitely-loose one, which is a much better place to be.</p>
+
+<h2>What this actually costs</h2>
+<p>Some real numbers, because I don't think people building free tools talk about this
+enough.</p>
+<table>
+<tr><th>Scenario</th><th>Cost to me</th></tr>
+<tr><td>One analysis</td><td>2–3 cents</td></tr>
+<tr><td>A good day — 100 people</td><td>$2–3</td></tr>
+<tr><td>A launch — 1,000 analyses</td><td>$20–30</td></tr>
+<tr><td>One person in a loop, unlimited</td><td>However long they feel like</td></tr>
+</table>
+<p>The first three are fine. I'd happily pay $30 for a thousand people trying something I
+built. The fourth is the one that keeps you up, and it's the one the broken limit had left
+wide open.</p>
+<p>Worth saying plainly: a free tool with an AI behind it is a different animal from a normal
+free website. A normal website costs about the same whether ten people visit or ten thousand.
+Mine costs money <em>per use</em>, forever. That changes what "free" can mean, and it's why
+I'll eventually charge for something.</p>
+
+<h2>If you're running something similar</h2>
+<p>Three things worth checking today, none of which take long.</p>
+<p><strong>Do you actually have a limit?</strong> Not "did you mean to add one" — go and try
+to break it. Run your thing eleven times in a row. If the eleventh works, you don't have a
+limit, whatever the code says. I'd never done this, which is exactly why I didn't know.</p>
+<p><strong>Are you trusting something the visitor sent you?</strong> Anything arriving from
+someone's browser is a suggestion, not a fact. Names, addresses, counts, prices, who they
+claim to be. If a decision that costs you money depends on it, that decision can be bought
+for nothing.</p>
+<p><strong>Do you have a ceiling?</strong> I've since turned on automatic top-ups for my AI
+credits so the tool doesn't stop mid-sentence when they run out. That solved one problem and
+created another: "stops working" became "bills my card." So there's now a monthly cap
+alongside it. Automatic top-ups without a cap is a trapdoor, and I nearly left it open.</p>
+
+<h2>The uncomfortable part</h2>
+<p>I build a tool that checks other people's apps for exactly this class of mistake.</p>
+<p>I'd like to say I found this because I'm thorough. I found it because I looked at a bill,
+got a small fright, and went digging. The check I'd have needed didn't exist — not in
+Verilay, not anywhere I'd thought to look.</p>
+<p>That's most of what I've learned building this thing. The problems aren't usually hiding in
+the clever parts. They're in the parts you wrote early, believed you'd finished, and never
+went back to.</p>
+""",
+    },
+    {
+        "slug": "part-of-my-ai-tool-that-shouldnt-be-ai",
+        "title": "The Part of My AI Tool That Shouldn&rsquo;t Have Been AI",
+        "date": "July 24, 2026",
+        "category": "Build",
+        "excerpt": "My security tool asked an AI to look for passwords in 25 of your files. Finding a password isn't a judgement call — it's a lookup. What changed when I stopped asking.",
+        "medium_url": None,
+        "read_time": "7 min read",
+        "featured": True,
+        "body": """
+<p>Back in June I wrote about
+<a href="/blog/ran-own-security-tool-different-grade">running Verilay on Verilay and getting a
+different grade almost every time</a>. Same app, same code, different answer. For a tool whose
+entire job is telling you whether something is safe, that's not a great look, and I said
+so.</p>
+<p>I've now fixed a big part of that. The fix was to take the AI out.</p>
+<p>Not all of it. Verilay is still built on Claude and always will be. But there was one job I
+had given the AI that it was never the right tool for, and once I saw it I couldn't unsee
+it.</p>
+
+<h2>What it was doing</h2>
+<p>Verilay reads your code and tells you what's in it. One of the things it checks is whether
+you've left a password or an API key sitting in a file — a real and very common problem in
+apps built with Lovable or Replit, because the AI that built your app will cheerfully paste a
+key straight into the code if you're not watching.</p>
+<p>The way I had built that check was, roughly:</p>
+<blockquote><p>Here are 25 of your files. Have a look through them for anything that looks
+like an API key.</p></blockquote>
+<p>And Claude would look, and usually find them, and explain them beautifully.</p>
+<p>It took me an embarrassingly long time to notice the three things wrong with that.</p>
+<p><strong>It was only looking at 25 files.</strong> Verilay picks the 25 files most likely to
+matter and sends those. If your app has 300 files — which is normal — then the other 275 were
+never looked at. A key sitting in file number 26 was invisible. Not "probably found", not
+"less likely to be found". Invisible.</p>
+<p><strong>It gave a different answer each time.</strong> Not wildly different, but enough.
+Ask an AI to skim for something and you're asking for a judgement, and judgements vary. That
+was the wobbling grade from my June post, showing up in the one place where wobble is least
+acceptable.</p>
+<p><strong>It cost money every single time.</strong> Every analysis Verilay runs costs me a
+few cents in AI credits. Some of those cents were being spent asking a very sophisticated
+reasoning model to do something a wristwatch could do.</p>
+
+<h2>The thing I finally noticed</h2>
+<p>Finding an API key is not a judgement call.</p>
+<p>An Amazon Web Services key always starts with the letters <code>AKIA</code> followed by
+exactly sixteen more characters. Not usually. Always. A Stripe live key always starts
+<code>sk_live_</code>. A private key file always begins with a line saying
+<code>-----BEGIN PRIVATE KEY-----</code>.</p>
+<p>These aren't things you weigh up. They're things you look up. It's the difference between
+"is this a good password?" — a judgement — and "does this postcode exist?" — a lookup.</p>
+<p>I was paying for judgement on a lookup.</p>
+<p>So I wrote plain code to do it instead. A few hundred lines, no AI involved. It knows the
+shapes of around twenty different kinds of key, it reads <strong>every file in your
+project</strong>, it costs nothing, and it gives the same answer every single time because it
+isn't deciding anything. It's matching.</p>
+
+<h2>What changed</h2>
+<table>
+<tr><th></th><th>Before</th><th>After</th></tr>
+<tr><td>Files checked for keys</td><td>25</td><td>All of them</td></tr>
+<tr><td>Cost</td><td>Part of the AI bill</td><td>Nothing</td></tr>
+<tr><td>Same answer twice?</td><td>Not reliably</td><td>Always</td></tr>
+<tr><td>Evidence</td><td>"Claude thinks…"</td><td><code>config.ts</code>, line 42</td></tr>
+</table>
+<p>That last row is the one I care about most. Before, the tool said something looked risky.
+Now it says exactly which file, exactly which line, and the first few characters of what it
+found. You can go and look. You don't have to take anyone's word for it, mine or the AI's.</p>
+
+<h2>The example that made it worth doing</h2>
+<p>Here's the one that convinced me.</p>
+<p>If your app uses Supabase — and if you built with Lovable, it almost certainly does — you
+have two keys. They look nearly identical. Both are long strings of gibberish starting
+<code>eyJ</code>.</p>
+<p>One of them is the <strong>anon key</strong>. It's meant to be in your app, visible to
+everyone. That's by design and it's fine.</p>
+<p>The other is the <strong>service role key</strong>. It ignores every privacy rule you have
+set up. Anyone holding it can read, change or delete every row in your database — every
+customer, every address, every phone number — regardless of what permissions you
+configured.</p>
+<p>Putting the second one where the first one belongs is, I think, the single most damaging
+mistake a non-developer can make with an AI-built app. And you would never spot it by eye,
+because the two look the same.</p>
+<p>The plain code can tell them apart. It unpacks the key and reads what's inside, which takes
+about a thousandth of a second. It checks every file, so it doesn't matter where the key is
+hiding.</p>
+<p>The old way — asking an AI to skim 25 files — might have caught it. Might not have. Might
+have caught it on Tuesday and missed it on Wednesday.</p>
+<p>That's not good enough for something that serious.</p>
+
+<h2>So what is the AI still doing?</h2>
+<p>Everything that actually needs thinking about.</p>
+<p>Because here's what the plain code produces:</p>
+<pre><code>SUPA001  critical  src/config.ts:2  eyJhbG...</code></pre>
+<p>Which is useless to you. It's useless to almost everyone, honestly. It's a fact with no
+meaning attached.</p>
+<p>The AI turns it into this:</p>
+<blockquote><p>Your Supabase master key is in this file. It looks almost identical to the safe
+public key, but it ignores every privacy rule you've set up — anyone who finds it can read,
+change or delete every row in your database, including other people's personal details.</p>
+<p>Remove it from this file, then go to Supabase → Project Settings → API and roll the
+service_role key.</p></blockquote>
+<p>That's the part I can't write rules for. Understanding what your app does, working out
+which of your problems matters most, and explaining it to someone who has never written a line
+of code — that's judgement, and it's exactly what the AI is extraordinary at.</p>
+<p>The mistake wasn't using AI. The mistake was using it for the wrong half.</p>
+
+<h2>The bit you can actually use</h2>
+<p>If you're building anything with AI — an app, a tool, an automation — it's worth going
+through it and asking one question of each part:</p>
+<p><strong>Is this a judgement, or a lookup?</strong></p>
+<p>Judgement is anything where a thoughtful person could reasonably disagree. What does this
+app do? Which of these problems is most urgent? How do I explain this to someone who's
+frightened? Give those to the AI. It's better at them than most people.</p>
+<p>Lookups are anything with a right answer that doesn't change. Does this string match a
+known pattern? Is this version number higher than that one? Is this date in the past? Write
+those as ordinary rules — or ask the AI to write the rules for you once, and then run the
+rules forever.</p>
+<p>You'll spend less, wait less, and get the same answer twice in a row.</p>
+<p>There's a version of this you may already be doing without noticing. If you've ever asked
+ChatGPT to add up a column of numbers and got a slightly wrong total, that's the same mistake
+in miniature. Arithmetic is a lookup. Don't ask for judgement on it.</p>
+
+<h2>One more thing, since I'm being honest</h2>
+<p>While I was in there, I found three real security holes in Verilay itself. In the security
+tool. Not theoretical ones — the sort that would have been worth writing up if I'd found them
+in someone else's app.</p>
+<p>They're fixed now, and I'll write about them separately, because they deserve more room
+than a footnote and because one of them is genuinely interesting: the dangerous part never
+went anywhere near the box where users type things, which is exactly why I hadn't spotted
+it.</p>
+<p>Verilay's code has always been public, at
+<a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener">github.com/ekbm/verilay</a>.
+I've said before that a tool asking you to trust it should let you check. That cuts both ways.
+It means anyone can find what I missed — and someone finding it is a much better outcome than
+nobody looking.</p>
+""",
+    },
+    {
         "slug": "background-job-delete-user-data",
         "title": "The Background Job in Your AI-Built App That Could Delete Every User's Data",
         "date": "June 26, 2026",
@@ -2050,7 +2294,7 @@ BLOG_POSTS = [
         "excerpt": "The moment I realised my AI-built apps might be vulnerable and what I did about it.",
         "medium_url": "https://medium.com/@mosesekbote/i-built-an-ai-app-and-had-no-idea-if-it-was-secure-cb6f54be8e27",
         "read_time": "6 min read",
-        "featured": True,
+        "featured": False,
     },
     {
         "slug": "how-built-security-tool-without-developer",
@@ -2333,6 +2577,81 @@ blockquote{border-left:3px solid #534AB7;padding:.75rem 1rem;margin:1rem 0;backg
 </body>
 </html>"""
 
+POST_CSS = """
+h2{font-size:19px;font-weight:700;margin:2.25rem 0 .75rem;line-height:1.35}
+h3{font-size:16px;font-weight:700;margin:1.75rem 0 .5rem}
+p{color:#4a4846;line-height:1.75;margin-bottom:1.1rem;font-size:16px}
+ul,ol{color:#4a4846;line-height:1.75;margin:0 0 1.1rem 1.25rem;font-size:16px}
+li{margin-bottom:.4rem}
+strong{color:#1a1917;font-weight:600}
+blockquote{border-left:3px solid #534AB7;padding:.85rem 1.15rem;margin:1.5rem 0;background:#EEEDFE;border-radius:0 8px 8px 0;font-size:15px;color:#3C3489;line-height:1.7}
+blockquote p{color:#3C3489;margin-bottom:.6rem;font-size:15px}
+blockquote p:last-child{margin-bottom:0}
+table{width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:14px}
+th{text-align:left;padding:.6rem .75rem;border-bottom:1.5px solid #e8e6e0;font-weight:600}
+td{padding:.6rem .75rem;border-bottom:0.5px solid #e8e6e0;color:#4a4846;vertical-align:top}
+code{background:#EEEDFE;color:#3C3489;padding:1px 6px;border-radius:5px;font-size:13.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:#1a1917;color:#e8e6e0;padding:1rem 1.15rem;border-radius:10px;overflow-x:auto;margin:1.5rem 0;font-size:13px;line-height:1.6}
+pre code{background:none;color:inherit;padding:0;font-size:13px}
+hr{border:none;border-top:0.5px solid #e8e6e0;margin:2.5rem 0}
+a{color:#534AB7}
+.cta{background:#EEEDFE;border:0.5px solid #534AB7;border-radius:10px;padding:1.25rem 1.5rem;margin-top:2.5rem;font-size:15px;line-height:1.7;color:#3C3489}
+"""
+
+
+def render_post(post):
+    """Render a self-hosted post from its `body` HTML.
+
+    Generic on purpose. render_evident_case_study() is a one-off page with its own
+    bespoke markup; everything written since is just a dict entry with a `body`,
+    so adding a post never means adding a function.
+    """
+    bg, fg = CAT_COLORS.get(post.get("category", ""), ("#EEEDFE", "#3C3489"))
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>""" + post["title"] + """ - Verilay</title>
+<meta name="description" content=\"""" + post.get("excerpt", "").replace('"', "&quot;") + """\">
+<link rel="canonical" href="https://verilay.dev/blog/""" + post["slug"] + """">
+<meta property="og:title" content=\"""" + post["title"] + """\">
+<meta property="og:description" content=\"""" + post.get("excerpt", "").replace('"', "&quot;") + """\">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://verilay.dev/blog/""" + post["slug"] + """">
+<style>""" + BLOG_CSS + POST_CSS + """</style>
+</head>
+<body>
+<nav>
+  <a href="/" style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px;text-decoration:none;color:#1a1917">
+    <svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" rx="10" fill="#534AB7"/><path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg>
+    Verilay
+  </a>
+  <a href="/blog" style="font-size:13px;color:#6b6966;text-decoration:none">&#8592; Blog</a>
+</nav>
+<div class="wrap" style="max-width:680px">
+  <div style="margin-bottom:2rem">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:.75rem;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;background:""" + bg + """;color:""" + fg + """\">""" + post.get("category", "") + """</span>
+      <span style="font-size:12px;color:#6b6966">""" + post.get("date", "") + """ &middot; """ + post.get("read_time", "") + """</span>
+    </div>
+    <h1 style="font-size:29px;font-weight:700;line-height:1.25;margin-bottom:1rem">""" + post["title"] + """</h1>
+    <p style="font-size:17px;color:#6b6966;line-height:1.6">""" + post.get("excerpt", "") + """</p>
+  </div>
+  <hr>
+""" + post.get("body", "") + """
+  <div class="cta">
+    <strong>Verilay is free at <a href="/">verilay.dev</a> &mdash; no account needed.</strong><br>
+    Paste in a GitHub link, a ZIP from Lovable or Replit, or your live app&rsquo;s address, and
+    it will tell you in plain English what your app is made of and what&rsquo;s worth worrying
+    about. The code is public at
+    <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener">github.com/ekbm/verilay</a>.
+  </div>
+</div>
+</body>
+</html>"""
+
+
 @app.route("/blog/<slug>")
 def blog_post(slug):
     post = next((p for p in BLOG_POSTS if p["slug"] == slug), None)
@@ -2340,6 +2659,10 @@ def blog_post(slug):
         return "Post not found", 404
     if slug == "evident-ai-c-to-b":
         return render_evident_case_study()
+    # Self-hosted posts win over any Medium link. Medium is a distribution copy;
+    # verilay.dev is the original, and should be the URL that gets indexed.
+    if post.get("body"):
+        return render_post(post)
     if post.get("medium_url"):
         return '<meta http-equiv="refresh" content="0;url=' + post["medium_url"] + '">'
     return """<!DOCTYPE html>
@@ -2882,15 +3205,30 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
 
 @app.route("/sitemap.xml")
 def sitemap():
-    """Sitemap for search engine indexing."""
-    xml = """<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://verilay.dev/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
-</urlset>"""
+    """Sitemap for search engine indexing.
+
+    Lists only pages that actually hold content here. Posts whose `medium_url` is
+    set render as a redirect to Medium, so submitting those would point search
+    engines at an empty page and hand the ranking to medium.com. Self-hosted
+    posts — the ones with a `body` — are the ones worth indexing.
+    """
+    urls = [
+        ("https://verilay.dev/", "weekly", "1.0"),
+        ("https://verilay.dev/blog", "weekly", "0.8"),
+        ("https://verilay.dev/about", "monthly", "0.5"),
+    ]
+    for p in BLOG_POSTS:
+        if p.get("body") or p["slug"] == "evident-ai-c-to-b":
+            urls.append(("https://verilay.dev/blog/" + p["slug"], "monthly", "0.7"))
+
+    body = "".join(
+        "\n  <url>\n    <loc>" + loc + "</loc>\n    <changefreq>" + freq +
+        "</changefreq>\n    <priority>" + pri + "</priority>\n  </url>"
+        for loc, freq, pri in urls
+    )
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           + body + "\n</urlset>")
     return app.response_class(xml, mimetype='application/xml')
 
 
