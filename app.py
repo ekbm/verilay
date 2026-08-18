@@ -2055,9 +2055,12 @@ def run_step4():
         findings       = data.get("findings_summary","")
         report_id      = data.get("report_id","")
 
-        # Truncate findings if too long to prevent timeout
-        if len(findings) > 800:
-            findings = findings[:800] + '...'
+        # Truncate findings if too long to prevent timeout. Raised from 800 —
+        # that cap predates per-finding detail being included here at all, and
+        # was already almost the whole budget for just the header line plus
+        # bare layer statuses. A real multi-finding report needs more room.
+        if len(findings) > 3000:
+            findings = findings[:3000] + '...'
         result = analyse_step4(repo_name, built_with, findings)
 
         # Update saved report with Part 2 data
@@ -3367,6 +3370,27 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">More specific recommended fixes</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">The Recommended Fixes and Second Opinion sections now reference your actual findings rather than just a summary — more useful, specific guidance instead of one generic suggestion.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Score could look different mid-analysis than in your saved report</div>
+    <div><span class="tag fix">Fix</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">In some cases the critical/warning counts shown while your analysis was still running didn't match what got saved to your report afterward. Both now always agree.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Dependency vulnerability count is now accurate</div>
+    <div><span class="tag fix">Fix</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">A vulnerability that's catalogued under two different public reference numbers was being counted twice, making the total look worse than it really is. Each one is now counted once.</p>
   </div>
 
   <div class="entry">

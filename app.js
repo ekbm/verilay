@@ -713,7 +713,7 @@ function gradeFromCounts(critical, warnings) {
   return 'A';
 }
 
-function healthFromLayers(layers) {
+function healthFromLayers(layers, data) {
   var c = 0, w = 0, p = 0;
   (layers || []).forEach(function(l) {
     (((l.expert || {}).findings) || []).forEach(function(f) {
@@ -722,6 +722,18 @@ function healthFromLayers(layers) {
       else if (f.severity === 'passing') p++;
     });
   });
+  // Same floor the server applies when it saves a report: a scanner-confirmed
+  // fact (an exposed key, a named CVE against a version we can read) can't be
+  // talked under by counting layer-finding objects — the Libraries layer only
+  // ever holds ONE finding object summarising all OSV vulnerabilities, so
+  // counting objects alone showed "1 critical" for a report OSV rated 16
+  // critical. Mirrors analyse_stream()'s max(_crit, scan_critical,
+  // osv_critical) so the live header, Part 2's input, and the saved report
+  // can never disagree with each other again.
+  var scan = (data && data.secret_scan) || {};
+  var osv = (data && data.osv_scan) || {};
+  c = Math.max(c, scan.critical || 0, osv.critical || 0);
+  w = Math.max(w, scan.warnings || 0, osv.warnings || 0);
   return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
 }
 
@@ -792,7 +804,7 @@ function scoreBannerHTML(score, hasLayers, isPreview) {
 function updateHealthDisplay() {
   var layers = Object.keys(currentLayers).map(function(k) { return currentLayers[k]; });
   if (!layers.length) return;
-  var h = healthFromLayers(layers);
+  var h = healthFromLayers(layers, currentReport);
   if (currentReport) currentReport.health = h;
   var grid = document.getElementById('health-grid');
   if (grid) grid.innerHTML = healthCardsHTML(h, true);
@@ -1112,7 +1124,7 @@ function renderReport(data) {
   // When they aren't yet (live step-1 view), leave h as-is — the cards will show a
   // "calculating" state until the layers arrive and updateHealthDisplay() fills them in.
   var hasLayers = !!(data.layers && data.layers.length);
-  if (hasLayers) { h = healthFromLayers(data.layers); }
+  if (hasLayers) { h = healthFromLayers(data.layers, data); }
   var isPreview = !!data.preview_only;
   var pr = data.prod_ready || {};
 
@@ -1499,7 +1511,40 @@ async function runPart2() {
     }
     var findings = 'Score: '+h.score+', Critical: '+h.critical+', Warnings: '+h.warnings+'. ';
     findings += 'Stack: '+(currentReport?(currentReport.stack||[]).slice(0,5).map(function(s){return s.name;}).join(', '):'') + '. ';
-    findings += 'Layers: '+Object.keys(currentLayers).map(function(n){return n+'('+currentLayers[n].status+')';}).join(', ');
+    // Real finding titles per layer, not just layer status — status alone gave
+    // step4's Claude call nothing concrete to write specific fix prompts about,
+    // so every report produced the same one generic "check your dependencies"
+    // fix regardless of what was actually found. Libraries is the exception:
+    // its finding text can include OSV-teaser wording, but never leak package
+    // names/CVE ids here — Part 2 is free-tier, and free tier only ever gets
+    // the count+severity split (Decision 6). Layer findings from Auth/Config/
+    // Database/API/Frontend are safe to pass through verbatim since the free
+    // report already shows them in full, nothing new is exposed.
+    findings += 'Findings by layer:\n';
+    Object.keys(currentLayers).forEach(function(name) {
+      var layer = currentLayers[name];
+      if (name === 'Libraries') {
+        var osv = currentReport ? currentReport.osv_scan : null;
+        if (osv && osv.vulnerabilities_found) {
+          findings += '- Libraries ['+layer.status+']: '+osv.vulnerabilities_found+' dependencies have known vulnerabilities ('+
+            osv.critical+' serious, '+osv.warnings+' less severe), checked '+osv.packages_checked+' total against OSV.dev. '+
+            'Exact package names and fixes are only available via the deep scan — do not invent them.\n';
+        } else {
+          findings += '- Libraries ['+layer.status+']: no known dependency vulnerabilities.\n';
+        }
+        return;
+      }
+      var layerFindings = ((layer.expert||{}).findings || []).filter(function(f) {
+        return f.title && f.title !== 'No issues found';
+      });
+      if (!layerFindings.length) {
+        findings += '- '+name+': no issues found.\n';
+      } else {
+        layerFindings.slice(0,5).forEach(function(f) {
+          findings += '- '+name+' ['+(f.severity||layer.status)+']: '+f.title+(f.detail ? ' — '+f.detail : '')+'\n';
+        });
+      }
+    });
     var resp = await fetch('/analyse-step4', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
