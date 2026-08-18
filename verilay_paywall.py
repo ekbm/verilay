@@ -21,6 +21,7 @@ from flask import (Blueprint, request, redirect, jsonify, session,
 
 import verilay_billing as billing
 import verilay_accounts as accounts
+import verilay_deepscan as deepscan
 
 bp = Blueprint("paywall", __name__)
 
@@ -638,12 +639,11 @@ def _reports_for_user(user):
 # ── The deep scan itself ───────────────────────────────────────────────────────
 @bp.route("/deep/<owner>/<repo>")
 def deep_scan(owner, repo):
-    """Gate for the deep scan. The scan engine is not built yet.
+    """Gate for the deep scan, and the start page once entitled.
 
-    Deliberately left as a gate with nothing behind it: the entitlement check, the
-    404s and the not-entitled path are the parts worth getting right before there
-    is money involved, and PAYWALL_ENABLED stays off until the engine exists so
-    nobody can reach here having paid.
+    entitlement_for_request is the only thing standing between this page and
+    a stranger's paid report — checked here and again in every route below
+    that touches a job, never assumed to still hold from a page load ago.
     """
     full = billing.normalise_repo(f"{owner}/{repo}")
     if not full:
@@ -664,15 +664,103 @@ def deep_scan(owner, repo):
         return _page("Deep scan", body, robots="noindex"), 403
 
     body = f"""
-  <div class="warn">The deep scan engine is still being built. This page confirms
-  your purchase is recognised — it does not run a scan yet.</div>
   <div class="eyebrow">Deep scan</div>
   <h1>{_esc(full)}</h1>
   <p>Your purchase is active and includes re-scans until
   <strong>{_esc(str(ent.get("expires_at", ""))[:10])}</strong>.</p>
-  <p><a class="btn" href="/">Run the free analysis meanwhile</a></p>
+  <div class="card">
+    <p style="margin-bottom:1rem">Reads up to 150 of your files instead of the free
+    scan's 25, checks every dependency against OSV.dev with full detail, and merges
+    everything into one report. Runs for a few minutes — close this tab if you like,
+    the scan keeps going and the report is saved to your account when it's done.</p>
+    <form method="POST" action="/deep/{_esc(owner)}/{_esc(repo)}/start">
+      <button class="btn" type="submit">Start the deep scan</button>
+    </form>
+  </div>
+  <p class="note"><a href="/">Run the free analysis meanwhile</a></p>
 """
     return _page("Deep scan", body, robots="noindex")
+
+
+@bp.route("/deep/<owner>/<repo>/start", methods=["POST"])
+def deep_scan_start(owner, repo):
+    full = billing.normalise_repo(f"{owner}/{repo}")
+    ent = entitlement_for_request(full) if full else None
+    if not ent:
+        return redirect(f"/deep/{_esc(owner)}/{_esc(repo)}")
+
+    job_id = deepscan.create_job(full, ent["id"])
+    deepscan.start_job(job_id)
+    return redirect(f"/deep-job/{job_id}")
+
+
+@bp.route("/deep-job/<job_id>")
+def deep_job_progress(job_id):
+    """Polling page — Decision 1. The buyer can close this tab; the job keeps
+    running server-side and the report is in their account either way."""
+    job = deepscan.get_job(job_id)
+    if not job:
+        return _page("Not found", "<h1>Not found</h1><p>That job does not exist, "
+                     "or this server has restarted since it ran.</p>",
+                     robots="noindex"), 404
+
+    ent = entitlement_for_request(job["repo"])
+    if not ent:
+        return _page("Deep scan", "<h1>Not your scan</h1><p>Sign in with the "
+                     "email you purchased with to see this.</p>", robots="noindex"), 403
+
+    if job["status"] == "done" and job.get("report_id"):
+        return redirect(f"/report/{job['report_id']}")
+
+    body = f"""
+  <div class="eyebrow">Deep scan running</div>
+  <h1>{_esc(job["repo"])}</h1>
+  <div class="card">
+    <p id="progress-text" style="margin-bottom:0">{_esc(job.get("progress","Starting..."))}</p>
+  </div>
+  <p class="note">This usually takes several minutes for a real codebase. Feel free
+  to close this tab — <a href="/account">your account</a> will have the report when
+  it's ready, and this page will jump there automatically if you leave it open.</p>
+<script>
+(function() {{
+  var jobId = {job_id!r};
+  function poll() {{
+    fetch('/deep-job/' + jobId + '/status').then(function(r) {{ return r.json(); }}).then(function(d) {{
+      if (d.status === 'done' && d.report_id) {{
+        window.location.href = '/report/' + d.report_id;
+        return;
+      }}
+      if (d.status === 'error') {{
+        document.getElementById('progress-text').textContent =
+          'Something went wrong: ' + (d.error || 'unknown error') +
+          '. Email moses@verilay.dev and it will be sorted out.';
+        return;
+      }}
+      document.getElementById('progress-text').textContent = d.progress || 'Working...';
+      setTimeout(poll, 4000);
+    }}).catch(function() {{ setTimeout(poll, 8000); }});
+  }}
+  setTimeout(poll, 4000);
+}})();
+</script>
+"""
+    return _page("Deep scan running", body, robots="noindex")
+
+
+@bp.route("/deep-job/<job_id>/status")
+def deep_job_status(job_id):
+    job = deepscan.get_job(job_id)
+    if not job:
+        return jsonify({"status": "error", "error": "not found"}), 404
+    ent = entitlement_for_request(job["repo"])
+    if not ent:
+        return jsonify({"status": "error", "error": "not entitled"}), 403
+    return jsonify({
+        "status": job["status"],
+        "progress": job.get("progress", ""),
+        "report_id": job.get("report_id"),
+        "error": job.get("error"),
+    })
 
 
 # ── Ops ────────────────────────────────────────────────────────────────────────

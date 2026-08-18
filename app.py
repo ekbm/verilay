@@ -45,6 +45,7 @@ from verilay_osv_check import (
     to_report_dict as osv_to_report_dict,
     to_prompt_block as osv_to_prompt_block,
 )
+import verilay_deepscan as deepscan
 # The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
 # Kept in its own modules so the free tool below is unchanged by it. If these
 # imports fail the free app must still boot: nobody losing a free analysis
@@ -4860,6 +4861,37 @@ def validate_startup():
                       "create the key with the dashboard toggled to Test — it starts rk_test_.")
             else:
                 print("   Stripe key is test mode.")
+
+# ── Wire the deep-scan engine ────────────────────────────────────────────────
+# Dependency-injected rather than imported directly by verilay_deepscan, since
+# that module cannot import app.py back without a circular import. Placed here,
+# not near the top, because it needs functions (analyse_step2, save_report_data,
+# etc.) that are only defined by this point in the file.
+if _HAS_PAYWALL:
+    deepscan.configure(
+        fetch_all_files_tarball=fetch_all_files_tarball,
+        smart_file_selection=smart_file_selection,
+        max_file_chars=MAX_FILE_CHARS,
+        github_token=lambda: GITHUB_TOKEN,
+        analyse_step1=analyse_step1,
+        analyse_step2=analyse_step2,
+        analyse_step3=analyse_step3,
+        analyse_step4=analyse_step4,
+        call_claude_text=call_claude_text,
+        parse_flat_response=parse_flat_response,
+        scan_repo=scan_repo,
+        secret_to_report_dict=to_report_dict,
+        secret_to_prompt_block=to_prompt_block,
+        check_dependencies=check_dependencies,
+        osv_severity_counts=osv_severity_counts,
+        osv_to_report_dict=osv_to_report_dict,
+        osv_to_prompt_block=osv_to_prompt_block,
+        categorise_files=categorise_files,
+        grade_from_counts=grade_from_counts,
+        save_report_data=save_report_data,
+        consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
+        supabase_client=_sb,
+    )
 
 # Run validation on startup (works with both local and Gunicorn)
 validate_startup()
