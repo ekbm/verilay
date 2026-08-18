@@ -948,9 +948,9 @@ function filesCoverageHTML(data) {
   if (partial) {
     html += '<div id="deepscan-eoi" style="margin-top:10px;border-top:0.5px solid var(--bdr);padding-top:10px">';
     if (scanned > read) {
-      html += '<div style="font-size:12px;color:var(--txt);margin-bottom:6px"><strong>Want the deeper review extended across all ' + scanned + ' files?</strong> The key check already covers every file. Extending the full review is coming — register interest, no commitment.</div>';
+      html += '<div style="font-size:12px;color:var(--txt);margin-bottom:6px"><strong>Want the layer analysis extended across all ' + scanned + ' files?</strong> The key check already covers every file — that\'s what the <strong>deep scan</strong> extends next, no commitment.</div>';
     } else {
-      html += '<div style="font-size:12px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> Deeper analysis is coming — register interest, no commitment.</div>';
+      html += '<div style="font-size:12px;color:var(--txt);margin-bottom:6px"><strong>Want the other ' + uncovered + ' files scanned?</strong> That\'s what the <strong>deep scan</strong> is for — no commitment.</div>';
     }
     html += '<div style="display:flex;gap:6px"><input id="deepscan-email" type="email" placeholder="your@email.com" style="flex:1;font-size:13px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)"><button onclick="submitDeepScanInterest()" style="font-size:13px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer">Notify me</button></div>';
     html += '<div id="deepscan-msg" style="font-size:12px;margin-top:6px;color:var(--gr);display:none"></div>';
@@ -1433,7 +1433,13 @@ function renderLayer() {
     }
   }
 
-  document.getElementById('layer-content').innerHTML = html;
+  var layerContentEl = document.getElementById('layer-content');
+  layerContentEl.style.opacity = '0';
+  layerContentEl.innerHTML = html;
+  requestAnimationFrame(function() {
+    layerContentEl.style.transition = 'opacity .25s ease';
+    layerContentEl.style.opacity = '1';
+  });
 
   // Wire quiz buttons
   var quiz = (currentLayers[activeLayer] && currentLayers[activeLayer].quiz) || [];
@@ -1581,6 +1587,20 @@ function appendLayers(newLayers) {
   var nav = document.getElementById('layer-nav');
   if (!nav) return;
 
+  // Results stream in over 30+ seconds while someone may already be reading
+  // further down the page — the biggest single jump was the "Loading
+  // layers..." placeholder suddenly becoming a full layer's worth of real
+  // content (auto-selected below, this same function) at whatever point in
+  // the page that placeholder happened to be. If the reader has already
+  // scrolled to or past that point, compensate the scroll by however much
+  // the page grew so whatever they're looking at doesn't visibly move.
+  // Someone still above it gets the normal "content filling in below them"
+  // behaviour untouched — no compensation needed there.
+  var scrollAnchor = document.getElementById('layers-loading') || nav;
+  var anchorTop = scrollAnchor.getBoundingClientRect().top + window.scrollY;
+  var pastAnchor = window.scrollY >= anchorTop - 40;
+  var heightBefore = document.body.scrollHeight;
+
   var icons = {Auth:'ti-shield',Database:'ti-database',Config:'ti-lock',Frontend:'ti-layout',Libraries:'ti-package',API:'ti-api','File Handling':'ti-file'};
   var sdot = {critical:'#E24B4A',warning:'#EF9F27',passing:'#639922'};
   var sibg = {critical:'var(--rdl)',warning:'var(--orl)',passing:'var(--grl)'};
@@ -1625,6 +1645,11 @@ function appendLayers(newLayers) {
 
   // Now that real findings are in, compute the score/counts from them and fill the header.
   updateHealthDisplay();
+
+  if (pastAnchor) {
+    var delta = document.body.scrollHeight - heightBefore;
+    if (delta > 0) window.scrollBy(0, delta);
+  }
 }
 
 function renderPart2(data) {
