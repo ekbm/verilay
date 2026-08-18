@@ -981,7 +981,9 @@ function osvFindingsHTML(data) {
   h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
   h += osv.critical + ' serious, ' + osv.warnings + ' less severe. These are real, named, publicly documented issues in the exact library versions your app uses — the same kind of check tools like Snyk and GitHub\'s own security alerts run.';
   h += '</div>';
-  h += '<div style="font-size:12px;color:var(--txt);margin-top:8px"><strong>Which ones, and how to fix them:</strong> that level of detail is part of the deep scan — register interest below, no commitment.</div>';
+  h += '<div style="font-size:12px;color:var(--txt);margin-top:8px"><strong>Which ones, and how to fix them:</strong> that level of detail is part of the deep scan — leave your email and you\'ll be first to know, no commitment.</div>';
+  h += '<div style="display:flex;gap:6px;margin-top:8px"><input id="osv-deepscan-email" type="email" placeholder="your@email.com" style="flex:1;font-size:13px;padding:6px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);color:var(--txt)"><button onclick="submitDeepScanInterest(\'osv-deepscan-email\',\'osv-deepscan-msg\',\'osv_teaser\')" style="font-size:13px;padding:6px 14px;border-radius:6px;background:var(--pu);color:#fff;border:none;cursor:pointer">Notify me</button></div>';
+  h += '<div id="osv-deepscan-msg" style="font-size:12px;margin-top:6px;color:var(--gr);display:none"></div>';
   h += '</div>';
   return h;
 }
@@ -1039,10 +1041,13 @@ function toggleFileList() {
   }
 }
 
-async function submitDeepScanInterest() {
-  var email = document.getElementById('deepscan-email');
+async function submitDeepScanInterest(emailId, msgId, source) {
+  emailId = emailId || 'deepscan-email';
+  msgId = msgId || 'deepscan-msg';
+  source = source || 'deep_scan';
+  var email = document.getElementById(emailId);
   var btn = email ? email.nextElementSibling : null;
-  var msg = document.getElementById('deepscan-msg');
+  var msg = document.getElementById(msgId);
   if (!email || !msg) return;
   var val = (email.value || '').trim();
   if (!val || val.indexOf('@') === -1) {
@@ -1054,7 +1059,7 @@ async function submitDeepScanInterest() {
     await fetch('/waitlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: val, source: 'deep_scan' })
+      body: JSON.stringify({ email: val, source: source })
     });
   } catch (e) {}
   msg.style.display = 'block'; msg.style.color = 'var(--gr)';
@@ -1592,7 +1597,7 @@ function renderPart2(data) {
       'Green = RLS policies detected in your code. Red = no RLS policies found in the files analysed — check your Supabase dashboard to confirm RLS is enabled on all tables.'],
     ['dependencies_current','Dependencies are current',false,
       'Outdated libraries often contain known security vulnerabilities that hackers can exploit. Keeping them updated is basic security hygiene.',
-      'Green = package versions appear recent. Red = outdated or vulnerable packages detected. Surface scans cannot check package versions — use GitHub scan.'],
+      'Green = no known vulnerabilities found. Red = vulnerable packages detected. This is checked directly against OSV.dev, a public vulnerability database — see the Libraries section above for the count, and run a Verilay deep scan for exactly which packages and how to fix them.'],
     ['no_hardcoded_secrets','No hardcoded secrets in code',false,
       'Hardcoded secrets (like API keys written directly in code) are visible to anyone who views your source. They should always be in environment variables instead.',
       'Green = no hardcoded keys found in visible code. Red = potential secrets detected in source. Surface scans can only check client-side code.']

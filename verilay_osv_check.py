@@ -228,6 +228,41 @@ def _fixed_version(vuln: dict, ecosystem: str) -> Optional[str]:
     return None
 
 
+def _dedupe_advisory_ids(vuln_ids: List[str], details: Dict[str, dict]) -> List[str]:
+    """OSV commonly returns the SAME underlying vulnerability under two ids for
+    a PyPI package — e.g. GHSA-hc5x-x2vx-497g and PYSEC-2026-1433 for one real
+    gunicorn issue — because each id's own record lists the other in its
+    "aliases". Left alone, that doubles every count a non-developer sees: "14
+    vulnerabilities" reads as twice as scary as the 7 real ones. Group ids that
+    reference each other via aliases and keep one representative per group —
+    preferring whichever has an actual summary (PYSEC entries are often blank)
+    and, as a tie-break, a GHSA id since those read better in plain English."""
+    groups: List[set] = []
+    for vid in vuln_ids:
+        vuln = details.get(vid)
+        related = {vid, *((vuln or {}).get("aliases") or [])}
+        merged = None
+        for g in groups:
+            if g & related:
+                g |= related
+                merged = g
+                break
+        if merged is None:
+            groups.append(related)
+
+    representatives = []
+    for g in groups:
+        candidates = [vid for vid in vuln_ids if vid in g]
+        if not candidates:
+            continue
+        candidates.sort(key=lambda vid: (
+            not bool((details.get(vid) or {}).get("summary")),
+            not vid.startswith("GHSA-"),
+        ))
+        representatives.append(candidates[0])
+    return representatives
+
+
 def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]:
     """Main entry point. Returns (vulnerabilities, packages_checked)."""
     deps = extract_dependencies(files)
@@ -243,7 +278,8 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
 
     findings: List[Vulnerability] = []
     for (name, ecosystem), version in deps.items():
-        for vid in matches.get((name, ecosystem), []):
+        package_ids = _dedupe_advisory_ids(matches.get((name, ecosystem), []), details)
+        for vid in package_ids:
             vuln = details.get(vid)
             if not vuln:
                 continue
