@@ -46,6 +46,7 @@ from verilay_osv_check import (
     to_prompt_block as osv_to_prompt_block,
 )
 import verilay_deepscan as deepscan
+import verilay_self_monitor as self_monitor
 # The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
 # Kept in its own modules so the free tool below is unchanged by it. If these
 # imports fail the free app must still boot: nobody losing a free analysis
@@ -3886,9 +3887,16 @@ JS_VERSION = _js_version()
 def index():
     count = get_analysis_count()
     nav_desktop, nav_mobile = _account_nav()
+    try:
+        self_monitor.maybe_tick()
+        selfmon_html = self_monitor.widget_html()
+    except Exception as e:
+        print(f"[self-monitor] widget failed (non-critical): {e}", flush=True)
+        selfmon_html = ""
     html = (HTML.replace("__JSVER__", JS_VERSION)
                 .replace("__ACCOUNTNAV__", nav_desktop)
-                .replace("__ACCOUNTNAV_MOBILE__", nav_mobile))
+                .replace("__ACCOUNTNAV_MOBILE__", nav_mobile)
+                .replace("__SELFMONITOR__", selfmon_html))
     return render_template_string(html, analysis_count=count if count > 0 else "")
 
 
@@ -4106,6 +4114,7 @@ input:focus{border-color:var(--pu)}
       <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:var(--pu);text-decoration:underline">open source</a>,
       so you can see exactly what it does.
     </p>
+    <div style="max-width:520px;margin:0 auto">__SELFMONITOR__</div>
   </div>
 
   <!-- Problem → Solution strip -->
@@ -4892,6 +4901,26 @@ if _HAS_PAYWALL:
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
         supabase_client=_sb,
     )
+
+# ── Wire the self-monitoring landing-page teaser ─────────────────────────────
+# Unconditional (not gated on _HAS_PAYWALL) — this doesn't touch billing at
+# all, just Supabase + the same free-analysis functions above. Should keep
+# working even if the paid path is misconfigured.
+self_monitor.configure(
+    fetch_all_files_tarball=fetch_all_files_tarball,
+    smart_file_selection=smart_file_selection,
+    max_file_chars=MAX_FILE_CHARS,
+    github_token=lambda: GITHUB_TOKEN,
+    analyse_step2=analyse_step2,
+    analyse_step3=analyse_step3,
+    scan_repo=scan_repo,
+    secret_to_prompt_block=to_prompt_block,
+    check_dependencies=check_dependencies,
+    osv_severity_counts=osv_severity_counts,
+    osv_to_prompt_block=osv_to_prompt_block,
+    grade_from_counts=grade_from_counts,
+    supabase_client=_sb,
+)
 
 # Run validation on startup (works with both local and Gunicorn)
 validate_startup()
