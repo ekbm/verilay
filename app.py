@@ -37,6 +37,14 @@ from verilay_url_guard import safe_get, validate_url, BlockedURL
 from verilay_secret_scan import (
     scan_repo, to_prompt_block, to_report_dict, fetch_all_files_tarball,
 )
+from verilay_osv_check import (
+    check_dependencies,
+    severity_counts as osv_severity_counts,
+    to_teaser_block as osv_to_teaser_block,
+    to_teaser_dict as osv_to_teaser_dict,
+    to_report_dict as osv_to_report_dict,
+    to_prompt_block as osv_to_prompt_block,
+)
 # The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
 # Kept in its own modules so the free tool below is unchanged by it. If these
 # imports fail the free app must still boot: nobody losing a free analysis
@@ -1457,7 +1465,7 @@ def analyse_step2(files, repo_name, scan_block=""):
     return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
-def analyse_step3(files, repo_name):
+def analyse_step3(files, repo_name, osv_block=""):
     api_keys = [k for k in files if any(w in k.lower() for w in
         ["route","api","app.py","main.py","server","app.tsx","app.jsx","package.json"])][:6]
     if "package.json" in files and "package.json" not in api_keys:
@@ -1467,6 +1475,7 @@ def analyse_step3(files, repo_name):
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
+        + osv_block +
         "WRITING FOR NON-TECHNICAL USERS (applies to ALL plain-English / Learner fields — WHAT, ANALOGY, DOES, CONNECTS, CONCEPT, PLAIN, IMPACT, A):\n"
         "- Assume the reader has NEVER coded and does not know what a database, API, server, or authentication is. Imagine explaining to a plumber, a hairdresser, or a shop owner who built an app to run their small business.\n"
         "- Do NOT assume any baseline. If you use a technical word at all, immediately explain it in everyday terms in the same sentence.\n"
@@ -1536,6 +1545,10 @@ def analyse_step3(files, repo_name):
         "FRONTEND_Q: quiz question specific to this app\n"
         "FRONTEND_A: plain English answer\n"
         "FRONTEND_QWHY: why it matters\n"
+        "DEPENDENCY VULNERABILITIES: do NOT scan for vulnerable dependencies yourself. The "
+        "CONFIRMED DEPENDENCY CHECK block above (if present) is authoritative — base "
+        "LIBRARIES_STATUS and the first Libraries finding on it exactly as instructed there. If "
+        "no such block is present, do not invent dependency vulnerability findings.\n"
         "LIBRARIES_STATUS: critical|warning|passing\n"
         "LIBRARIES_SUMMARY: one sentence technical summary\n"
         "LIBRARIES_F1_SEV: critical|warning|passing\n"
@@ -1557,6 +1570,83 @@ def analyse_step3(files, repo_name):
     )
     text = call_claude_text(prompt, max_tokens=1200)
     return parse_flat_response(text, ["API", "Frontend", "Libraries"])
+
+
+def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
+    """If OSV genuinely checked dependencies but Claude's Libraries write-up
+    is still the generic parse_flat_response boilerplate, replace it with a
+    specific, deterministic statement built from the OSV numbers. Cheaper and
+    more reliable than hoping the model complies with the teaser instruction
+    every single time — and it matters more than cosmetics: without this, a
+    real vulnerability could get graded correctly (the floor in analyse_stream
+    already handles that) while the narrative still says "No issues found",
+    which is exactly the kind of contradiction Decision 2a exists to prevent.
+    Never overwrites content Claude actually wrote."""
+    if osv_checked == 0:
+        return s3
+    for layer in s3.get("layers", []):
+        if layer.get("name") != "Libraries":
+            continue
+        findings = layer.get("expert", {}).get("findings", [])
+        is_generic = (
+            layer.get("expert", {}).get("summary") == "Libraries layer analysis."
+            and len(findings) == 1
+            and findings[0].get("title") == "No issues found"
+        )
+        if not is_generic:
+            break  # Claude wrote something specific — leave it alone
+
+        crit, warn = osv_severity_counts(osv_vulns)
+        noun = "dependency" if osv_checked == 1 else "dependencies"
+
+        if not osv_vulns:
+            summary = (
+                f"Checked all {osv_checked} {noun} against the public OSV.dev "
+                "vulnerability database — none have known vulnerabilities."
+            )
+            layer["expert"]["summary"] = summary
+            layer["expert"]["findings"] = [{
+                "severity": "passing",
+                "title": f"All {osv_checked} {noun} checked, none vulnerable",
+                "detail": summary, "file": "", "why_it_matters": "",
+            }]
+            layer["learner"]["findings_plain"] = [{
+                "severity": "passing",
+                "plain_title": f"All {osv_checked} {noun} checked — all clear",
+                "plain_detail": (
+                    f"Verilay checked every one of your app's {osv_checked} code libraries against a "
+                    "public database of known security problems. None of them have a known issue."
+                ),
+                "real_world_impact": "", "action": "",
+            }]
+        else:
+            sev = "critical" if crit > 0 else "warning"
+            vuln_noun = "dependency has" if len(osv_vulns) == 1 else "dependencies have"
+            summary = (
+                f"Checked {osv_checked} {noun} against OSV.dev — found {len(osv_vulns)} with known "
+                f"vulnerabilities ({crit} serious, {warn} less severe)."
+            )
+            layer["status"] = sev
+            layer["expert"]["summary"] = summary
+            layer["expert"]["findings"] = [{
+                "severity": sev,
+                "title": f"{len(osv_vulns)} {vuln_noun} known vulnerabilities",
+                "detail": summary, "file": "",
+                "why_it_matters": "Outdated libraries are one of the most common ways AI-built apps get compromised.",
+            }]
+            layer["learner"]["findings_plain"] = [{
+                "severity": sev,
+                "plain_title": f"{len(osv_vulns)} of your code libraries have known security problems",
+                "plain_detail": (
+                    f"Verilay checked all {osv_checked} of your app's code libraries against a public "
+                    f"database of known security problems and found {len(osv_vulns)} with a documented "
+                    "issue. A deep scan reveals exactly which ones and how to fix them."
+                ),
+                "real_world_impact": "A known, published weakness in one of your libraries could be used against your app.",
+                "action": "Run a deep scan to see exactly which libraries need updating.",
+            }]
+        break
+    return s3
 
 
 def analyse_step4(repo_name, built_with, findings_summary):
@@ -1782,6 +1872,7 @@ def analyse_stream():
             # cover the files already fetched.
             yield json.dumps({"event":"status","data":"Checking every file for exposed keys..."}) + "\n"
             scan_findings, scan_files_count = [], 0
+            _all_text = None
             try:
                 if method == "github":
                     _owner, _, _repo = repo_name.partition("/")
@@ -1804,6 +1895,22 @@ def analyse_stream():
             scan_critical = sum(1 for _f in scan_findings if _f.severity == "critical")
             scan_warning  = sum(1 for _f in scan_findings if _f.severity == "warning")
 
+            # ── OSV.dev dependency check ─────────────────────────────────
+            # Runs in the FREE scan too (Decision 6) — cheap, sub-second, and
+            # personalised to whatever the visitor pasted in. Reuses the same
+            # full-repo text the secret scan already fetched, so no extra
+            # GitHub call. Free tier gets a count only, never package names or
+            # CVE ids — that detail is what the deep scan sells.
+            yield json.dumps({"event":"status","data":"Checking dependencies for known vulnerabilities..."}) + "\n"
+            osv_vulns, osv_checked = [], 0
+            try:
+                osv_source = _all_text if _all_text is not None else files
+                osv_vulns, osv_checked = check_dependencies(osv_source)
+            except Exception as _osv_err:
+                print(f"OSV dependency check skipped: {_osv_err}", flush=True)
+            osv_teaser_block = osv_to_teaser_block(osv_vulns, osv_checked)
+            osv_critical, osv_warning = osv_severity_counts(osv_vulns)
+
             yield json.dumps({"event":"status","data":f"Found {len(files)} files — detecting stack..."}) + "\n"
 
             # ── Step 1: Stack + overview ────────────────────────────────
@@ -1816,6 +1923,7 @@ def analyse_stream():
             # verified-findings block only appears when someone reopens a saved
             # report, and is invisible during the live analysis.
             s1["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
+            s1["osv_scan"] = osv_to_teaser_dict(osv_vulns, osv_checked)
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             count = get_analysis_count()
             s1["analysis_count"] = count
@@ -1861,7 +1969,7 @@ def analyse_stream():
             import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f2 = executor.submit(analyse_step2, files, repo_name, scan_block)
-                f3 = executor.submit(analyse_step3, files, repo_name)
+                f3 = executor.submit(analyse_step3, files, repo_name, osv_teaser_block)
                 # Send keepalive every 20s while waiting — prevents Railway 30s timeout
                 deadline = _time.time() + 90
                 while _time.time() < deadline:
@@ -1887,6 +1995,7 @@ def analyse_stream():
             if s3_err:
                 yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
             else:
+                s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
                 yield json.dumps({"event":"step3","data":s3}) + "\n"
 
             # ── Auto-save partial report ────────────────────────────────
@@ -1909,9 +2018,11 @@ def analyse_stream():
             # verified by reading the file is a fact, so if Claude reported fewer
             # criticals than the scanner confirmed, the scanner wins. max() rather
             # than addition, because step 2 was told to include the scanned findings
-            # in its layers — adding would count the same key twice.
-            _crit = max(_crit, scan_critical)
-            _warn = max(_warn, scan_warning)
+            # in its layers — adding would count the same key twice. Same reasoning
+            # for OSV: a named CVE against a version we can read in the manifest is
+            # a fact, not a judgement call.
+            _crit = max(_crit, scan_critical, osv_critical)
+            _warn = max(_warn, scan_warning, osv_warning)
             partial.setdefault("health", {})
             partial["health"]["critical"] = _crit
             partial["health"]["warnings"] = _warn
@@ -3259,6 +3370,20 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Checks your dependencies for known security problems</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Every scan — including the free one — now checks the code libraries your app depends on against OSV.dev, a public database of documented security vulnerabilities. If something's affected, you'll see how many issues were found.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Saved reports now show your full security findings</div>
+    <div><span class="tag fix">Fix</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Reopening a report you'd saved or shared previously left out the exposed-keys check, even though it had run. It now shows up properly whenever you come back to a report, not just the moment it first finishes.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 9, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">See what your app is made of</div>
     <div><span class="tag improve">New</span></div>
@@ -3432,6 +3557,23 @@ def save_report_route():
         return jsonify({"error": str(e)}), 500
 
 
+COLLAPSE_THRESHOLD = 5  # long lists (e.g. 13 dependency CVEs) start collapsed
+
+
+def _collapsible(items_html, count):
+    """Native <details>/<summary> — no JS needed on this static page. Open by
+    default under the threshold (a couple of findings are worth seeing right
+    away); collapsed by default above it, so a long dependency list doesn't
+    push everything else off the first screen."""
+    if count <= COLLAPSE_THRESHOLD:
+        return items_html
+    return (
+        f'<details><summary style="cursor:pointer;font-size:13px;color:#534AB7;'
+        f'font-weight:600;padding:.25rem 0">Show all {count} &darr;</summary>'
+        f'<div style="margin-top:.5rem">{items_html}</div></details>'
+    )
+
+
 @app.route("/report/<report_id>")
 def view_report(report_id):
     data = get_report_data(report_id)
@@ -3525,6 +3667,65 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     if stack:
         tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}</span>' for s in stack)
         out.append(f'<div class="st">Tech Stack</div><div class="card">{tags}</div>')
+
+    # Verified findings — the deterministic secret scan. Always full detail,
+    # free or paid: this check has been free for everyone since it shipped.
+    scan = data.get("secret_scan") or {}
+    if scan.get("files_scanned"):
+        scan_findings = scan.get("findings", [])
+        if not scan_findings:
+            out.append(
+                '<div class="card"><strong style="color:#1D9E75">✓ No exposed keys or passwords found</strong>'
+                f'<div style="font-size:13px;color:#666;margin-top:.35rem">All {scan["files_scanned"]} files '
+                'were checked for hardcoded API keys, passwords and database logins. This check reads every '
+                'file directly — it is not a sample.</div></div>'
+            )
+        else:
+            items = "".join(
+                f'<div class="finding" style="background:{sev_bg.get(f2.get("severity","warning"),"#FEF3C7")};'
+                f'color:{sev_tc.get(f2.get("severity","warning"),"#92400E")}">'
+                f'<strong>{f2.get("name","")}</strong> — {f2.get("file","")} line {f2.get("line","")}'
+                f'<div style="margin-top:.25rem">{f2.get("plain","")}</div></div>'
+                for f2 in scan_findings
+            )
+            out.append(f'<div class="st">Verified Findings</div><div class="card">'
+                       f'{_collapsible(items, len(scan_findings))}</div>')
+
+    # Dependency check (OSV.dev). Full package/CVE detail only appears here
+    # when it was saved — the free scan's teaser shape (count only) never
+    # carries a "vulnerabilities" list, so this naturally shows less for a
+    # free report without branching on anything deep-scan specific.
+    osv = data.get("osv_scan") or {}
+    if osv.get("packages_checked"):
+        vulns = osv.get("vulnerabilities")  # present only on full-detail (paid) reports
+        found = osv.get("vulnerabilities_found", len(vulns) if vulns is not None else 0)
+        noun = "dependency" if osv["packages_checked"] == 1 else "dependencies"
+        if not found:
+            out.append(
+                f'<div class="card"><strong style="color:#1D9E75">✓ All {osv["packages_checked"]} {noun} '
+                f'checked — none vulnerable</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
+                'Checked against OSV.dev, a public database of known security vulnerabilities.</div></div>'
+            )
+        elif vulns is not None:
+            items = "".join(
+                f'<div class="finding" style="background:{sev_bg.get("critical" if v.get("severity") in ("critical","high") else "warning","#FCEBEB")};'
+                f'color:{sev_tc.get("critical" if v.get("severity") in ("critical","high") else "warning","#A32D2D")}">'
+                f'<strong>{v.get("package","")}@{v.get("version_found","")}</strong> — {v.get("id","")}'
+                f'<div style="margin-top:.25rem">{v.get("summary","")}</div>'
+                + (f'<div style="margin-top:.25rem"><strong>Fix:</strong> update to {v["fixed_version"]}</div>'
+                   if v.get("fixed_version") else "")
+                + '</div>'
+                for v in vulns
+            )
+            out.append(f'<div class="st">Dependency Vulnerabilities</div><div class="card">'
+                       f'{_collapsible(items, len(vulns))}</div>')
+        else:
+            out.append(
+                f'<div class="card"><strong style="color:#EF9F27">{found} {"dependency has" if found==1 else "dependencies have"} '
+                f'known vulnerabilities</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
+                f'Checked {osv["packages_checked"]} {noun} against OSV.dev. Which ones, and how to fix them, is '
+                'part of the <a href="/deep-scan" style="color:#534AB7">deep scan</a>.</div></div>'
+            )
 
     # Ask AI button
     import urllib.parse as _urlparse
@@ -3671,7 +3872,7 @@ def serve_js():
     import os
     js_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.js')
     try:
-        with open(js_path, 'r') as f:
+        with open(js_path, 'r', encoding='utf-8') as f:
             js_content = f.read()
         return Response(js_content, mimetype='application/javascript',
             headers={'Cache-Control': 'public, max-age=31536000, immutable'})

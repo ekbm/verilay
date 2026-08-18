@@ -949,7 +949,41 @@ function filesCoverageHTML(data) {
 
   html += '</div>';
   html += verifiedFindingsHTML(data);
+  html += osvFindingsHTML(data);
   return html;
+}
+
+// OSV.dev dependency check. Free tier only ever gets a COUNT here — never
+// package names or CVE ids, that's the deep scan's job (Decision 6). Don't
+// add per-package detail to this card even if it becomes available later
+// without also updating the backend teaser dict, or the free/paid boundary
+// silently disappears on the frontend while the backend still thinks it's
+// enforcing it.
+function osvFindingsHTML(data) {
+  var osv = data.osv_scan;
+  if (!osv || !osv.packages_checked) return '';
+
+  var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';
+  var noun = osv.packages_checked === 1 ? 'dependency' : 'dependencies';
+
+  if (!osv.vulnerabilities_found) {
+    h += '<div><strong style="color:var(--gr)">✓ All ' + osv.packages_checked + ' ' + noun + ' checked — none vulnerable</strong></div>';
+    h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
+    h += 'Every dependency in your project was checked against OSV.dev, a public database of known security vulnerabilities. None have a documented issue right now — worth re-checking occasionally, since new vulnerabilities get discovered in existing libraries over time.';
+    h += '</div></div>';
+    return h;
+  }
+
+  var vword = osv.vulnerabilities_found === 1 ? 'dependency has' : 'dependencies have';
+  var col = osv.critical > 0 ? 'var(--rd,#E24B4A)' : 'var(--or,#EF9F27)';
+  h += '<div><strong style="color:' + col + '">' + osv.vulnerabilities_found + ' ' + vword + ' known vulnerabilities</strong>';
+  h += '<span style="color:var(--mut)"> &nbsp;·&nbsp; checked ' + osv.packages_checked + ' ' + noun + ' against OSV.dev</span></div>';
+  h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
+  h += osv.critical + ' serious, ' + osv.warnings + ' less severe. These are real, named, publicly documented issues in the exact library versions your app uses — the same kind of check tools like Snyk and GitHub\'s own security alerts run.';
+  h += '</div>';
+  h += '<div style="font-size:12px;color:var(--txt);margin-top:8px"><strong>Which ones, and how to fix them:</strong> that level of detail is part of the deep scan — register interest below, no commitment.</div>';
+  h += '</div>';
+  return h;
 }
 
 // Findings from the deterministic scan. These are a different kind of thing from
