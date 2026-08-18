@@ -131,12 +131,36 @@ def _run_scan(app_name, repo):
         print(f"[self-monitor] {app_name}: {score} ({crit} critical, {warn} warnings)", flush=True)
     except Exception as e:
         print(f"[self-monitor] scan failed for {app_name}: {e}", flush=True)
+        # maybe_tick() already marked this app "checked" (last_checked_at=now)
+        # the moment it claimed the row, before this scan ran — so a FAILED
+        # scan looks identical to a successful one and would otherwise sit
+        # untried for the full CHECK_INTERVAL_DAYS. Back the timestamp off
+        # so the next homepage visit picks it up again shortly instead of a
+        # week from now. Best-effort — if even this fails, worst case is the
+        # original 7-day wait, not a crash.
+        try:
+            retry_at = datetime.now(timezone.utc) - timedelta(days=CHECK_INTERVAL_DAYS) + timedelta(hours=1)
+            sb.table("self_monitoring").update(
+                {"last_checked_at": retry_at.isoformat()}
+            ).eq("app_name", app_name).execute()
+        except Exception:
+            pass
 
 
-def widget_html():
-    """Aggregate-only teaser for the landing page. Returns '' if Supabase
-    isn't configured or no app has completed its first check yet — never
-    shows a half-populated or broken-looking widget."""
+def badge_html():
+    """The real, live status pill. CRO review (2026-08-18) found the combined
+    badge+table sitting above the H1 was delaying the page's core message and
+    eating into above-the-fold space on mobile — split so the badge (short,
+    skimmable) can stay near the hero's other social-proof badge, while the
+    heavier example table (below) moves down to where the reader already has
+    context. Returns '' if Supabase isn't configured or no app has completed
+    its first check yet — never shows a half-populated or broken-looking badge.
+
+    Safety property, unchanged from the muted version this replaced: a ZERO
+    open-issue count is fine to show precisely (it's good news, reveals
+    nothing) — but a NON-ZERO count is never shown as a number, only ever as
+    a positive "N resolved" delta. Bold styling doesn't change what data is
+    safe to expose, only how visible the honest version of it is."""
     sb = _sb()
     if sb is None:
         return ""
@@ -153,6 +177,7 @@ def widget_html():
     names = ", ".join(r["app_name"] for r in checked)
     most_recent = max(r["last_checked_at"] for r in checked)
     age = _human_age(most_recent)
+    total_open = sum(r["critical"] + r["warnings"] for r in checked)
 
     resolved = 0
     for r in checked:
@@ -163,17 +188,57 @@ def widget_html():
         if delta > 0:
             resolved += delta
 
-    resolved_line = (
-        f" · {resolved} issue{'s' if resolved != 1 else ''} resolved since the last check"
-        if resolved > 0 else ""
-    )
+    if total_open == 0:
+        detail = "0 issues found — all clear right now"
+    elif resolved > 0:
+        detail = f"{resolved} issue{'s' if resolved != 1 else ''} resolved since the last check"
+    else:
+        detail = f"checked {age}"
 
     return (
+        '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--grl);'
+        'color:var(--grt);font-size:13px;font-weight:600;padding:5px 16px;border-radius:20px;'
+        'display:inline-block">'
+        '<span style="width:8px;height:8px;border-radius:50%;background:var(--gr);'
+        'display:inline-block;flex-shrink:0"></span>'
+        f'Continuously monitoring {len(checked)} of our own apps — {names} &nbsp;·&nbsp; {detail}'
+        '</div>'
+    )
+
+
+# Illustrative only — deliberately NOT sourced from real scan data. The badge
+# above is the real, live proof; this exists purely to show the DEPTH of
+# what continuous monitoring checks for, without ever putting a real app's
+# actual findings on a public page. Numbers are made up on purpose.
+_SAMPLE_LIBRARY_FINDINGS = [
+    ("Outdated / unpatched dependency", "critical", 4),
+    ("Known CVE in a third-party package", "critical", 2),
+    ("Prototype pollution", "warning", 1),
+    ("Regular expression DoS (ReDoS)", "warning", 1),
+]
+
+
+def sample_table_html():
+    rows = "".join(
+        '<tr style="border-top:0.5px solid var(--bdr)">'
+        f'<td style="padding:6px 10px;font-size:12px;color:var(--txt);text-align:left">{name}</td>'
+        f'<td style="padding:6px 10px;font-size:12px;font-weight:700;text-align:center;'
+        f'color:{"var(--rdt)" if sev == "critical" else "var(--ort)"}">{count}</td>'
+        '</tr>'
+        for name, sev, count in _SAMPLE_LIBRARY_FINDINGS
+    )
+    return (
         '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;'
-        'margin-bottom:10px;font-size:13px;color:var(--mut)">'
-        f'<span style="color:var(--gr)">●</span> Verilay continuously monitors {len(checked)} '
-        f'of its own apps — {names}. Not just a one-time check.'
-        f'<div style="margin-top:4px">Last checked {age}{resolved_line}.</div>'
+        'max-width:420px;margin:0 auto 1rem;text-align:left">'
+        '<div style="font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;'
+        'letter-spacing:.05em;margin-bottom:6px">Example — the kind of thing a scan finds in your dependencies</div>'
+        '<table style="width:100%;border-collapse:collapse">'
+        '<tr><th style="padding:4px 10px;font-size:11px;color:var(--mut);text-align:left">Vulnerability type</th>'
+        '<th style="padding:4px 10px;font-size:11px;color:var(--mut);text-align:center">Found</th></tr>'
+        f'{rows}'
+        '</table>'
+        '<div style="font-size:11px;color:var(--mut);margin-top:8px">'
+        'Illustrative example — not real data from a specific app.</div>'
         '</div>'
     )
 

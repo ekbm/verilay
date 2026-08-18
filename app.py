@@ -3889,14 +3889,16 @@ def index():
     nav_desktop, nav_mobile = _account_nav()
     try:
         self_monitor.maybe_tick()
-        selfmon_html = self_monitor.widget_html()
+        selfmon_badge = self_monitor.badge_html()
+        selfmon_table = self_monitor.sample_table_html() if selfmon_badge else ""
     except Exception as e:
         print(f"[self-monitor] widget failed (non-critical): {e}", flush=True)
-        selfmon_html = ""
+        selfmon_badge = selfmon_table = ""
     html = (HTML.replace("__JSVER__", JS_VERSION)
                 .replace("__ACCOUNTNAV__", nav_desktop)
                 .replace("__ACCOUNTNAV_MOBILE__", nav_mobile)
-                .replace("__SELFMONITOR__", selfmon_html))
+                .replace("__SELFMONITOR_BADGE__", selfmon_badge)
+                .replace("__SELFMONITOR_TABLE__", selfmon_table))
     return render_template_string(html, analysis_count=count if count > 0 else "")
 
 
@@ -4094,13 +4096,14 @@ input:focus{border-color:var(--pu)}
     <p style="font-size:16px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
-    {% if analysis_count %}
-    <div id="analysis-count-badge" style="margin-bottom:.85rem;text-align:center;width:100%">
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
+      {% if analysis_count %}
       <span style="font-size:13px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:5px 16px;border-radius:20px;display:inline-block">
         🔍 {{ analysis_count }} apps analysed so far
       </span>
+      {% endif %}
+      __SELFMONITOR_BADGE__
     </div>
-    {% endif %}
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:16px"></i> Analyse my app — it's free
@@ -4114,7 +4117,6 @@ input:focus{border-color:var(--pu)}
       <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:var(--pu);text-decoration:underline">open source</a>,
       so you can see exactly what it does.
     </p>
-    <div style="max-width:520px;margin:0 auto">__SELFMONITOR__</div>
   </div>
 
   <!-- Problem → Solution strip -->
@@ -4220,6 +4222,7 @@ input:focus{border-color:var(--pu)}
         <div style="font-size:12px;color:var(--mut);line-height:1.45">Copy-ready prompts to verify findings in Claude, ChatGPT, or with a developer.</div>
       </div>
     </div>
+    <div style="text-align:center;margin-top:1rem">__SELFMONITOR_TABLE__</div>
   </div>
 
   <!-- Honest scope statement -->
