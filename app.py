@@ -219,14 +219,14 @@ def _account_nav():
     import html as _html
     email = _html.escape(u.get("email", ""))
     desktop = (
-        '<a href="/account" title="' + email + '" '
+        '<a href="/account#reports" title="' + email + '" '
         'style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 11px;'
         'border-radius:20px;border:0.5px solid var(--pu);background:var(--pul);color:var(--put);'
         'text-decoration:none;font-weight:500">'
         '<i class="ti ti-user-circle" style="font-size:12px"></i> Your account</a>'
     )
     mobile = (
-        '<a href="/account" style="font-size:15px;color:var(--put);text-decoration:none;'
+        '<a href="/account#reports" style="font-size:15px;color:var(--put);text-decoration:none;'
         'padding:.6rem 0;border-bottom:0.5px solid var(--bdr);font-weight:600">'
         'Your account <span style="font-size:12px;color:var(--mut);font-weight:400">'
         + email + '</span></a>'
@@ -5000,6 +5000,7 @@ if _HAS_PAYWALL:
         grade_from_counts=grade_from_counts,
         save_report_data=save_report_data,
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
+        increment_analysis_count=increment_analysis_count,
         supabase_client=_sb,
         base_url=billing.BASE_URL,
         send_scan_complete_email=notify.send_scan_complete_email,

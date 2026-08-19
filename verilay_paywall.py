@@ -658,14 +658,32 @@ def account():
             'Repos you have already scanned as admin get a Re-scan link under Your reports.</p></div>'
         )
 
+    # A scan you started and then closed the tab on used to be genuinely lost
+    # — nothing anywhere showed it was still going. This is the way back.
+    active_jobs = deepscan.active_jobs_for_user(user["id"])
+    running_note = ""
+    if active_jobs:
+        job_lines = "".join(
+            f'<p style="margin:.35rem 0"><a href="/deep-job/{_esc(j["id"])}">{_esc(j.get("repo",""))}</a>'
+            f' — {_esc(j.get("progress") or "Starting...")}</p>'
+            for j in active_jobs
+        )
+        running_note = (
+            '<div class="card" style="background:#EEF3FE;border-color:#4A78D9;margin-bottom:1rem">'
+            '<p style="margin:0 0 .35rem;font-size:13px;font-weight:600;color:#1F3E7A">'
+            '⏳ Deep scan in progress</p>'
+            f'{job_lines}</div>'
+        )
+
     body = f"""
   <div class="eyebrow">Your account</div>
   <h1>{_esc(user["email"])}</h1>
+  {running_note}
   {admin_note}
+  <h2 id="reports">Your reports</h2>
+  {reports_html}
   <h2>Deep scans you have bought</h2>
   {purchases_html}
-  <h2>Your reports</h2>
-  {reports_html}
   <p class="note" style="margin-top:2rem">
     <a href="/">Run an analysis</a> &nbsp;·&nbsp;
     <a href="/logout">Sign out</a> &nbsp;·&nbsp;
@@ -754,13 +772,27 @@ def deep_scan_start(owner, repo):
     if not ent:
         return redirect(f"/deep/{_esc(owner)}/{_esc(repo)}")
 
+    # A scan already going for this exact repo? Send them back to that one
+    # instead of starting a second — running two at once wastes GitHub/Claude
+    # calls on what will likely come back saying the same thing.
+    existing = deepscan.active_job_for_repo(full)
+    if existing:
+        return redirect(f"/deep-job/{existing['id']}?already_running=1")
+
     # Captured HERE, in the real request with a real session — the scan
     # itself runs in a background thread with no session of its own, so
     # this is the only point the signed-in user can actually be read.
     user = accounts.current_user()
     user_id = user["id"] if user else None
 
-    job_id = deepscan.create_job(full, ent["id"])
+    # The admin-bypass entitlement's id ("admin-bypass-<repo>") is not a real
+    # purchases.id UUID — passing it through would fail deepscan_jobs' typed
+    # purchase_id column and silently drop the job into this-process-only
+    # memory. consume_scan() already no-ops on a falsy purchase_id, so None
+    # is the correct value here, not a placeholder.
+    purchase_id = None if str(ent["id"]).startswith("admin-bypass-") else ent["id"]
+
+    job_id = deepscan.create_job(full, purchase_id, user_id)
     deepscan.start_job(job_id, user_id)
     return redirect(f"/deep-job/{job_id}")
 
@@ -783,9 +815,20 @@ def deep_job_progress(job_id):
     if job["status"] == "done" and job.get("report_id"):
         return redirect(f"/report/{job['report_id']}")
 
+    already_running_banner = ""
+    if request.args.get("already_running"):
+        already_running_banner = (
+            '<div class="card" style="background:#FFF7E6;border-color:#F4B740;margin-bottom:1rem">'
+            '<p style="margin:0;font-size:13px;color:#7A5200">A scan was already running for this '
+            'repo, so this is that one. Best to let it finish before starting another — running two '
+            'at once will not make it faster and just gives you two reports to compare instead of '
+            'one solid one.</p></div>'
+        )
+
     body = f"""
   <div class="eyebrow">Deep scan running</div>
   <h1>{_esc(job["repo"])}</h1>
+  {already_running_banner}
   <div class="card">
     <p id="progress-text" style="margin-bottom:0">{_esc(job.get("progress","Starting..."))}</p>
   </div>

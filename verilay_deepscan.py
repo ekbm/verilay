@@ -64,10 +64,20 @@ _JOBS = {}
 _JOBS_LOCK = threading.Lock()
 
 
-def create_job(repo, purchase_id):
+def create_job(repo, purchase_id, user_id=None):
+    """`purchase_id` must be a real `purchases.id` UUID or None — the column
+    has that type in Supabase. The admin-bypass entitlement's synthetic id
+    ("admin-bypass-<repo>") is NOT a UUID, so the caller passes None for it;
+    passing the synthetic string here used to fail the Supabase insert with
+    a type error on every admin-bypass scan, silently falling back to this
+    process's own memory and making the job invisible to any other worker
+    process. `user_id`, unlike purchase_id, is set for admin-bypass scans
+    too (there's a real signed-in account either way) — it's what lets
+    active_jobs_for_user() find a scan and show it back to whoever started
+    it, regardless of which entitlement path they used."""
     job_id = uuid.uuid4().hex[:16]
     row = {
-        "id": job_id, "repo": repo, "purchase_id": purchase_id,
+        "id": job_id, "repo": repo, "purchase_id": purchase_id, "user_id": user_id,
         "status": "queued", "progress": "Queued...",
         "report_id": None, "error": None,
     }
@@ -94,6 +104,55 @@ def get_job(job_id):
             print(f"[deepscan] Supabase job read failed, checking memory: {e}", flush=True)
     with _JOBS_LOCK:
         return dict(_JOBS[job_id]) if job_id in _JOBS else None
+
+
+def active_job_for_repo(repo):
+    """The most recent still-running job for this exact repo, or None.
+
+    Used to stop a second scan starting while one's already going — running
+    two at once on the same repo does not make either finish faster, it
+    just burns a second set of GitHub/Claude calls (and a second purchase
+    scan-count) for a report that will likely just say the same thing."""
+    sb = _sb()
+    if sb is not None:
+        try:
+            res = (sb.table("deepscan_jobs").select("*").eq("repo", repo)
+                     .in_("status", ["queued", "running"])
+                     .order("created_at", desc=True).limit(1).execute())
+            if res.data:
+                return res.data[0]
+        except Exception as e:
+            print(f"[deepscan] Supabase active-job lookup failed, checking memory: {e}", flush=True)
+    with _JOBS_LOCK:
+        candidates = [dict(j) for j in _JOBS.values()
+                      if j.get("repo") == repo and j.get("status") in ("queued", "running")]
+        if candidates:
+            return max(candidates, key=lambda j: j.get("created_at", ""))
+    return None
+
+
+def active_jobs_for_user(user_id):
+    """Every still-running job this signed-in user started, newest first.
+
+    Powers the "scan running" banner on /account — closing the progress
+    tab used to lose your only way back to it; this is how /account can
+    show it again and link straight back in."""
+    if not user_id:
+        return []
+    sb = _sb()
+    if sb is not None:
+        try:
+            res = (sb.table("deepscan_jobs").select("*").eq("user_id", user_id)
+                     .in_("status", ["queued", "running"])
+                     .order("created_at", desc=True).execute())
+            return res.data or []
+        except Exception as e:
+            print(f"[deepscan] Supabase active-jobs-for-user lookup failed, checking memory: {e}", flush=True)
+    with _JOBS_LOCK:
+        jobs = [dict(j) for j in _JOBS.values()
+                if j.get("user_id") == user_id and j.get("status") in ("queued", "running")]
+        jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
+        return jobs
 
 
 def _update_job(job_id, **fields):
@@ -274,6 +333,15 @@ def _run_job(job_id, user_id=None):
         _update_job(job_id, progress="Saving your report...")
         report_id = _deps["save_report_data"](report, user_id)
         _deps["consume_scan"](job["purchase_id"])
+
+        # The homepage's "N apps analysed so far" counter used to only move
+        # for free-tier runs -- a deep scan is still an analysis of an app,
+        # so it should count too, same best-effort, never-fail-the-job
+        # pattern the free tier already uses.
+        try:
+            _deps["increment_analysis_count"](score=report.get("health", {}).get("score"), method="deep")
+        except Exception as e:
+            print(f"[deepscan] analysis-count increment skipped: {e}", flush=True)
 
         # Best-effort completion email — the buyer's told to close the tab and
         # come back, so without this the only way to know it's done is to
