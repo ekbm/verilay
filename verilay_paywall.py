@@ -216,8 +216,8 @@ def deep_scan_landing():
         body = f"""
   <div class="eyebrow">Coming soon</div>
   <h1>The deep scan</h1>
-  <p>A one-off, deeper review of your app for {_esc(price)} — not on sale yet.
-  It is being built, and it will not go on sale before it works.</p>
+  <p>A one-off, deeper review of your app for {_esc(price)} plus applicable tax
+  — not on sale yet. It is being built, and it will not go on sale before it works.</p>
   {_WHAT_YOU_GET}
   <div class="card">
     <h2 style="margin-top:0">Want to know when it opens?</h2>
@@ -240,6 +240,7 @@ def deep_scan_landing():
   <div class="eyebrow">One-off payment</div>
   <h1>The deep scan</h1>
   <div class="price">{_esc(price)}</div>
+  <p class="note" style="margin-top:-.5rem">plus applicable tax, calculated at checkout for your location</p>
   <p style="margin-top:.35rem">A deep scan of your app, and re-scans whenever you
   like for 30 days.</p>
   {_WHAT_YOU_GET}
