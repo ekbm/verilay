@@ -46,6 +46,7 @@ from verilay_osv_check import (
     to_prompt_block as osv_to_prompt_block,
 )
 import verilay_deepscan as deepscan
+import verilay_notify as notify
 import verilay_self_monitor as self_monitor
 # The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
 # Kept in its own modules so the free tool below is unchanged by it. If these
@@ -185,12 +186,17 @@ def _current_uid():
 
 
 def _account_nav():
-    """The 'Your account' link for the main page. Returns ("", "") when anonymous.
+    """The account/sign-in link for the main page.
 
     A paying customer who signs in and then lands on the homepage previously had
     no sign they were signed in and no way to reach their reports — and the
-    homepage is exactly where they look. Free visitors see nothing at all: the
-    free tool has no accounts and should not start advertising them.
+    homepage is exactly where they look. That's fixed below for the signed-in
+    case. For anonymous visitors, this used to return nothing at all — correct
+    for a first-time free visitor (the free tool has no accounts and shouldn't
+    advertise them), wrong for a past customer who's forgotten the /login URL.
+    Now shows a quiet "Sign in" link, styled the same subdued way as About/Blog/
+    GitHub — discoverable, not promoted. Never trying to be the homepage's main
+    action.
     """
     if not _HAS_PAYWALL:
         return "", ""
@@ -200,7 +206,16 @@ def _account_nav():
     except Exception:
         u = None
     if not u:
-        return "", ""
+        anon_desktop = (
+            '<a href="/login" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;'
+            'padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;'
+            'color:var(--mut);text-decoration:none">Sign in</a>'
+        )
+        anon_mobile = (
+            '<a href="/login" style="font-size:16px;color:var(--txt);text-decoration:none;'
+            'padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Sign in</a>'
+        )
+        return anon_desktop, anon_mobile
     import html as _html
     email = _html.escape(u.get("email", ""))
     desktop = (
@@ -3399,6 +3414,20 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 19, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">The deep scan is here</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">A one-off, deeper review of your app for $19 AUD plus applicable tax: reads far more of your code than the free scan, gives exact package names and fixes for every dependency vulnerability, and includes unlimited re-scans of the same app for 30 days so you can confirm a fix actually worked. Runs in the background — close the tab and come back, your report is saved and waiting when it's done.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 19, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Sign in and pricing, right on the homepage</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">If you've bought a deep scan, there's now a quiet Sign in link on the homepage so you don't have to hunt for the URL to see your saved reports. A Pricing link now points to the full free-vs-deep-scan comparison too.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">More specific recommended fixes</div>
     <div><span class="tag improve">Improve</span></div>
@@ -3423,14 +3452,14 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Checks your dependencies for known security problems</div>
     <div><span class="tag new">New</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Every scan — including the free one — now checks the code libraries your app depends on against OSV.dev, a public database of documented security vulnerabilities. If something's affected, you'll see how many issues were found.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Every scan — including the free one — now checks the code libraries your app depends on against OSV.dev, a public database of documented security vulnerabilities. If something's affected, you'll see how many issues were found; the deep scan shows exactly which ones and how to fix them.</p>
   </div>
 
   <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 18, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Saved reports now show your full security findings</div>
     <div><span class="tag fix">Fix</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Reopening a report you'd saved or shared previously left out the exposed-keys check, even though it had run. It now shows up properly whenever you come back to a report, not just the moment it first finishes.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Reopening a report you'd saved or shared previously left out the exposed-keys check and the dependency check, even though they'd run. Both now show up properly whenever you come back to a report, not just the moment it first finishes.</p>
   </div>
 
   <div class="entry">
@@ -3718,6 +3747,26 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
         tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}</span>' for s in stack)
         out.append(f'<div class="st">Tech Stack</div><div class="card">{tags}</div>')
 
+    # Coverage — this is where "deep scan" becomes visible as a fact, not a
+    # label: 150/570 files reads very differently from 25/570.
+    files_read = data.get("files_read")
+    files_total = data.get("files_total")
+    is_deep = bool(data.get("is_deep_scan"))
+    if files_read and files_total:
+        badge = (
+            '<span style="background:#534AB7;color:#fff;font-size:11px;font-weight:600;'
+            'padding:3px 10px;border-radius:20px;margin-left:8px">DEEP SCAN</span>'
+            if is_deep else ""
+        )
+        out.append(
+            f'<div class="card"><strong>Files reviewed: {files_read} of {files_total}</strong>{badge}'
+            f'<div style="font-size:13px;color:#666;margin-top:.35rem">'
+            + ("A deep scan reads far more of your codebase than the free analysis, which "
+               "covers the 25 files most likely to carry risk." if is_deep else
+               "The free analysis covers the 25 files most likely to carry risk.")
+            + '</div></div>'
+        )
+
     # Verified findings — the deterministic secret scan. Always full detail,
     # free or paid: this check has been free for everyone since it shipped.
     scan = data.get("secret_scan") or {}
@@ -3744,7 +3793,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     # Dependency check (OSV.dev). Full package/CVE detail only appears here
     # when it was saved — the free scan's teaser shape (count only) never
     # carries a "vulnerabilities" list, so this naturally shows less for a
-    # free report without branching on anything deep-scan specific.
+    # free report and more for a deep scan without branching on is_deep_scan.
     osv = data.get("osv_scan") or {}
     if osv.get("packages_checked"):
         vulns = osv.get("vulnerabilities")  # present only on full-detail (paid) reports
@@ -4079,6 +4128,7 @@ input:focus{border-color:var(--pu)}
       <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Blog</a>
       <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">GitHub</a>
+      <a href="/deep-scan" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Pricing</a>
     </div>
     <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500;white-space:nowrap">
       Analyse my app
@@ -4097,6 +4147,7 @@ input:focus{border-color:var(--pu)}
     <a href="/ask-verilay" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Ask Verilay</a>
     <a href="/about" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
     <a href="/blog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
+    <a href="/deep-scan" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Pricing</a>
     <a href="/changelog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
     <a href="/privacy" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Privacy</a>
     <a href="/terms" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Terms</a>
@@ -4104,6 +4155,19 @@ input:focus{border-color:var(--pu)}
     <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0">GitHub</a>
   </div>
 </div>
+
+<!-- ── Launch banner — dismissible, remembered via localStorage so a
+     visitor who's already seen it doesn't get nagged on every return
+     visit. Rendered every time server-side; the inline script below
+     hides it immediately if previously dismissed, before first paint. -->
+<div id="deep-scan-banner" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.65rem 2.25rem .65rem 1rem;text-align:center;margin-bottom:1.5rem;position:relative">
+  <span style="font-size:13px;color:var(--put);font-weight:500">
+    🎉 New: The deep scan is here — get exact package names, versions, and fixes for every dependency vulnerability.
+    <a href="/deep-scan" style="color:var(--put);text-decoration:underline;font-weight:600">See what's included &rarr;</a>
+  </span>
+  <button onclick="document.getElementById('deep-scan-banner').style.display='none';localStorage.setItem('vl_dismissed_deepscan_banner','1')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--put);font-size:18px;line-height:1;padding:6px" aria-label="Dismiss">&times;</button>
+</div>
+<script>if(localStorage.getItem('vl_dismissed_deepscan_banner')){var _b=document.getElementById('deep-scan-banner');if(_b)_b.style.display='none';}</script>
 
 <!-- ── Hero ────────────────────────────────────────────────── -->
 <div id="hero-section">
@@ -4926,6 +4990,8 @@ if _HAS_PAYWALL:
         save_report_data=save_report_data,
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
         supabase_client=_sb,
+        base_url=billing.BASE_URL,
+        send_scan_complete_email=notify.send_scan_complete_email,
     )
 
 # ── Wire the self-monitoring landing-page teaser ─────────────────────────────

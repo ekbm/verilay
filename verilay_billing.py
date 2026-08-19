@@ -58,6 +58,14 @@ BASE_URL             = os.getenv("BASE_URL", "https://verilay.dev").strip().rstr
 PRICE_CENTS = int(os.getenv("DEEP_SCAN_PRICE_CENTS", "1900").strip() or "1900")
 PRICE_CURRENCY = os.getenv("DEEP_SCAN_CURRENCY", "aud").strip().lower() or "aud"
 
+# Lets specific signed-in emails deep-scan any repo without a real purchase --
+# for Moses to test the paid product on the live site without paying $19 each
+# time. Deliberately still requires the real sign-in flow (a magic-link email
+# to that exact address), not a URL parameter or header: bypassing PAYMENT is
+# fine here, bypassing AUTHENTICATION is not. Empty by default -- nobody gets
+# this unless the env var explicitly lists their email.
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+
 # Stripe tax classification for the deep scan. Required, not optional: this
 # account has Managed Payments enabled (Stripe acts as merchant of record and
 # handles tax), and Managed Payments refuses any line item without an eligible

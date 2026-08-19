@@ -132,7 +132,7 @@ def _esc(s):
 def entitlement_for_request(repo):
     """The purchase entitling this visitor to deep-scan `repo`, or None.
 
-    Two ways to be entitled, and the difference matters:
+    Three ways to be entitled, and the difference matters:
 
     1. Signed in. The email is proven — they clicked a link or typed a code we
        emailed — so they get every purchase made with that address.
@@ -140,6 +140,12 @@ def entitlement_for_request(repo):
     2. Just paid, not yet signed in. `paid_sid` is set only after asking Stripe
        whether that Checkout Session was really paid, and it grants access to THAT
        purchase alone.
+
+    3. Signed in AND on the ADMIN_EMAILS allowlist — a synthetic entitlement,
+       no real purchase row, so Moses can test the live paid product without
+       paying $19 each time. Still requires the real sign-in flow (proof of
+       inbox access), same as path 1 — only the PAYMENT step is skipped, not
+       authentication.
 
     Why not simply trust the email Stripe collected and sign them straight in?
     Because Stripe does not verify it. Someone could check out with a stranger's
@@ -155,6 +161,15 @@ def entitlement_for_request(repo):
         row = billing.active_purchase_for(_sb(), user["email"], canonical)
         if row:
             return row
+        if user["email"].strip().lower() in billing.ADMIN_EMAILS:
+            return {
+                "id": f"admin-bypass-{canonical}",
+                "email": user["email"],
+                "repo": canonical,
+                "status": "active",
+                "expires_at": "2099-01-01T00:00:00+00:00",
+                "scans_used": 0,
+            }
 
     if session.get("paid_sid") and session.get("paid_repo") == canonical:
         row = billing.active_purchase_for(_sb(), session.get("paid_email", ""), canonical)

@@ -148,6 +148,50 @@ def start_job(job_id):
     t.start()
 
 
+def _build_findings_summary(report):
+    """Per-finding summary for the advice-prompt step (analyse_step4) — same
+    shape app.js's runPart2() builds client-side for the free tier (real
+    finding titles/detail per layer, not just a bare layer status), so a
+    paying customer's fix prompts are never thinner than what a free visitor
+    already gets. Goes further where the paid tier legitimately can: real
+    package names, versions, and CVE ids for Libraries findings, since that
+    detail is what the $19 buys — Decision 6 only restricts what the FREE
+    tier is shown, not what this prompt is allowed to say."""
+    h = report.get("health", {})
+    stack_names = ", ".join(s.get("name", "") for s in report.get("stack", [])[:5])
+    lines = [
+        f"Score: {h.get('score','')}, Critical: {h.get('critical',0)}, "
+        f"Warnings: {h.get('warnings',0)}. Stack: {stack_names}.",
+        "Findings by layer:",
+    ]
+    osv = report.get("osv_scan") or {}
+    for layer in report.get("layers", []):
+        name = layer.get("name", "")
+        status = layer.get("status", "")
+        if name == "Libraries":
+            vulns = osv.get("vulnerabilities") or []
+            if vulns:
+                pkg_list = "; ".join(
+                    f"{v.get('package','')}@{v.get('version_found','')} ({v.get('id','')})"
+                    + (f" -> fix: {v['fixed_version']}" if v.get("fixed_version") else "")
+                    for v in vulns
+                )
+                lines.append(f"- Libraries [{status}]: {pkg_list}")
+            else:
+                lines.append(f"- Libraries [{status}]: no known dependency vulnerabilities.")
+            continue
+        findings = [
+            f for f in (layer.get("expert") or {}).get("findings", [])
+            if f.get("title") and f.get("title") != "No issues found"
+        ]
+        if findings:
+            detail = "; ".join(f"{f.get('title','')}: {f.get('detail','')}" for f in findings)
+            lines.append(f"- {name} [{status}]: {detail}")
+        else:
+            lines.append(f"- {name} [{status}]: no issues found")
+    return "\n".join(lines)
+
+
 def _run_job(job_id):
     job = get_job(job_id)
     if not job:
@@ -197,18 +241,22 @@ def _run_job(job_id):
         # "Advice Prompts" — copy-paste-into-Lovable/Replit fix guidance. The
         # free scan only generates these when a visitor clicks "Run Part 2";
         # a paying customer shouldn't need the extra click for something the
-        # $19 is partly buying, so this always runs. Same compact summary
-        # format the client builds for the free scan's version of this call.
+        # $19 is partly buying, so this always runs. Uses the SAME enriched
+        # per-finding summary shape app.js's runPart2() builds for the free
+        # tier (real finding titles/detail per layer, not just a bare status)
+        # — a paying customer's fix prompts should never come out thinner
+        # than what a free visitor already gets. Goes further where the paid
+        # tier legitimately can: real package names/CVE ids for Libraries
+        # findings, not just a count (Decision 6 only restricts what the
+        # FREE tier is shown, not what this prompt can say).
         _update_job(job_id, progress="Writing advice prompts for your AI builder...")
-        stack_names = ", ".join(s.get("name", "") for s in report.get("stack", [])[:5])
-        layer_summary = ", ".join(
-            f"{l.get('name','')}({l.get('status','')})" for l in report.get("layers", [])
-        )
-        h = report.get("health", {})
-        findings_summary = (
-            f"Score: {h.get('score','')}, Critical: {h.get('critical',0)}, "
-            f"Warnings: {h.get('warnings',0)}. Stack: {stack_names}. Layers: {layer_summary}"
-        )
+        findings_summary = _build_findings_summary(report)
+        # Same cap app.py's run_step4() applies to the free tier's version of
+        # this call — a real multi-finding, multi-layer summary with exact
+        # package/CVE detail can get long, and this is still one prompt with
+        # a timeout budget, not unlimited context.
+        if len(findings_summary) > 3000:
+            findings_summary = findings_summary[:3000] + "..."
         try:
             step4 = _deps["analyse_step4"](repo, report.get("built_with", ""), findings_summary)
             report["top_fixes"] = step4.get("top_fixes", [])
@@ -219,6 +267,24 @@ def _run_job(job_id):
         _update_job(job_id, progress="Saving your report...")
         report_id = _deps["save_report_data"](report)
         _deps["consume_scan"](job["purchase_id"])
+
+        # Best-effort completion email — the buyer's told to close the tab and
+        # come back, so without this the only way to know it's done is to
+        # keep polling. Looks the email up fresh from purchases rather than
+        # storing it on the job row, so this needs no schema change. Never
+        # lets an email failure fail the job — the report is already saved.
+        try:
+            sb = _sb()
+            email = None
+            if sb is not None:
+                purchase = sb.table("purchases").select("email").eq("id", job["purchase_id"]).execute()
+                if purchase.data:
+                    email = purchase.data[0].get("email")
+            if email:
+                report_url = f"{_deps['base_url']}/report/{report_id}"
+                _deps["send_scan_complete_email"](email, repo, report_url)
+        except Exception as e:
+            print(f"[deepscan] completion email skipped: {e}", flush=True)
 
         _update_job(job_id, status="done", progress="Done", report_id=report_id)
     except Exception as e:
