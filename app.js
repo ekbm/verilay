@@ -981,6 +981,7 @@ function osvFindingsHTML(data) {
   h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
   h += osv.critical + ' serious, ' + osv.warnings + ' less severe. These are real, named, publicly documented issues in the exact library versions your app uses — the same kind of check tools like Snyk and GitHub\'s own security alerts run.';
   h += '</div>';
+  h += '<div style="font-size:12px;color:var(--txt);margin-top:8px">Two ways to fix this: ask your AI builder to investigate using the free advice prompt below, or skip the investigation — the <a href="/deep-scan" style="color:var(--pu)">deep scan</a> hands you the exact package names, versions, and fixes already found.</div>';
   h += '</div>';
   return h;
 }

@@ -234,7 +234,12 @@ def _account_nav():
     return desktop, mobile
 
 
-def save_report_data(data):
+def save_report_data(data, user_id=None):
+    """`user_id`: explicit override for callers with no Flask session of
+    their own — the deep-scan engine calls this from a background thread,
+    which has no request context, so the usual _current_uid() session
+    read would silently find nobody. Free-analysis callers pass nothing
+    and keep working exactly as before."""
     report_id = _uuid.uuid4().hex[:12]
     if _HAS_SUPABASE:
         try:
@@ -275,9 +280,11 @@ def save_report_data(data):
                 "score": data.get("health", {}).get("score", "")
             }
             # Attach the report to a signed-in account, so paid users can find it
-            # again. Only for signed-in users, which today is nobody — an anonymous
-            # free analysis inserts exactly the same row it always did.
-            _uid = _current_uid()
+            # again. An anonymous free analysis inserts exactly the same row it
+            # always did. Explicit `user_id` (from the deep-scan engine, whose
+            # background thread has no session of its own) wins over the
+            # session read, which only ever applies to the free-analysis path.
+            _uid = user_id if user_id is not None else _current_uid()
             if _uid:
                 try:
                     _sb.table("reports").insert(dict(row, user_id=_uid)).execute()
@@ -3728,7 +3735,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
 
     # Summary card
     out.append(f"""<div class="card">
-  <div style="font-size:20px;font-weight:700;margin-bottom:.25rem">{data.get('repo','')}</div>
+  <div style="font-size:20px;font-weight:700;margin-bottom:.25rem;overflow-wrap:break-word;word-break:break-word">{data.get('repo','')}</div>
   <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
   <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
   <div style="font-size:13px;color:#555">{verdict_reason}</div>
@@ -3822,7 +3829,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
             out.append(
                 f'<div class="card"><strong style="color:#EF9F27">{found} {"dependency has" if found==1 else "dependencies have"} '
                 f'known vulnerabilities</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
-                f'Checked {osv["packages_checked"]} {noun} against OSV.dev.</div></div>'
+                f'Checked {osv["packages_checked"]} {noun} against OSV.dev.</div>'
+                '<div style="font-size:13px;color:#666;margin-top:.5rem">Two ways to fix this: ask your AI '
+                'builder to investigate using the free advice prompt below, or skip the investigation — the '
+                '<a href="/deep-scan" style="color:#534AB7">deep scan</a> hands you the exact package names, '
+                'versions, and fixes already found.</div></div>'
             )
 
     # Ask AI button

@@ -141,10 +141,17 @@ def _get_prompt(key):
     return content
 
 
-def start_job(job_id):
+def start_job(job_id, user_id=None):
     """Kick off the scan in a background thread and return immediately —
-    Decision 1: the buyer gets a page to poll, not a held-open connection."""
-    t = threading.Thread(target=_run_job, args=(job_id,), daemon=True)
+    Decision 1: the buyer gets a page to poll, not a held-open connection.
+
+    `user_id` is captured by the CALLER, in the original request, where
+    Flask's session is actually available — a background thread has no
+    request context, so save_report_data()'s usual "read the signed-in
+    user from the session" fallback silently finds nobody and every deep
+    scan report saves unlinked from any account, purchased or admin-
+    bypassed alike. Passed through explicitly instead of relying on it."""
+    t = threading.Thread(target=_run_job, args=(job_id, user_id), daemon=True)
     t.start()
 
 
@@ -192,7 +199,7 @@ def _build_findings_summary(report):
     return "\n".join(lines)
 
 
-def _run_job(job_id):
+def _run_job(job_id, user_id=None):
     job = get_job(job_id)
     if not job:
         return
@@ -265,7 +272,7 @@ def _run_job(job_id):
             print(f"[deepscan] advice prompts failed, report still valid without them: {e}", flush=True)
 
         _update_job(job_id, progress="Saving your report...")
-        report_id = _deps["save_report_data"](report)
+        report_id = _deps["save_report_data"](report, user_id)
         _deps["consume_scan"](job["purchase_id"])
 
         # Best-effort completion email — the buyer's told to close the tab and

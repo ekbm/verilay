@@ -88,6 +88,7 @@ input:focus{outline:none;border-color:#534AB7}
 .price{font-size:34px;font-weight:700;letter-spacing:-0.02em}
 .row{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.6rem 0;border-bottom:0.5px solid #f0efec;font-size:14px}
 .row:last-child{border-bottom:none}
+.row>span:first-child{min-width:0;overflow-wrap:break-word;word-break:break-word}
 .tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:#E1F5EE;color:#085041}
 .tag-off{background:#f0efec;color:#6b6966}
 a{color:#534AB7}
@@ -753,8 +754,14 @@ def deep_scan_start(owner, repo):
     if not ent:
         return redirect(f"/deep/{_esc(owner)}/{_esc(repo)}")
 
+    # Captured HERE, in the real request with a real session — the scan
+    # itself runs in a background thread with no session of its own, so
+    # this is the only point the signed-in user can actually be read.
+    user = accounts.current_user()
+    user_id = user["id"] if user else None
+
     job_id = deepscan.create_job(full, ent["id"])
-    deepscan.start_job(job_id)
+    deepscan.start_job(job_id, user_id)
     return redirect(f"/deep-job/{job_id}")
 
 
