@@ -623,23 +623,44 @@ def account():
             'yet. If you paid with a different email, sign in with that one instead.</p></div>'
         )
 
+    is_admin = user["email"].strip().lower() in billing.ADMIN_EMAILS
+
     if reports:
         items = []
         for rep in reports:
+            repo = _esc(rep["repo"] or "")
+            # Admin re-scan link on every report, not just purchased ones —
+            # an admin's synthetic entitlement (see entitlement_for_request)
+            # never writes a row to `purchases`, so the "Deep scans you have
+            # bought" list above genuinely has nothing to show for a repo
+            # scanned via the bypass. This is where an admin actually finds
+            # their way back to re-scanning it.
+            admin_rescan = f' &nbsp;<a href="/deep/{repo}">Re-scan</a>' if is_admin and repo else ""
             items.append(
-                f'<div class="row"><span><strong>{_esc(rep["repo"] or "Untitled")}</strong>'
+                f'<div class="row"><span><strong>{repo or "Untitled"}</strong>'
                 f'<br><span class="note">{_esc(rep["when"])}</span></span>'
                 f'<span>{_esc(rep["score"] or "—")} &nbsp;'
-                f'<a href="/report/{_esc(rep["id"])}">Open</a></span></div>'
+                f'<a href="/report/{_esc(rep["id"])}">Open</a>{admin_rescan}</span></div>'
             )
         reports_html = '<div class="card">' + "".join(items) + "</div>"
     else:
         reports_html = ('<div class="card"><p style="margin:0">No reports saved to this '
                         'account yet. Any analysis you run while signed in shows up here.</p></div>')
 
+    admin_note = ""
+    if is_admin:
+        admin_note = (
+            '<div class="card" style="background:#EEEDFE;border-color:#534AB7;margin-bottom:1rem">'
+            '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
+            '<strong>any</strong> repo directly from <a href="/deep-scan" style="color:#3C3489">'
+            'Analyse</a> — no purchase needed, so it will not show in the "bought" list below. '
+            'Repos you have already scanned as admin get a Re-scan link under Your reports.</p></div>'
+        )
+
     body = f"""
   <div class="eyebrow">Your account</div>
   <h1>{_esc(user["email"])}</h1>
+  {admin_note}
   <h2>Deep scans you have bought</h2>
   {purchases_html}
   <h2>Your reports</h2>
