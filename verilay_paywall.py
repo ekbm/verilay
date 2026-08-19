@@ -165,14 +165,41 @@ def entitlement_for_request(repo):
 
 # ── Pricing / entry point ──────────────────────────────────────────────────────
 _WHAT_YOU_GET = """
-  <h2>What the deep scan does that the free one doesn't</h2>
-  <ul>
-    <li>Reads far more of your code. The free analysis picks the 25 files most
-        likely to matter — enough to be useful, not enough to be thorough.</li>
-    <li>Re-scan the same app whenever you like for 30 days, so you can fix
-        something and check that you actually fixed it.</li>
-    <li>Your reports are kept in an account, so they are still there next week.</li>
-  </ul>
+  <h2>Free analysis vs. the deep scan</h2>
+  <div style="overflow-x:auto">
+  <table style="width:100%;min-width:480px;border-collapse:collapse;margin-bottom:.75rem">
+    <tr style="border-bottom:0.5px solid #e8e6e0">
+      <th style="text-align:left;padding:6px 8px 6px 0"></th>
+      <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b6966;font-weight:600">Free</th>
+      <th style="text-align:left;padding:6px 0;font-size:12px;color:#6b6966;font-weight:600">Deep scan</th>
+    </tr>
+    <tr style="border-bottom:0.5px solid #f0efec">
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Files read</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">25 — the ones most likely to matter</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">150 — 6&times; more of your code</td>
+    </tr>
+    <tr style="border-bottom:0.5px solid #f0efec">
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Dependency vulnerabilities</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">Number and severity only</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Exact package, version, and CVE for each</td>
+    </tr>
+    <tr style="border-bottom:0.5px solid #f0efec">
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Fix guidance</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">Up to 8 prompts to investigate with your AI builder</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Same prompts, grounded in the exact packages found</td>
+    </tr>
+    <tr style="border-bottom:0.5px solid #f0efec">
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Checking a fix worked</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">Run a fresh analysis (may sample different files)</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Unlimited re-scans of the same app for 30 days</td>
+    </tr>
+    <tr>
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Reports saved</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">Via your share link</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">In your account</td>
+    </tr>
+  </table>
+  </div>
   <p class="note">The free analysis is not going away and is not getting worse.
   Every file is still checked for exposed keys, free, for everyone. Paying adds
   depth — it never removes anything.</p>

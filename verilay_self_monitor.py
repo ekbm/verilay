@@ -212,8 +212,6 @@ def badge_html():
         return ""
 
     names = ", ".join(r["app_name"] for r in checked)
-    most_recent = max(r["last_checked_at"] for r in checked)
-    age = _human_age(most_recent)
     total_open = sum(r["critical"] + r["warnings"] for r in checked)
 
     resolved = 0
@@ -230,7 +228,9 @@ def badge_html():
     elif resolved > 0:
         detail = f"{resolved} issue{'s' if resolved != 1 else ''} resolved since the last check"
     else:
-        detail = f"checked {age}"
+        detail = ""
+
+    detail_html = f" &nbsp;·&nbsp; {detail}" if detail else ""
 
     return (
         '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--grl);'
@@ -238,7 +238,7 @@ def badge_html():
         'display:inline-block">'
         '<span style="width:8px;height:8px;border-radius:50%;background:var(--gr);'
         'display:inline-block;flex-shrink:0"></span>'
-        f'Continuously monitoring {len(checked)} of our own apps — {names} &nbsp;·&nbsp; {detail}'
+        f'Continuously monitoring {len(checked)} of our own apps — {names}{detail_html}'
         '</div>'
     )
 
@@ -268,30 +268,15 @@ def sample_table_html():
         '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;'
         'max-width:420px;margin:0 auto 1rem;text-align:left">'
         '<div style="font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;'
-        'letter-spacing:.05em;margin-bottom:6px">Example — the kind of thing a scan finds in your dependencies</div>'
+        'letter-spacing:.05em;margin-bottom:6px">Example — the level of detail a deep scan digs up in your dependencies</div>'
         '<table style="width:100%;border-collapse:collapse">'
         '<tr><th style="padding:4px 10px;font-size:11px;color:var(--mut);text-align:left">Vulnerability type</th>'
         '<th style="padding:4px 10px;font-size:11px;color:var(--mut);text-align:center">Found</th></tr>'
         f'{rows}'
         '</table>'
         '<div style="font-size:11px;color:var(--mut);margin-top:8px">'
-        'Illustrative example — not real data from a specific app.</div>'
+        'Illustrative example — not real data from a specific app. Your free report already tells you '
+        'how many vulnerabilities exist; the <a href="/deep-scan" style="color:var(--pu)">deep scan</a> '
+        'tells you exactly which ones, and how to fix each.</div>'
         '</div>'
     )
-
-
-def _human_age(iso_ts):
-    try:
-        then = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        return "recently"
-    delta = datetime.now(timezone.utc) - then
-    minutes = delta.total_seconds() / 60
-    if minutes < 60:
-        return "less than an hour ago"
-    hours = minutes / 60
-    if hours < 24:
-        n = int(hours)
-        return f"{n} hour{'s' if n != 1 else ''} ago"
-    days = int(hours / 24)
-    return f"{days} day{'s' if days != 1 else ''} ago"
