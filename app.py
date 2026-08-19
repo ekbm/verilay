@@ -4750,7 +4750,7 @@ input:focus{border-color:var(--pu)}
     <div style="display:flex;align-items:flex-start;gap:12px">
       <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
       <div style="flex:1">
-        <div style="font-size:15px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for the deep analysis?</div>
+        <div style="font-size:15px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for Part 2?</div>
         <div style="font-size:13px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
@@ -4762,7 +4762,7 @@ input:focus{border-color:var(--pu)}
 
   <div id="p2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
     <div class="spin" style="width:28px;height:28px;border-width:2.5px;margin-bottom:.75rem"></div>
-    <div style="font-size:14px;color:var(--mut)">Running deep analysis...</div>
+    <div style="font-size:14px;color:var(--mut)">Writing your fix list...</div>
   </div>
 
   <div id="p2-results"></div>

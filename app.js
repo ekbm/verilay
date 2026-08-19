@@ -770,7 +770,7 @@ function scoreBannerHTML(score, hasLayers, isPreview) {
     return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--blt)"><i class="ti ti-eye"></i> <strong>This was a quick URL preview — not a graded analysis.</strong> A URL scan only sees what the site serves to a browser, not your source code. To get a real score, scan your GitHub repo or upload a ZIP.</div>';
   }
   if (!hasLayers) {
-    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--blt)"><i class="ti ti-loader"></i> Running deep analysis — your score appears once all layers are checked.</div>';
+    return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--blt)"><i class="ti ti-loader"></i> Analysing your codebase — your score appears once all layers are checked.</div>';
   }
   if (!score || score === 'A') return '';
   var scoreBg = '', scoreBdr = '', scoreMsg = '';
@@ -1529,7 +1529,7 @@ async function runPart2() {
     renderPart2(data);
   } catch(e) {
     document.getElementById('p2-loading').style.display = 'none';
-    document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:13px;margin-top:.75rem">Deep analysis timed out or failed — this can happen with large or complex apps. <a href=\'#\' onclick=\'runPart2();return false;\' style=\'color:var(--rd);font-weight:600\'>Try again</a> or skip and use the advice prompts above.</div>';
+    document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:13px;margin-top:.75rem">Part 2 timed out or failed — this can happen with large or complex apps. <a href=\'#\' onclick=\'runPart2();return false;\' style=\'color:var(--rd);font-weight:600\'>Try again</a> or skip and use the advice prompts above.</div>';
   }
 }
 
