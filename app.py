@@ -2227,6 +2227,15 @@ def stats():
     return jsonify({"analyses": count, "formatted": f"{count:,}"})
 
 
+@app.route("/self-monitor-health")
+def self_monitor_health():
+    """Diagnostic view into the self-monitoring teaser — added because
+    Railway's log viewer isn't always easy to search, and this table never
+    holds anything more sensitive than an access/infra error string (see
+    verilay_self_monitor.health_data's docstring)."""
+    return jsonify(self_monitor.health_data())
+
+
 # Blog routes — paste this into app.py before the sitemap route
 
 BLOG_POSTS = [

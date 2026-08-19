@@ -127,24 +127,61 @@ def _run_scan(app_name, repo):
             "prev_critical": prev_row.get("critical"),
             "prev_warnings": prev_row.get("warnings"),
             "last_checked_at": datetime.now(timezone.utc).isoformat(),
+            "last_error": None,  # clear any stale error now that a scan actually succeeded
         }).eq("app_name", app_name).execute()
         print(f"[self-monitor] {app_name}: {score} ({crit} critical, {warn} warnings)", flush=True)
     except Exception as e:
-        print(f"[self-monitor] scan failed for {app_name}: {e}", flush=True)
+        err_text = f"{type(e).__name__}: {e}"[:500]
+        print(f"[self-monitor] scan failed for {app_name}: {err_text}", flush=True)
         # maybe_tick() already marked this app "checked" (last_checked_at=now)
         # the moment it claimed the row, before this scan ran — so a FAILED
         # scan looks identical to a successful one and would otherwise sit
         # untried for the full CHECK_INTERVAL_DAYS. Back the timestamp off
         # so the next homepage visit picks it up again shortly instead of a
         # week from now. Best-effort — if even this fails, worst case is the
-        # original 7-day wait, not a crash.
+        # original 7-day wait, not a crash. Also persist the actual error so
+        # it's visible from /self-monitor-health without needing Railway log
+        # access — Supabase's own dashboard logs are a different system and
+        # never show these application-level prints.
         try:
             retry_at = datetime.now(timezone.utc) - timedelta(days=CHECK_INTERVAL_DAYS) + timedelta(hours=1)
             sb.table("self_monitoring").update(
-                {"last_checked_at": retry_at.isoformat()}
+                {"last_checked_at": retry_at.isoformat(), "last_error": err_text}
             ).eq("app_name", app_name).execute()
         except Exception:
             pass
+
+
+def health_data():
+    """Diagnostic dict for /self-monitor-health — exists so a failure can be
+    diagnosed by looking at a URL instead of digging through Railway's log
+    viewer (Supabase's own dashboard logs are a different system and never
+    show these prints). Safe to expose: an error like "404 from GitHub" is
+    an access/infra fact, not a vulnerability finding about any app's actual
+    security posture, so it doesn't violate the "never show real findings
+    publicly" rule the rest of this module follows."""
+    sb = _sb()
+    if sb is None:
+        return {"configured": False}
+    try:
+        res = sb.table("self_monitoring").select("*").order("app_name").execute()
+        rows = res.data or []
+    except Exception as e:
+        return {"configured": True, "error": f"could not read self_monitoring table: {e}"}
+    return {
+        "configured": True,
+        "check_interval_days": CHECK_INTERVAL_DAYS,
+        "apps": [
+            {
+                "app_name": r.get("app_name"),
+                "repo": r.get("repo"),
+                "score": r.get("score"),
+                "last_checked_at": r.get("last_checked_at"),
+                "last_error": r.get("last_error"),
+            }
+            for r in rows
+        ],
+    }
 
 
 def badge_html():
