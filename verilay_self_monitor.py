@@ -276,7 +276,7 @@ def sample_table_html():
         '</table>'
         '<div style="font-size:11px;color:var(--mut);margin-top:8px">'
         'Illustrative example — not real data from a specific app. Your free report already tells you '
-        'how many vulnerabilities exist; the <a href="/deep-scan" style="color:var(--pu)">deep scan</a> '
-        'tells you exactly which ones, and how to fix each.</div>'
+        'how many vulnerabilities exist; the <a href="/deep-scan" target="_blank" rel="noopener" '
+        'style="color:var(--pu)">deep scan</a> tells you exactly which ones, and how to fix each.</div>'
         '</div>'
     )
