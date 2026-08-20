@@ -1203,30 +1203,16 @@ function renderReport(data) {
 
   // (Scope/limitations notice consolidated into the files-coverage block below.)
 
-  // Ask section — merged: instant Ask Verilay (general) + open-in-Claude (app-specific)
-  var critN = h.critical || 0, warnN = h.warnings || 0;
-  // Adaptive sample questions based on the scan outcome
-  var q1, q1label;
-  if (isSurf || isPreview) {
-    q1label = 'Why does a URL scan see less?'; q1 = 'Why does a URL scan see less than scanning my code repo, and should I scan my repo?';
-  } else if (critN > 0) {
-    q1label = 'How do I fix critical issues?'; q1 = 'How do I fix critical security issues in an AI-built app?';
-  } else if ((h.score === 'A' || h.score === 'B')) {
-    q1label = 'Is my app safe to launch?'; q1 = 'Is my app safe to launch?';
-  } else {
-    q1label = 'How do I fix common issues?'; q1 = 'How do I fix common security issues in an AI-built app?';
-  }
-  function chip(label, q) {
-    return '<a href="/ask-verilay?q=' + encodeURIComponent(q) + '" target="_blank" rel="noopener" style="font-size:13px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap">' + esc(label) + '</a>';
-  }
+  // Ask section — the report-grounded inline box (in-app, this repo's real
+  // data) plus open-in-Claude (for a longer conversation with full code
+  // access). The general Ask Verilay entry points (chips + "Open Ask
+  // Verilay" link) used to live here too, but Moses found having 4
+  // different "ask something" affordances in one card confusing -- general
+  // Ask Verilay still exists as its own separate page/nav link, just not
+  // duplicated inside every report anymore.
   html += '<div style="margin:.75rem 0;padding:1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r)">';
   html += '<div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
   html += '<div style="font-size:13px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay a quick question below, using your real results &mdash; or open Claude for a longer conversation about your specific code.</div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:.85rem">';
-  html += chip(q1label, q1);
-  html += chip('What does my grade mean?', 'What does my Verilay grade mean?');
-  html += '<a href="/ask-verilay" target="_blank" rel="noopener" style="font-size:13px;color:var(--pu);background:transparent;border:0.5px solid var(--pu);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap;font-weight:500">Open Ask Verilay &rarr;</a>';
-  html += '</div>';
   // Report-grounded inline box -- disabled until the 'saved' SSE event sets
   // savedReportId (this card renders on step1, well before the report is
   // actually saved). See the 'saved' case in handleStreamEvent for the

@@ -563,48 +563,46 @@ def fetch_github(repo_url):
     if not _re_gh.fullmatch(r"[A-Za-z0-9._-]{1,100}", owner) or \
        not _re_gh.fullmatch(r"[A-Za-z0-9._-]{1,100}", repo):
         raise ValueError("That does not look like a valid GitHub repository URL.")
-    base  = f"https://api.github.com/repos/{owner}/{repo}"
-    hdrs  = {"Accept":"application/vnd.github.v3+json"}
-    if GITHUB_TOKEN: hdrs["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    # One bulk request for the whole repo (fetch_all_files_tarball, already
+    # proven elsewhere in this codebase for secret-scanning and the deep
+    # scan) instead of the OLD design: a git-trees listing call, then ONE
+    # SEPARATE HTTP request per selected file (up to MAX_FILES, sequentially).
+    # That old design silently failed for large repos -- fetch_file()'s own
+    # `except: return None` swallowed every failure, including a 403 hit
+    # partway through a long sequential run, so a big repo could end up with
+    # an EMPTY files dict despite genuinely existing and being readable --
+    # surfacing as "No readable files found. Try ZIP upload." with no real
+    # relationship to file size beyond "more files selected = more individual
+    # requests = more chances to silently fail." One bulk request removes
+    # that failure mode entirely.
+    try:
+        all_files_text = fetch_all_files_tarball(owner, repo, GITHUB_TOKEN)
+    except ValueError:
+        raise  # already a clean, specific message (e.g. archive-too-large)
+    except Exception as e:
+        msg = str(e)
+        if "404" in msg or "Not Found" in msg:
+            raise ValueError("Repo not found or private. Make it public or use ZIP upload.")
+        if "403" in msg:
+            raise ValueError("GitHub rate limit hit. Add a GITHUB_TOKEN to .env.")
+        raise ValueError(f"Could not read this repository from GitHub. Try ZIP upload instead. ({msg[:150]})")
 
-    tr = requests.get(f"{base}/git/trees/HEAD?recursive=1", headers=hdrs, timeout=15)
-    if tr.status_code == 404: raise ValueError("Repo not found or private. Make it public or use ZIP upload.")
-    if tr.status_code == 403: raise ValueError("GitHub rate limit hit. Add a GITHUB_TOKEN to .env.")
-    tr.raise_for_status()
-    all_files = [i["path"] for i in tr.json().get("tree",[]) if i["type"]=="blob"]
+    all_files = list(all_files_text.keys())
 
-    def fetch_file(path):
-        try:
-            r = requests.get(f"{base}/contents/{path}", headers=hdrs, timeout=25)
-            if r.status_code != 200: return None
-            d = r.json()
-            if isinstance(d, list): return None
-            if d.get("encoding") == "base64":
-                return base64.b64decode(d["content"]).decode("utf-8","replace")[:MAX_FILE_CHARS]
-            return None
-        except: return None
-
-    files = {}
     # Use smart file selection — security-scored prioritisation
-    selected_paths = smart_file_selection(
-        {p: True for p in all_files},
-        max_files=MAX_FILES
-    )
+    selected_paths = smart_file_selection(all_files_text, max_files=MAX_FILES)
 
     # Ensure manifests are always first — swap in if missing
     for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
-        if manifest in all_files and manifest not in selected_paths:
+        if manifest in all_files_text and manifest not in selected_paths:
             # Replace last item to stay within MAX_FILES
             if len(selected_paths) >= MAX_FILES:
                 selected_paths[-1] = manifest
             else:
                 selected_paths.insert(0, manifest)
 
-    # Fetch selected files — hard cap at MAX_FILES
-    for path in selected_paths[:MAX_FILES]:
-        if path in all_files:
-            c = fetch_file(path)
-            if c: files[path] = c
+    # Slice from what's already in memory -- no further network calls at all.
+    files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:MAX_FILES] if p in all_files_text}
 
     return files, all_files, f"{owner}/{repo}"
 
@@ -2424,21 +2422,30 @@ def analyse_stream():
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f2 = executor.submit(analyse_step2, files, repo_name, scan_block)
                 f3 = executor.submit(analyse_step3, files, repo_name, osv_teaser_block)
-                # Send keepalive every 20s while waiting — prevents Railway 30s timeout
-                deadline = _time.time() + 90
+                # Send keepalive every 15s while waiting — prevents Railway's
+                # own connection timeout from firing. Loops until BOTH futures
+                # are actually done (not a fixed cutoff then a blocking wait) --
+                # a real analysis can now legitimately take a few minutes since
+                # the token budgets were raised to stop silent truncation
+                # (see analyse_step2/step3's own comments), and the old design
+                # had a genuine gap: after its 90s keepalive loop it switched to
+                # a BLOCKING 30s .result(timeout=30) with no yields at all,
+                # which is exactly the kind of silent gap that looks like a
+                # hang/timeout to the platform even before our own code errors.
+                deadline = _time.time() + 240
                 while _time.time() < deadline:
                     done2 = f2.done()
                     done3 = f3.done()
                     if done2 and done3:
                         break
                     yield json.dumps({"event":"status","data":"Analysing your codebase — layers will appear shortly..."}) + "\n"
-                    _time.sleep(20)
+                    _time.sleep(15)
                 try:
-                    s2 = f2.result(timeout=30)
+                    s2 = f2.result(timeout=10)
                 except Exception as e:
                     s2_err = str(e)
                 try:
-                    s3 = f3.result(timeout=30)
+                    s3 = f3.result(timeout=10)
                 except Exception as e:
                     s3_err = str(e)
             # Now yield results from main thread
