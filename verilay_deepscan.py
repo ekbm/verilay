@@ -341,6 +341,9 @@ def _run_job(job_id, user_id=None):
         report["architecture_diagram"] = _deps["build_architecture_diagram"](
             report.get("stack", []), report.get("layers", [])
         )
+        report["module_purpose_rows"] = _deps["build_module_purpose_rows_html"](
+            report.get("stack", []), report.get("layers", [])
+        )
 
         # "Advice Prompts" — copy-paste-into-Lovable/Replit fix guidance. The
         # free scan only generates these when a visitor clicks "Run Part 2";

@@ -1328,6 +1328,35 @@ def _diagram_svg_esc(text):
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
+# Fixed reading order for list-style module output (build_module_purpose_html)
+# — distinct from _DIAGRAM_LAYOUT's spatial positions, which are about where
+# each box sits, not what order a person reads down a list in.
+_MODULE_READING_ORDER = ["Frontend", "API", "Auth", "Database", "Config", "Libraries"]
+
+
+def _diagram_present_names(stack, layers):
+    """Which of the 6 possible modules are present for this app, and the
+    layers dict keyed by name. Shared by build_architecture_diagram
+    (spatial layout) and build_module_purpose_html (list layout) so the
+    two sections always agree on which modules exist for a given app —
+    Frontend/API/Config/Libraries always, Auth/Database only if the stack
+    has that category (a static app correctly has no Auth/Database entry
+    in either section, not just the diagram)."""
+    layers_by_name = {l.get("name"): l for l in layers if l.get("name") in ALL_LAYER_NAMES}
+    present_categories = {(s.get("category") or "").lower() for s in (stack or [])}
+
+    present = {"Frontend", "API", "Config", "Libraries"}
+    if "auth" in present_categories:
+        present.add("Auth")
+    if "database" in present_categories:
+        present.add("Database")
+    # Only include a module we actually have real analysis text for
+    # (matters mainly for tests / partial fixtures; production layers lists
+    # always contain all 6 names by construction).
+    present = {n for n in present if n in layers_by_name}
+    return present, layers_by_name
+
+
 def build_architecture_diagram(stack, layers):
     """One ready-to-embed <svg> string showing the app's pieces and how they
     connect — built entirely from data analyse_step1/2/3 already produce,
@@ -1338,18 +1367,7 @@ def build_architecture_diagram(stack, layers):
     if not layers:
         return ""
 
-    layers_by_name = {l.get("name"): l for l in layers if l.get("name") in ALL_LAYER_NAMES}
-    present_categories = {(s.get("category") or "").lower() for s in (stack or [])}
-
-    present = {"Frontend", "API", "Config", "Libraries"}
-    if "auth" in present_categories:
-        present.add("Auth")
-    if "database" in present_categories:
-        present.add("Database")
-    # Only draw a box for a layer we actually have real analysis text for
-    # (matters mainly for tests / partial fixtures; production layers lists
-    # always contain all 6 names by construction).
-    present = {n for n in present if n in layers_by_name}
+    present, layers_by_name = _diagram_present_names(stack, layers)
     if not present:
         return ""
 
@@ -1438,6 +1456,41 @@ def build_architecture_diagram(stack, layers):
 
     parts.append('</svg>')
     return "".join(parts)
+
+
+def build_module_purpose_rows_html(stack, layers):
+    """The row content for the "What each part does" list that lives inside
+    the SAME card as the architecture diagram — reuses the identical
+    present/labels/description data as build_architecture_diagram (via
+    _diagram_present_names) so the two always agree on which modules exist,
+    zero new LLM calls. Returns just the row markup, not a wrapping
+    toggle/collapse element — the two renderers use different collapse
+    mechanisms (view_report has no JS at all, so it wraps this in a native
+    <details>; the live view wraps it in its own JS toggle button, matching
+    the existing "What your app is made of" file-breakdown pattern), so
+    each renderer supplies its own chrome around this shared content."""
+    if not layers:
+        return ""
+    present, layers_by_name = _diagram_present_names(stack, layers)
+    if not present:
+        return ""
+
+    rows = []
+    for name in _MODULE_READING_ORDER:
+        if name not in present:
+            continue
+        layer = layers_by_name.get(name, {})
+        app_label = (layer.get("app_label") or "").strip()
+        headline = app_label or name
+        desc = (layer.get("learner", {}).get("what_it_does_in_your_app") or "").strip()
+        desc_html = f'<div style="font-size:13px;color:#666;margin-top:2px;line-height:1.5">{desc}</div>' if desc else ""
+        rows.append(
+            '<div style="padding:.55rem 0;border-top:0.5px solid #e5e5f0">'
+            f'<div style="font-size:14px;font-weight:600;color:#1a1917">{headline}'
+            f'<span style="font-size:11px;color:#999;font-weight:400;margin-left:4px">{name.upper()}</span></div>'
+            f'{desc_html}</div>'
+        )
+    return "".join(rows)
 
 
 def analyse_step1(files, tree, repo_name, method):
@@ -2246,7 +2299,11 @@ def analyse_stream():
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
             partial["architecture_diagram"] = build_architecture_diagram(s1.get("stack", []), partial["layers"])
-            yield json.dumps({"event":"diagram","data":{"architecture_diagram": partial["architecture_diagram"]}}) + "\n"
+            partial["module_purpose_rows"] = build_module_purpose_rows_html(s1.get("stack", []), partial["layers"])
+            yield json.dumps({"event":"diagram","data":{
+                "architecture_diagram": partial["architecture_diagram"],
+                "module_purpose_rows": partial["module_purpose_rows"],
+            }}) + "\n"
             # Derive the score and counts FROM the actual layer findings rather than
             # step 1's separate guess, so the header can never contradict the layers
             # and the grade is a deterministic result of counting, not a re-rolled judgment.
@@ -3986,7 +4043,18 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     if diagram:
         purpose = data.get("summary", "")
         purpose_line = f'<div style="font-size:13px;color:#666;margin-bottom:.75rem">{purpose}</div>' if purpose else ""
-        out.append(f'<div class="st">How Your App Fits Together</div><div class="card">{purpose_line}{diagram}</div>')
+        # One card, one toggle: the diagram itself always shows (it's the
+        # "wow" moment, shouldn't be hidden behind a click), the module
+        # list is the supplementary detail that's collapsed. No JS on this
+        # page, so <details> is the toggle mechanism here (the live view
+        # in app.js uses its own JS button for the same merged layout).
+        module_rows = data.get("module_purpose_rows", "")
+        module_block = (
+            '<details style="margin-top:.75rem;padding-top:.6rem;border-top:0.5px solid #e5e5f0">'
+            '<summary style="cursor:pointer;font-size:13px;font-weight:600;color:#534AB7">What each part does</summary>'
+            f'<div style="margin-top:.5rem">{module_rows}</div></details>'
+        ) if module_rows else ""
+        out.append(f'<div class="st">How Your App Fits Together</div><div class="card">{purpose_line}{diagram}{module_block}</div>')
 
     # Coverage — this is where "deep scan" becomes visible as a fact, not a
     # label: 150/570 files reads very differently from 25/570.
@@ -5251,6 +5319,7 @@ if _HAS_PAYWALL:
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
         increment_analysis_count=increment_analysis_count,
         build_architecture_diagram=build_architecture_diagram,
+        build_module_purpose_rows_html=build_module_purpose_rows_html,
         supabase_client=_sb,
         base_url=billing.BASE_URL,
         send_scan_complete_email=notify.send_scan_complete_email,

@@ -591,17 +591,19 @@ function handleStreamEvent(evt) {
     case 'diagram':
       var diagramEl = document.getElementById('architecture-diagram-section');
       var diagramSvg = (evt.data || {}).architecture_diagram;
+      var moduleRows = (evt.data || {}).module_purpose_rows;
       if (diagramEl && diagramSvg) {
         // Purpose caption reuses step1's summary (currentReport.summary) --
         // a separate, reliable call, not subject to the same truncation
         // risk as the per-box labels in the diagram itself.
-        var purposeLine = (currentReport && currentReport.summary)
-          ? '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">' + esc(currentReport.summary) + '</div>' : '';
-        diagramEl.innerHTML = '<div class="st">How Your App Fits Together</div><div class="card">' + purposeLine + diagramSvg + '</div>';
+        diagramEl.innerHTML = diagramCardHTML(currentReport && currentReport.summary, diagramSvg, moduleRows);
       }
       // Mirrored onto currentReport so saveToHistory() (triggered by the
       // 'saved' event right after this one) captures it consistently.
-      if (currentReport) currentReport.architecture_diagram = diagramSvg;
+      if (currentReport) {
+        currentReport.architecture_diagram = diagramSvg;
+        currentReport.module_purpose_rows = moduleRows;
+      }
       break;
     case 'saved':
       savedReportId = evt.data.report_id;
@@ -896,14 +898,40 @@ function toggleBreakdownMode() {
   btn.textContent = toExpert ? 'Simple view' : 'Developer view';
 }
 
+function diagramCardHTML(summary, diagramSvg, moduleRows) {
+  // Shared by the initial render (architectureDiagramHTML) and the live
+  // 'diagram' SSE update (handleStreamEvent) so the merged-card markup is
+  // built in exactly one place. One card, one toggle: the diagram itself
+  // always shows (it's the "wow" moment, shouldn't need a click), the
+  // module list is the supplementary detail that's collapsed -- same
+  // pattern as "What your app is made of" (toggleBreakdown), own ids so
+  // the two toggles don't collide.
+  if (!diagramSvg) return '';
+  var purposeLine = summary
+    ? '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">' + esc(summary) + '</div>' : '';
+  var moduleBlock = moduleRows ? (
+    '<div style="margin-top:.75rem;padding-top:.6rem;border-top:0.5px solid var(--bdr)">' +
+    '<button onclick="toggleModulePurpose()" id="mp-toggle" style="font-size:13px;font-weight:600;background:none;border:none;color:var(--pu);cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">' +
+    '<span id="mp-caret">▸</span> What each part does</button>' +
+    '<div id="mp-body" style="display:none;margin-top:.5rem">' + moduleRows + '</div></div>'
+  ) : '';
+  return '<div class="st">How Your App Fits Together</div><div class="card">' + purposeLine + diagramSvg + moduleBlock + '</div>';
+}
+
+function toggleModulePurpose() {
+  var b = document.getElementById('mp-body');
+  var c = document.getElementById('mp-caret');
+  if (!b) return;
+  var open = b.style.display === 'none';
+  b.style.display = open ? 'block' : 'none';
+  if (c) c.textContent = open ? '▾' : '▸';
+}
+
 function architectureDiagramHTML(data) {
   // Empty until the 'diagram' SSE event arrives (it's computed server-side
   // after step2/step3 finish, not available yet at the initial step1 render)
   // -- the 'diagram' case in handleStreamEvent fills the container in later.
-  if (!data.architecture_diagram) return '';
-  var purposeLine = data.summary
-    ? '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">' + esc(data.summary) + '</div>' : '';
-  return '<div class="st">How Your App Fits Together</div><div class="card">' + purposeLine + data.architecture_diagram + '</div>';
+  return diagramCardHTML(data.summary, data.architecture_diagram, data.module_purpose_rows);
 }
 
 function filesCoverageHTML(data) {
