@@ -871,7 +871,49 @@ ASK_VERILAY_SYSTEM = (
     "overwhelmed."
 )
 
+# Report-grounded variant — same voice/scope/safety as ASK_VERILAY_SYSTEM, but
+# the "I can't see your app" clause (the whole point of the general assistant)
+# is replaced with the opposite instruction, since this one genuinely IS given
+# the person's real scan results. Kept as a full second constant rather than a
+# shared-fragment template: that one clause is the entire difference between
+# the two products, not a minor variant, so two flat strings are easier to
+# read side-by-side and tune independently than an assembled template.
+ASK_VERILAY_REPORT_SYSTEM = (
+    "You are Ask Verilay, a friendly assistant that helps non-developers who have "
+    "built apps using AI tools like Lovable, Bolt, Replit, v0, and Cursor.\n\n"
+    "WHO YOU ARE TALKING TO: The person is almost certainly NOT a developer. They built "
+    "their app by describing what they wanted to an AI tool. They may not know technical "
+    "terms and are often anxious about whether their app is safe, working, or ready to "
+    "launch. Treat every question as coming from a smart person who simply hasn't learned "
+    "the jargon yet.\n\n"
+    "YOUR VOICE: Plain English, no unexplained jargon (if you must use a technical term, "
+    "define it in everyday words in the same sentence). Warm, encouraging, calm. Never "
+    "condescending, never alarmist. Use a short concrete analogy when it helps. Be concise: "
+    "lead with the direct answer, then the steps. When the answer is a process, give clear "
+    "numbered steps a non-developer can follow.\n\n"
+    "WHAT YOU HELP WITH: Building, fixing, understanding, securing, and launching apps made "
+    "with AI tools. If a question is clearly OUTSIDE this scope (taxes, legal, medical, "
+    "general life questions, writing their marketing copy), gently say it's outside what you "
+    "help with and point them to a more suitable resource. Do not answer out-of-scope "
+    "questions even if you could.\n\n"
+    "MOST IMPORTANT RULE — YOU CAN SEE THEIR REPORT, NOTHING ELSE: Below the person's question "
+    "you will be given a real summary of THEIR app's Verilay scan — its stack, score, and the "
+    "actual findings. Use it. Answer as if you've genuinely looked at their results, because you "
+    "have. But you have NOT seen their raw source code, and the report itself is AI-generated and "
+    "can contain false positives — so when a question needs more than the report gives you (exact "
+    "line numbers, code you haven't been shown, anything outside this summary), say so plainly and "
+    "point them to the fix prompt already in their report or a fresh scan, rather than guessing. "
+    "Never invent a finding that isn't in the report data you were given.\n\n"
+    "SAFETY: If unsure, say so plainly rather than inventing an answer — a confident wrong answer "
+    "is worse than 'I'm not certain, but here's how to find out reliably.' Don't help with anything "
+    "designed to harm or break into systems. Always end leaving the person feeling capable, not "
+    "overwhelmed."
+)
+
 ASK_RATE_LIMIT = 3          # free questions allowed per window
+ASK_REPORT_RATE_LIMIT = 5   # higher than general Ask Verilay -- scoped per report
+                             # (bounded blast radius), and proving the tool is worth
+                             # trusting with a real back-and-forth takes more than 3
 ASK_RATE_WINDOW_HOURS = 1   # window length
 
 
@@ -885,26 +927,32 @@ def _client_ip():
     return get_ip()
 
 
-def ask_rate_check(ip):
+def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
     """Per-IP hourly limit via Supabase. Returns (allowed: bool, remaining: int).
-    Fails OPEN (allows) if Supabase is unavailable — see note to maintainer."""
+    Fails OPEN (allows) if Supabase is unavailable — see note to maintainer.
+
+    `scope` lets a caller share this same table/bucket logic with a distinct
+    key namespace (e.g. "report:<id>" for the report-grounded Ask Verilay)
+    without a schema change. Default scope="" reproduces the exact key shape
+    this function always used (f"{ip}|{bucket}") so /ask's existing usage
+    rows and behavior are completely unaffected by this parameter existing."""
     if not _HAS_SUPABASE:
-        return True, ASK_RATE_LIMIT  # no store available → don't block users
+        return True, limit  # no store available → don't block users
     bucket = datetime.utcnow().strftime("%Y-%m-%dT%H")  # one bucket per hour (UTC)
-    key = f"{ip}|{bucket}"
+    key = f"{ip}|{scope}|{bucket}" if scope else f"{ip}|{bucket}"
     try:
         res = _sb.table("ask_usage").select("count").eq("id", key).execute()
         rows = res.data or []
         used = rows[0]["count"] if rows else 0
-        if used >= ASK_RATE_LIMIT:
+        if used >= limit:
             return False, 0
         if rows:
             _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
         else:
             _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
-        return True, max(0, ASK_RATE_LIMIT - (used + 1))
+        return True, max(0, limit - (used + 1))
     except Exception:
-        return True, ASK_RATE_LIMIT  # store error → fail open rather than break the feature
+        return True, limit  # store error → fail open rather than break the feature
 
 
 def ask_claude_call(system, prompt, max_tokens=1500):
@@ -962,7 +1010,7 @@ def ask_verilay():
             question = question[:1000]
 
         ip = _client_ip()
-        allowed, remaining = ask_rate_check(ip)
+        allowed, remaining = ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT)
         if not allowed:
             return jsonify({
                 "ok": False,
@@ -973,6 +1021,91 @@ def ask_verilay():
             }), 429
 
         answer = ask_claude_call(ASK_VERILAY_SYSTEM, question, max_tokens=1500)
+        return jsonify({"ok": True, "answer": answer, "remaining": remaining})
+    except Exception:
+        return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
+
+
+REPORT_CONTEXT_CHAR_CAP = 3000  # same budget verilay_deepscan.py's _build_findings_summary uses
+
+
+def build_report_context_summary(data):
+    """Plain-text digest of a saved report's real content, for grounding a
+    report-specific Ask Verilay answer. Branches on data shape, not an
+    explicit is_deep_scan check beyond the one line below -- same pattern
+    view_report() already uses for its own DEEP SCAN badge: a free report
+    simply doesn't have top_fixes populated, so it's naturally omitted."""
+    h = data.get("health", {}) or {}
+    stack_names = ", ".join(s.get("name", "") for s in (data.get("stack") or [])[:6])
+    lines = [
+        f"App: {data.get('repo','their app')}. Built with: {data.get('built_with','AI tools')}.",
+        f"Score: {h.get('score','?')}, Critical: {h.get('critical',0)}, "
+        f"Warnings: {h.get('warnings',0)}, Passing: {h.get('passing',0)}.",
+        f"Stack: {stack_names}.",
+        f"Summary: {data.get('summary','')}",
+        "Findings by layer:",
+    ]
+    for layer in data.get("layers") or []:
+        findings = [
+            f2 for f2 in (layer.get("expert") or {}).get("findings", [])
+            if f2.get("title") and f2.get("severity") in ("critical", "warning")
+        ]
+        if findings:
+            detail = "; ".join(f"{f2.get('title','')}: {f2.get('detail','')}" for f2 in findings)
+            lines.append(f"- {layer.get('name','')} [{layer.get('status','')}]: {detail}")
+    # Only present on a deep scan that's completed Part 2 -- not the full
+    # lovable_prompt text (that's meant to be copied into a builder, not
+    # repeated into every Ask Verilay answer's cost), just enough to point
+    # the user back to the right fix in their own report.
+    if data.get("is_deep_scan") and data.get("top_fixes"):
+        lines.append("Recommended fixes (priority order):")
+        for fx in data["top_fixes"][:5]:
+            lines.append(f"- {fx.get('title','')}: {fx.get('why_it_matters','')} "
+                          f"(effort: {fx.get('estimated_effort','')})")
+    summary = "\n".join(lines)
+    if len(summary) > REPORT_CONTEXT_CHAR_CAP:
+        summary = summary[:REPORT_CONTEXT_CHAR_CAP] + "..."
+    return summary
+
+
+def build_report_ask_prompt(data, question):
+    context = build_report_context_summary(data)
+    return (
+        f"Here is the person's Verilay scan report:\n\n{context}\n\n"
+        f"Their question: {sanitise_for_prompt(question)}"
+    )
+
+
+@app.route("/report/<report_id>/ask", methods=["POST"])
+def ask_verilay_report(report_id):
+    """Report-grounded Ask Verilay -- same shape as /ask, but scoped to one
+    saved report's real data instead of a generic question. See
+    ASK_VERILAY_REPORT_SYSTEM for why the answers can genuinely reference
+    the person's actual findings instead of deflecting to 'run a scan'."""
+    try:
+        data = get_report_data(report_id)
+        if not data:
+            return jsonify({"ok": False, "error": "This report could not be found. It may have expired."}), 404
+
+        body = request.get_json(silent=True) or {}
+        question = (body.get("question") or "").strip()
+        if not question:
+            return jsonify({"ok": False, "error": "Please type a question."}), 400
+        if len(question) > 1000:
+            question = question[:1000]
+
+        ip = _client_ip()
+        allowed, remaining = ask_rate_check(ip, scope=f"report:{report_id}", limit=ASK_REPORT_RATE_LIMIT)
+        if not allowed:
+            return jsonify({
+                "ok": False,
+                "limit_reached": True,
+                "error": f"You've reached the free limit of {ASK_REPORT_RATE_LIMIT} questions per hour "
+                         f"about this report. General Ask Verilay still works, or check back in a bit."
+            }), 429
+
+        prompt = build_report_ask_prompt(data, question)
+        answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500)
         return jsonify({"ok": True, "answer": answer, "remaining": remaining})
     except Exception:
         return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500

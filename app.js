@@ -608,6 +608,19 @@ function handleStreamEvent(evt) {
     case 'saved':
       savedReportId = evt.data.report_id;
       currentVerifications = {};  // Reset verifications for new report
+      // The report-grounded Ask Verilay box (in the "Have questions" card)
+      // renders disabled from step1 onward, since savedReportId doesn't
+      // exist yet -- enable it now that there's a real report_id to ask
+      // questions about.
+      var reportAskInput = document.getElementById('report-ask-input');
+      var reportAskBtn = document.getElementById('report-ask-btn');
+      if (reportAskInput && reportAskBtn) {
+        reportAskInput.disabled = false;
+        reportAskInput.placeholder = 'Ask a question about your results...';
+        reportAskBtn.disabled = false;
+        reportAskBtn.style.opacity = '1';
+        reportAskBtn.style.cursor = 'pointer';
+      }
       // Save to history with the report ID
       if (currentReport) {
         var reportForHistory = Object.assign({}, currentReport);
@@ -719,6 +732,30 @@ function sevIcon(s) {
 }
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Ported from ASK_PAGE_HTML's inline script (app.py) -- that page is a fully
+// standalone route with no access to this file, so it keeps its own copy;
+// this is the one app.js needs for rendering a report-grounded Ask Verilay
+// answer inline without leaving the page.
+function inl(s) { return s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); }
+function md(t) {
+  var ls = esc(t).split('\n'), out = [], lt = null;
+  function cl() { if (lt) { out.push('</' + lt + '>'); lt = null; } }
+  function op(type) { if (lt !== type) { cl(); out.push('<' + type + '>'); lt = type; } }
+  for (var i = 0; i < ls.length; i++) {
+    var l = ls[i];
+    if (/^###\s+/.test(l)) { cl(); out.push('<h4>' + inl(l.replace(/^###\s+/, '')) + '</h4>'); }
+    else if (/^##\s+/.test(l)) { cl(); out.push('<h3>' + inl(l.replace(/^##\s+/, '')) + '</h3>'); }
+    else if (/^#\s+/.test(l)) { cl(); out.push('<h3>' + inl(l.replace(/^#\s+/, '')) + '</h3>'); }
+    else if (/^---+\s*$/.test(l)) { cl(); out.push('<hr>'); }
+    else if (/^\s*[-*]\s+/.test(l)) { op('ul'); out.push('<li>' + inl(l.replace(/^\s*[-*]\s+/, '')) + '</li>'); }
+    else if (/^\s*\d+\.\s+/.test(l)) { op('ol'); out.push('<li>' + inl(l.replace(/^\s*\d+\.\s+/, '')) + '</li>'); }
+    else if (l.trim() === '') { cl(); }
+    else { cl(); out.push('<p>' + inl(l) + '</p>'); }
+  }
+  cl();
+  return out.join('');
 }
 
 function gradeFromCounts(critical, warnings) {
@@ -1184,12 +1221,24 @@ function renderReport(data) {
   }
   html += '<div style="margin:.75rem 0;padding:1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r)">';
   html += '<div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
-  html += '<div style="font-size:13px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay for quick plain-English answers here, or open Claude with your findings to dig into your specific app.</div>';
+  html += '<div style="font-size:13px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay a quick question below, using your real results &mdash; or open Claude for a longer conversation about your specific code.</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:.85rem">';
   html += chip(q1label, q1);
   html += chip('What does my grade mean?', 'What does my Verilay grade mean?');
   html += '<a href="/ask-verilay" target="_blank" rel="noopener" style="font-size:13px;color:var(--pu);background:transparent;border:0.5px solid var(--pu);border-radius:20px;padding:6px 13px;text-decoration:none;white-space:nowrap;font-weight:500">Open Ask Verilay &rarr;</a>';
   html += '</div>';
+  // Report-grounded inline box -- disabled until the 'saved' SSE event sets
+  // savedReportId (this card renders on step1, well before the report is
+  // actually saved). See the 'saved' case in handleStreamEvent for the
+  // enable step.
+  html += '<div style="display:flex;gap:8px;margin-bottom:.6rem">';
+  html += '<input id="report-ask-input" type="text" placeholder="Finishing your report — you can ask in a moment..." disabled ' +
+          'onkeypress="if(event.key===\'Enter\')askAboutReport()" ' +
+          'style="flex:1;min-width:0;border:0.5px solid var(--pu);border-radius:20px;padding:8px 14px;font-size:13px;font-family:inherit;background:var(--bg);color:var(--txt)" />';
+  html += '<button id="report-ask-btn" onclick="askAboutReport()" disabled style="font-size:13px;padding:7px 16px;border-radius:20px;' +
+          'background:var(--pu);color:#fff;border:none;cursor:not-allowed;white-space:nowrap;font-weight:500;opacity:.5">Ask</button>';
+  html += '</div>';
+  html += '<div id="report-ask-thread" style="display:flex;flex-direction:column;gap:8px;margin-bottom:.6rem"></div>';
   html += '<button onclick="askAIAboutReport()" style="font-size:13px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Open Claude with my findings &rarr;</button>';
   html += '<span style="font-size:12px;color:var(--put);opacity:.7;margin-left:8px">Free Claude.ai account &mdash; digs into your specific code</span>';
   html += '</div>';
@@ -2252,6 +2301,60 @@ function askAIAboutReport() {
 
   var url = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
   window.open(url, '_blank');
+}
+
+// Report-grounded Ask Verilay -- unlike askAIAboutReport() above (which just
+// hands off to claude.ai), this actually calls Verilay's own /report/<id>/ask
+// and shows the answer inline, without leaving the page. Needs no report
+// data client-side: the server reads the full saved report itself from
+// savedReportId, so this function only needs the question text.
+function askAboutReport() {
+  var input = document.getElementById('report-ask-input');
+  var btn = document.getElementById('report-ask-btn');
+  var thread = document.getElementById('report-ask-thread');
+  if (!input || !btn || !thread || btn.disabled) return;
+  var question = input.value.trim();
+  if (!question) return;
+
+  var qBubble = document.createElement('div');
+  qBubble.style.cssText = 'align-self:flex-end;max-width:90%;padding:.6rem .85rem;border-radius:12px;border-bottom-right-radius:3px;background:var(--pu);color:#fff;font-size:13px;white-space:pre-wrap;word-wrap:break-word';
+  qBubble.textContent = question;
+  thread.appendChild(qBubble);
+
+  var aBubble = document.createElement('div');
+  aBubble.style.cssText = 'align-self:flex-start;max-width:90%;padding:.6rem .85rem;border-radius:12px;border-bottom-left-radius:3px;background:var(--bg);border:0.5px solid var(--bdr);color:var(--txt);font-size:13px;line-height:1.55';
+  aBubble.textContent = 'Thinking…';
+  thread.appendChild(aBubble);
+  aBubble.scrollIntoView({behavior: 'smooth', block: 'end'});
+
+  input.value = '';
+  input.disabled = true;
+  btn.disabled = true;
+  btn.style.opacity = '.5';
+  btn.style.cursor = 'not-allowed';
+
+  fetch('/report/' + savedReportId + '/ask', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({question: question})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      aBubble.innerHTML = md(d.answer || '');
+    } else if (d.limit_reached) {
+      aBubble.style.cssText = 'align-self:center;max-width:100%;padding:.6rem .85rem;border-radius:10px;background:var(--pul);border:0.5px solid var(--pu);color:var(--put);font-size:12px;text-align:center';
+      aBubble.textContent = d.error || 'You have reached the free limit for this report.';
+    } else {
+      aBubble.textContent = d.error || 'Something went wrong answering that. Please try again.';
+    }
+  }).catch(function() {
+    aBubble.textContent = 'Something went wrong answering that. Please try again.';
+  }).finally(function() {
+    input.disabled = false;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    input.focus();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
