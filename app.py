@@ -1155,6 +1155,14 @@ def _layer_default(name):
     return _LAYER_DEFAULTS.get(name, f"The {name} layer handles related functionality.")
 
 
+# The full 6-name taxonomy every layer must be validated against when parsing
+# CONNECTS_TO — not the 3-name subset passed into any one parse_flat_response
+# call, since e.g. Auth (parsed in the step2 call) legitimately connects to
+# API/Frontend (only known to the step3 call). Used by build_architecture_diagram
+# too, to decide which of the 6 possible boxes actually get drawn.
+ALL_LAYER_NAMES = ["Auth", "Config", "Database", "API", "Frontend", "Libraries"]
+
+
 def parse_flat_response(text, layer_names):
     """Parse flat key:value Claude response into layer structure."""
     kv = {}
@@ -1236,9 +1244,23 @@ def parse_flat_response(text, layer_names):
             a = a or da
             qwhy = qwhy or dw
 
+        # Structured (not prose) list of which other layers this one connects
+        # to, for the architecture diagram's edges. Validated against the FULL
+        # 6-name taxonomy, not just `layer_names` (the subset passed into this
+        # call) -- see ALL_LAYER_NAMES' own comment for why.
+        raw_connects_to = kv.get(f"{p}_CONNECTS_TO", "")
+        connects_to = []
+        for tok in raw_connects_to.split(","):
+            tok = tok.strip()
+            match = next((n for n in ALL_LAYER_NAMES if n.upper() == tok.upper()), None)
+            if match and match != name and match not in connects_to:
+                connects_to.append(match)
+
         layers.append({
             "name": name,
             "status": status,
+            "connects_to": connects_to,
+            "app_label": kv.get(f"{p}_APP_LABEL", "").strip(),
             "expert": {
                 "summary": kv.get(f"{p}_SUMMARY", f"{name} layer analysis."),
                 "findings": findings_expert
@@ -1254,6 +1276,146 @@ def parse_flat_response(text, layer_names):
             "quiz": [{"question": q, "answer": a, "why": qwhy}]
         })
     return {"layers": layers}
+
+
+# Fixed hand-tuned positions for the 6 possible boxes (x, y, w, h). Not a
+# runtime layout algorithm -- the node set is always this exact small,
+# known taxonomy, so one template designed once and reused for every app
+# is simpler and more reliable than general graph layout. Boxes not
+# "present" for a given app are simply never emitted; every other box
+# keeps its fixed position regardless of which others are missing.
+_DIAGRAM_LAYOUT = {
+    "Frontend":  (240, 20, 140, 70),
+    "API":       (240, 110, 140, 70),
+    "Auth":      (40, 210, 140, 70),
+    "Database":  (240, 210, 140, 70),
+    "Config":    (440, 210, 140, 70),
+    "Libraries": (140, 300, 340, 60),
+}
+_DIAGRAM_COLORS = {
+    "Frontend": "#4A90D9", "API": "#534AB7", "Auth": "#1D9E75",
+    "Database": "#EF9F27", "Config": "#6b6966", "Libraries": "#9B8FE0",
+}
+
+
+def _diagram_truncate(text, limit):
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return (cut or text[:limit]) + "…"
+
+
+def _diagram_svg_esc(text):
+    return (str(text or "").replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def build_architecture_diagram(stack, layers):
+    """One ready-to-embed <svg> string showing the app's pieces and how they
+    connect — built entirely from data analyse_step1/2/3 already produce,
+    zero new LLM calls. Returns "" if there's nothing sensible to draw
+    (thin URL preview, empty layers). Both renderers (app.js live view,
+    view_report() saved page) just embed this string verbatim — there is
+    no separate diagram-building logic to keep in sync between them."""
+    if not layers:
+        return ""
+
+    layers_by_name = {l.get("name"): l for l in layers if l.get("name") in ALL_LAYER_NAMES}
+    present_categories = {(s.get("category") or "").lower() for s in (stack or [])}
+
+    present = {"Frontend", "API", "Config", "Libraries"}
+    if "auth" in present_categories:
+        present.add("Auth")
+    if "database" in present_categories:
+        present.add("Database")
+    # Only draw a box for a layer we actually have real analysis text for
+    # (matters mainly for tests / partial fixtures; production layers lists
+    # always contain all 6 names by construction).
+    present = {n for n in present if n in layers_by_name}
+    if not present:
+        return ""
+
+    # Undirected, deduplicated edges among the non-Libraries boxes, sourced
+    # from each layer's structured connects_to list. Anything pointing at a
+    # box that got skipped (e.g. Database on a static app) is silently
+    # dropped rather than drawing a line to nowhere.
+    edges = set()
+    for name in present:
+        if name == "Libraries":
+            continue
+        for target in layers_by_name.get(name, {}).get("connects_to", []):
+            if target in present and target != "Libraries" and target != name:
+                edges.add(frozenset((name, target)))
+
+    def _center(name):
+        x, y, w, h = _DIAGRAM_LAYOUT[name]
+        return (x + w / 2, y + h / 2)
+
+    parts = [
+        '<svg viewBox="0 0 620 390" xmlns="http://www.w3.org/2000/svg" '
+        'style="width:100%;height:auto;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif">'
+    ]
+
+    # Edge lines are drawn UNDER the boxes — the opaque box fills painted on
+    # top visually clip each line to the segment between box edges, without
+    # needing real edge-intersection geometry. Libraries' fixed dashed
+    # connectors are drawn FIRST (so they sit further back): Frontend/API/
+    # Database share a vertical column by design, and Libraries' straight
+    # line up to Frontend/API runs directly through that same column — real
+    # data-driven edges (drawn next) should visually win wherever the two
+    # overlap, not the fixed decorative dashed lines.
+    if "Libraries" in present:
+        lx, ly = _center("Libraries")
+        for anchor in ("Frontend", "API"):
+            if anchor in present:
+                ax, ay = _center(anchor)
+                parts.append(
+                    f'<line x1="{lx:.0f}" y1="{ly:.0f}" x2="{ax:.0f}" y2="{ay:.0f}" '
+                    'stroke="#c7c5df" stroke-width="2" stroke-dasharray="4,4"/>'
+                )
+    for pair in edges:
+        a, b = tuple(pair)
+        ax, ay = _center(a)
+        bx, by = _center(b)
+        parts.append(
+            f'<line x1="{ax:.0f}" y1="{ay:.0f}" x2="{bx:.0f}" y2="{by:.0f}" '
+            'stroke="#c7c5df" stroke-width="2"/>'
+        )
+
+    for name in present:
+        x, y, w, h = _DIAGRAM_LAYOUT[name]
+        color = _DIAGRAM_COLORS.get(name, "#534AB7")
+        layer = layers_by_name.get(name, {})
+        desc = layer.get("learner", {}).get("what_it_does_in_your_app") or _layer_default(name)
+        desc = _diagram_truncate(desc, 68 if name == "Libraries" else 26)
+        # App-specific headline (e.g. "Booking Records") when Claude provided
+        # one, with the generic category name as a small subtitle underneath
+        # so the underlying concept ("Database") stays visible and teachable
+        # -- falls back to the generic name as the headline if it's missing
+        # (older deep-scan synthesis prompt not yet updated, or Claude
+        # skipped it) rather than showing a blank line.
+        app_label = _diagram_truncate((layer.get("app_label") or "").strip(), 30 if name == "Libraries" else 18)
+        headline = app_label or name
+        dashed = ' stroke-dasharray="5,3"' if name == "Libraries" else ""
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" '
+            f'fill="#ffffff" stroke="{color}" stroke-width="1.5"{dashed}/>'
+            f'<text x="{x + w/2:.0f}" y="{y + 22}" text-anchor="middle" '
+            f'font-size="13" font-weight="700" fill="{color}">{_diagram_svg_esc(headline)}</text>'
+        )
+        if app_label:
+            parts.append(
+                f'<text x="{x + w/2:.0f}" y="{y + 35}" text-anchor="middle" '
+                f'font-size="9" font-weight="600" fill="#9a98a6">{_diagram_svg_esc(name.upper())}</text>'
+            )
+        parts.append(
+            f'<text x="{x + w/2:.0f}" y="{y + h - 12}" text-anchor="middle" '
+            f'font-size="10" fill="#666">{_diagram_svg_esc(desc)}</text>'
+        )
+
+    parts.append('</svg>')
+    return "".join(parts)
 
 
 def analyse_step1(files, tree, repo_name, method):
@@ -1443,7 +1605,9 @@ def analyse_step2(files, repo_name, scan_block=""):
         "AUTH_WHAT: what the auth layer IS, following the non-technical writing rules above (short warm paragraph, everyday example, no unexplained jargon)\n"
         "AUTH_ANALOGY: a vivid UNIQUE analogy specific to what THIS exact app does. NEVER use generic analogies like bouncer, front door, or receptionist. Instead use something specific to the app domain — e.g. for a construction app use site security guard checking trade licences, for a recipe app use a kitchen pass system, for a legal app use courthouse security. Make it memorable and directly relevant to what users of THIS app would understand\n"
         "AUTH_DOES: what auth specifically does in THIS app — mention actual libraries/services found in the code (Supabase, JWT, sessions etc)\n"
+        "AUTH_APP_LABEL: a short (2-4 word) name for what THIS app actually calls its auth/login system — e.g. \"Guest Sign-In\", \"Member Login\" — specific to this app's domain, not the generic word \"Auth\"\n"
         "AUTH_CONNECTS: explain in plain English how auth connects to other parts — like how the bouncer talks to the guest list (database)\n"
+        "AUTH_CONNECTS_TO: comma-separated list (up to 3) of the OTHER layers Auth directly connects to, chosen ONLY from: Config, Database, API, Frontend, Libraries\n"
         "AUTH_CONCEPT: the single most important insight a non-developer should take away about auth in this specific app — make it practical\n"
         "AUTH_Q: a quiz question about the specific auth finding — not generic, tied to what was actually found in this app\n"
         "AUTH_A: the answer explained simply — as if explaining to a smart friend who doesn't code\n"
@@ -1461,7 +1625,9 @@ def analyse_step2(files, repo_name, scan_block=""):
         "CONFIG_WHAT: what config is in plain English\n"
         "CONFIG_ANALOGY: a UNIQUE analogy specific to this app domain. NEVER use filing cabinet or lockbox. Use something relevant — e.g. for a restaurant app use recipe ingredient ratios kept in the chef notebook, for a finance app use the vault combination settings. Make it specific to what THIS app does\n"
         "CONFIG_DOES: what config does in this specific app\n"
+        "CONFIG_APP_LABEL: a short (2-4 word) name for what this app's settings/config actually cover — e.g. \"Store Settings\", \"App Secrets\" — specific to this app, not the generic word \"Config\"\n"
         "CONFIG_CONNECTS: how it connects to other layers\n"
+        "CONFIG_CONNECTS_TO: comma-separated list (up to 3) of the OTHER layers Config directly connects to, chosen ONLY from: Auth, Database, API, Frontend, Libraries\n"
         "CONFIG_CONCEPT: most important concept\n"
         "CONFIG_Q: quiz question specific to this finding\n"
         "CONFIG_A: plain English answer\n"
@@ -1479,7 +1645,9 @@ def analyse_step2(files, repo_name, scan_block=""):
         "DATABASE_WHAT: what the database is in plain English\n"
         "DATABASE_ANALOGY: a UNIQUE analogy tied to what this app actually stores. NEVER use generic warehouse or storage unit. If it stores documents use a library archive, if it stores orders use a kitchen order ticket system, if it stores properties use a land registry. Match the analogy to the actual data the app handles\n"
         "DATABASE_DOES: what the database stores in this specific app\n"
+        "DATABASE_APP_LABEL: a short (2-4 word) name for what THIS app actually stores — e.g. \"Booking Records\", \"Recipe Library\" — specific to this app's real data, not the generic word \"Database\"\n"
         "DATABASE_CONNECTS: how it connects to other layers\n"
+        "DATABASE_CONNECTS_TO: comma-separated list (up to 3) of the OTHER layers Database directly connects to, chosen ONLY from: Auth, Config, API, Frontend, Libraries\n"
         "DATABASE_CONCEPT: most important concept\n"
         "DATABASE_Q: quiz question specific to this finding\n"
         "DATABASE_A: plain English answer\n"
@@ -1546,7 +1714,9 @@ def analyse_step3(files, repo_name, osv_block=""):
         "API_WHAT: what the API layer is in plain English (no jargon)\n"
         "API_ANALOGY: a UNIQUE analogy for this specific app. NEVER use waiter/kitchen analogy. Use something tied to the app domain — for a travel app use an airline dispatcher, for a medical app use a hospital triage system, for a construction app use a site foreman relaying instructions\n"
         "API_DOES: what the API specifically does in this app based on the code\n"
+        "API_APP_LABEL: a short (2-4 word) name for what THIS app's API actually handles — e.g. \"Order Requests\", \"Booking Actions\" — specific to this app, not the generic word \"API\"\n"
         "API_CONNECTS: how API connects to frontend and database\n"
+        "API_CONNECTS_TO: comma-separated list (up to 3) of the OTHER layers API directly connects to, chosen ONLY from: Auth, Config, Database, Frontend, Libraries\n"
         "API_CONCEPT: most important concept to understand\n"
         "API_Q: quiz question specific to this app findings\n"
         "API_A: plain English answer\n"
@@ -1564,7 +1734,9 @@ def analyse_step3(files, repo_name, osv_block=""):
         "FRONTEND_WHAT: what the frontend is in plain English\n"
         "FRONTEND_ANALOGY: a UNIQUE analogy for this app. NEVER use shop window or dashboard. Use something specific — for a document app use the reading room in a library, for a booking app use the customer facing reception desk, for a security scanner use the control panel of a CCTV system\n"
         "FRONTEND_DOES: what the frontend does in this specific app\n"
+        "FRONTEND_APP_LABEL: a short (2-4 word) name for what users actually see/do in this app's interface — e.g. \"Property Listings\", \"Recipe Browser\" — specific to this app, not the generic word \"Frontend\"\n"
         "FRONTEND_CONNECTS: how frontend connects to API and auth\n"
+        "FRONTEND_CONNECTS_TO: comma-separated list (up to 3) of the OTHER layers Frontend directly connects to, chosen ONLY from: Auth, Config, Database, API, Libraries\n"
         "FRONTEND_CONCEPT: most important concept\n"
         "FRONTEND_Q: quiz question specific to this app\n"
         "FRONTEND_A: plain English answer\n"
@@ -1586,7 +1758,9 @@ def analyse_step3(files, repo_name, osv_block=""):
         "LIBRARIES_WHAT: what libraries are in plain English\n"
         "LIBRARIES_ANALOGY: a UNIQUE analogy for this app. NEVER use toolbox or pre-made ingredients. Use something domain-specific — for a construction app use specialist subcontractors, for a medical app use specialist consultants, for a food app use ready-made sauce bases from professional suppliers\n"
         "LIBRARIES_DOES: what the key libraries do in this app\n"
+        "LIBRARIES_APP_LABEL: a short (2-4 word) name for what this app's key third-party pieces actually are — e.g. \"Payments & Maps\", \"AI & Email Tools\" — specific to this app's real dependencies, not the generic word \"Libraries\"\n"
         "LIBRARIES_CONNECTS: how libraries connect to other layers\n"
+        "LIBRARIES_CONNECTS_TO: comma-separated list (up to 3) of the OTHER layers Libraries directly connects to, chosen ONLY from: Auth, Config, Database, API, Frontend\n"
         "LIBRARIES_CONCEPT: most important concept\n"
         "LIBRARIES_Q: quiz question specific to this app\n"
         "LIBRARIES_A: plain English answer\n"
@@ -2025,6 +2199,8 @@ def analyse_stream():
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
+            partial["architecture_diagram"] = build_architecture_diagram(s1.get("stack", []), partial["layers"])
+            yield json.dumps({"event":"diagram","data":{"architecture_diagram": partial["architecture_diagram"]}}) + "\n"
             # Derive the score and counts FROM the actual layer findings rather than
             # step 1's separate guess, so the header can never contradict the layers
             # and the grade is a deterministic result of counting, not a re-rolled judgment.
@@ -3754,6 +3930,12 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
         tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}</span>' for s in stack)
         out.append(f'<div class="st">Tech Stack</div><div class="card">{tags}</div>')
 
+    # Architecture diagram — pre-built server-side (build_architecture_diagram),
+    # embedded verbatim here exactly as it was on the live streaming view.
+    diagram = data.get("architecture_diagram")
+    if diagram:
+        out.append(f'<div class="st">How Your App Fits Together</div><div class="card">{diagram}</div>')
+
     # Coverage — this is where "deep scan" becomes visible as a fact, not a
     # label: 150/570 files reads very differently from 25/570.
     files_read = data.get("files_read")
@@ -5001,6 +5183,7 @@ if _HAS_PAYWALL:
         save_report_data=save_report_data,
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
         increment_analysis_count=increment_analysis_count,
+        build_architecture_diagram=build_architecture_diagram,
         supabase_client=_sb,
         base_url=billing.BASE_URL,
         send_scan_complete_email=notify.send_scan_complete_email,

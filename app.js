@@ -588,6 +588,16 @@ function handleStreamEvent(evt) {
     case 'step3_error':
       showLayerError('Layer analysis error: ' + evt.data);
       break;
+    case 'diagram':
+      var diagramEl = document.getElementById('architecture-diagram-section');
+      var diagramSvg = (evt.data || {}).architecture_diagram;
+      if (diagramEl && diagramSvg) {
+        diagramEl.innerHTML = '<div class="st">How Your App Fits Together</div><div class="card">' + diagramSvg + '</div>';
+      }
+      // Mirrored onto currentReport so saveToHistory() (triggered by the
+      // 'saved' event right after this one) captures it consistently.
+      if (currentReport) currentReport.architecture_diagram = diagramSvg;
+      break;
     case 'saved':
       savedReportId = evt.data.report_id;
       currentVerifications = {};  // Reset verifications for new report
@@ -881,6 +891,14 @@ function toggleBreakdownMode() {
   btn.textContent = toExpert ? 'Simple view' : 'Developer view';
 }
 
+function architectureDiagramHTML(data) {
+  // Empty until the 'diagram' SSE event arrives (it's computed server-side
+  // after step2/step3 finish, not available yet at the initial step1 render)
+  // -- the 'diagram' case in handleStreamEvent fills the container in later.
+  if (!data.architecture_diagram) return '';
+  return '<div class="st">How Your App Fits Together</div><div class="card">' + data.architecture_diagram + '</div>';
+}
+
 function filesCoverageHTML(data) {
   var analysed = data.files_analysed || [];
   var read = data.files_read || analysed.length;
@@ -1156,6 +1174,8 @@ function renderReport(data) {
   html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers, isPreview) + '</div></div>';
 
   html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview) + '</div>';
+
+  html += '<div id="architecture-diagram-section">' + architectureDiagramHTML(data) + '</div>';
 
   html += filesCoverageHTML(data);
 

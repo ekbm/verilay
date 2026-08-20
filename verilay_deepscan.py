@@ -303,6 +303,9 @@ def _run_job(job_id, user_id=None):
             osv_vulns=osv_vulns, osv_checked=osv_checked,
             files=files, files_total=len(all_files),
         )
+        report["architecture_diagram"] = _deps["build_architecture_diagram"](
+            report.get("stack", []), report.get("layers", [])
+        )
 
         # "Advice Prompts" — copy-paste-into-Lovable/Replit fix guidance. The
         # free scan only generates these when a visitor clicks "Run Part 2";
