@@ -1490,6 +1490,29 @@ def _diagram_present_names(stack, layers):
     return present, layers_by_name
 
 
+def _module_description(layer, name):
+    """The real-content description for a module box/row -- prefers
+    learner.what_it_does_in_your_app, but falls back to expert.summary
+    when that's missing. Seen live: on a real analysis, step2's 3 layers
+    (Auth/Config/Database, one Claude call) came back with WHAT/DOES/
+    APP_LABEL empty while step3's 3 layers (API/Frontend/Libraries,
+    a SEPARATE call) were fully populated -- the two calls succeed or
+    come back thin independently, so a per-layer fallback matters, not
+    just a per-report one. expert.summary is written EARLIER in the
+    per-layer field order than what_it_does_in_your_app, so a response
+    that ran out of room partway through is much more likely to have
+    captured it. Deliberately excludes parse_flat_response's own generic
+    default ("{name} layer analysis.") -- that's not real content either,
+    same reasoning as removing the old hardcoded fallback sentence here."""
+    desc = (layer.get("learner", {}).get("what_it_does_in_your_app") or "").strip()
+    if desc:
+        return desc
+    summary = (layer.get("expert", {}).get("summary") or "").strip()
+    if summary and summary != f"{name} layer analysis.":
+        return summary
+    return ""
+
+
 def build_architecture_diagram(stack, layers):
     """One ready-to-embed <svg> string showing the app's pieces and how they
     connect — built entirely from data analyse_step1/2/3 already produce,
@@ -1558,8 +1581,9 @@ def build_architecture_diagram(stack, layers):
         # No generic-sentence fallback here (unlike elsewhere in this file)
         # -- a canned "The Frontend is..." line reads as broken/unfinished
         # when the real per-app description isn't available. Better to
-        # show the box with just its label than filler text.
-        desc = (layer.get("learner", {}).get("what_it_does_in_your_app") or "").strip()
+        # show the box with just its label than filler text. See
+        # _module_description for the one real-content fallback it does use.
+        desc = _module_description(layer, name)
         desc = _diagram_truncate(desc, 68 if name == "Libraries" else 26) if desc else ""
         # App-specific headline (e.g. "Booking Records") when Claude provided
         # one, with the generic category name as a small subtitle underneath
@@ -1615,7 +1639,7 @@ def build_module_purpose_rows_html(stack, layers):
         layer = layers_by_name.get(name, {})
         app_label = (layer.get("app_label") or "").strip()
         headline = app_label or name
-        desc = (layer.get("learner", {}).get("what_it_does_in_your_app") or "").strip()
+        desc = _module_description(layer, name)
         desc_html = f'<div style="font-size:13px;color:#666;margin-top:2px;line-height:1.5">{desc}</div>' if desc else ""
         rows.append(
             '<div style="padding:.55rem 0;border-top:0.5px solid #e5e5f0">'
