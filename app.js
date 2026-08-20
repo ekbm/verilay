@@ -592,7 +592,12 @@ function handleStreamEvent(evt) {
       var diagramEl = document.getElementById('architecture-diagram-section');
       var diagramSvg = (evt.data || {}).architecture_diagram;
       if (diagramEl && diagramSvg) {
-        diagramEl.innerHTML = '<div class="st">How Your App Fits Together</div><div class="card">' + diagramSvg + '</div>';
+        // Purpose caption reuses step1's summary (currentReport.summary) --
+        // a separate, reliable call, not subject to the same truncation
+        // risk as the per-box labels in the diagram itself.
+        var purposeLine = (currentReport && currentReport.summary)
+          ? '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">' + esc(currentReport.summary) + '</div>' : '';
+        diagramEl.innerHTML = '<div class="st">How Your App Fits Together</div><div class="card">' + purposeLine + diagramSvg + '</div>';
       }
       // Mirrored onto currentReport so saveToHistory() (triggered by the
       // 'saved' event right after this one) captures it consistently.
@@ -896,7 +901,9 @@ function architectureDiagramHTML(data) {
   // after step2/step3 finish, not available yet at the initial step1 render)
   // -- the 'diagram' case in handleStreamEvent fills the container in later.
   if (!data.architecture_diagram) return '';
-  return '<div class="st">How Your App Fits Together</div><div class="card">' + data.architecture_diagram + '</div>';
+  var purposeLine = data.summary
+    ? '<div style="font-size:13px;color:var(--mut);margin-bottom:.75rem">' + esc(data.summary) + '</div>' : '';
+  return '<div class="st">How Your App Fits Together</div><div class="card">' + purposeLine + data.architecture_diagram + '</div>';
 }
 
 function filesCoverageHTML(data) {
@@ -1718,10 +1725,14 @@ function renderPart2(data) {
       platformIcon = 'ti-code';
     }
 
-    html += '<div class="fc"><div style="display:flex;gap:12px;align-items:flex-start">';
+    // <details> instead of a plain <div> -- collapsed by default so a
+    // non-developer can open one fix at a time instead of facing every
+    // fix's full advice prompt expanded at once. Summary shows just enough
+    // (priority + title) to decide whether to open it.
+    html += '<details class="fc"><summary style="cursor:pointer;display:flex;gap:12px;align-items:center">';
     html += '<div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
-    html += '<div style="flex:1">';
-    html += '<div style="font-size:14px;font-weight:500;margin-bottom:3px">' + esc(f.title||'') + '</div>';
+    html += '<div style="flex:1;font-size:14px;font-weight:500">' + esc(f.title||'') + '</div>';
+    html += '</summary><div style="padding-top:.5rem">';
     html += '<div style="font-size:13px;color:var(--mut);margin-bottom:4px;line-height:1.4">' + esc(f.why_it_matters||'') + '</div>';
     html += '<div style="font-size:12px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:.5rem">' + esc(f.how_to_fix||'') + '</div>';
     html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
@@ -1736,7 +1747,7 @@ function renderPart2(data) {
     if (platformPrompt) {
       html += '<div style="margin-top:.5rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:12px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;line-height:1.5" id="fix-prompt-' + fi + '">' + esc(platformPrompt) + '</div>';
     }
-    html += '</div></div></div>';
+    html += '</div></details>';
   });
 
   // Wire fix buttons after render

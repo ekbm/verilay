@@ -1114,6 +1114,19 @@ def call_claude_text(prompt, max_tokens=800):
         ) as stream:
             for text in stream.text_stream:
                 raw += text
+            # Silent truncation used to be invisible: the function just
+            # returned whatever text streamed before hitting max_tokens,
+            # with no error and no flag, so a cut-off response looked
+            # identical to a real (short) one. Now logged so this shows up
+            # in Railway logs instead of only being diagnosable from a
+            # report with mysteriously blank fields.
+            try:
+                final = stream.get_final_message()
+                if final.stop_reason == "max_tokens":
+                    print(f"[claude] response TRUNCATED at max_tokens={max_tokens} "
+                          f"(got {len(raw)} chars) -- raise the budget for this call", flush=True)
+            except Exception:
+                pass
         return raw.strip()
     else:
         resp = requests.post(
@@ -1138,6 +1151,10 @@ def call_claude_text(prompt, max_tokens=800):
                     delta = evt.get("delta", {})
                     if delta.get("type") == "text_delta":
                         raw += delta.get("text", "")
+                elif evt.get("type") == "message_delta":
+                    if evt.get("delta", {}).get("stop_reason") == "max_tokens":
+                        print(f"[claude] response TRUNCATED at max_tokens={max_tokens} "
+                              f"(got {len(raw)} chars) -- raise the budget for this call", flush=True)
             except: continue
         return raw.strip()
 
@@ -1387,8 +1404,12 @@ def build_architecture_diagram(stack, layers):
         x, y, w, h = _DIAGRAM_LAYOUT[name]
         color = _DIAGRAM_COLORS.get(name, "#534AB7")
         layer = layers_by_name.get(name, {})
-        desc = layer.get("learner", {}).get("what_it_does_in_your_app") or _layer_default(name)
-        desc = _diagram_truncate(desc, 68 if name == "Libraries" else 26)
+        # No generic-sentence fallback here (unlike elsewhere in this file)
+        # -- a canned "The Frontend is..." line reads as broken/unfinished
+        # when the real per-app description isn't available. Better to
+        # show the box with just its label than filler text.
+        desc = (layer.get("learner", {}).get("what_it_does_in_your_app") or "").strip()
+        desc = _diagram_truncate(desc, 68 if name == "Libraries" else 26) if desc else ""
         # App-specific headline (e.g. "Booking Records") when Claude provided
         # one, with the generic category name as a small subtitle underneath
         # so the underlying concept ("Database") stays visible and teachable
@@ -1409,10 +1430,11 @@ def build_architecture_diagram(stack, layers):
                 f'<text x="{x + w/2:.0f}" y="{y + 35}" text-anchor="middle" '
                 f'font-size="9" font-weight="600" fill="#9a98a6">{_diagram_svg_esc(name.upper())}</text>'
             )
-        parts.append(
-            f'<text x="{x + w/2:.0f}" y="{y + h - 12}" text-anchor="middle" '
-            f'font-size="10" fill="#666">{_diagram_svg_esc(desc)}</text>'
-        )
+        if desc:
+            parts.append(
+                f'<text x="{x + w/2:.0f}" y="{y + h - 12}" text-anchor="middle" '
+                f'font-size="10" fill="#666">{_diagram_svg_esc(desc)}</text>'
+            )
 
     parts.append('</svg>')
     return "".join(parts)
@@ -1653,7 +1675,19 @@ def analyse_step2(files, repo_name, scan_block=""):
         "DATABASE_A: plain English answer\n"
         "DATABASE_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1200)
+    # 10000 -- 3 full layers (up to 5 findings each, plus narrative WHAT/
+    # ANALOGY/DOES/CONNECTS/CONNECTS_TO/APP_LABEL/CONCEPT/quiz fields per
+    # layer) was silently truncating real responses at 1200 (why fields
+    # like DOES sometimes came back blank) -- confirmed live via
+    # call_claude_text's new truncation log, which then caught 2000
+    # (~2200 real tokens), 3500 (~3900+), and 5000 (~5470+) ALL still
+    # truncating on different real runs against a real, complex repo. Real
+    # output length varies a lot with how much a given repo actually has
+    # to report, so this is set with real margin above the highest
+    # observed real usage rather than incrementally re-guessed again --
+    # the truncation log (this function, both branches) stays in place as
+    # an ongoing safety net if a future analysis exceeds even this.
+    text = call_claude_text(prompt, max_tokens=10000)
     return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
@@ -1766,7 +1800,19 @@ def analyse_step3(files, repo_name, osv_block=""):
         "LIBRARIES_A: plain English answer\n"
         "LIBRARIES_QWHY: why it matters\n"
     )
-    text = call_claude_text(prompt, max_tokens=1200)
+    # 10000 -- 3 full layers (up to 5 findings each, plus narrative WHAT/
+    # ANALOGY/DOES/CONNECTS/CONNECTS_TO/APP_LABEL/CONCEPT/quiz fields per
+    # layer) was silently truncating real responses at 1200 (why fields
+    # like DOES sometimes came back blank) -- confirmed live via
+    # call_claude_text's new truncation log, which then caught 2000
+    # (~2200 real tokens), 3500 (~3900+), and 5000 (~5470+) ALL still
+    # truncating on different real runs against a real, complex repo. Real
+    # output length varies a lot with how much a given repo actually has
+    # to report, so this is set with real margin above the highest
+    # observed real usage rather than incrementally re-guessed again --
+    # the truncation log (this function, both branches) stays in place as
+    # an ongoing safety net if a future analysis exceeds even this.
+    text = call_claude_text(prompt, max_tokens=10000)
     return parse_flat_response(text, ["API", "Frontend", "Libraries"])
 
 
@@ -3896,7 +3942,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
 .fix{{background:#f8f8fc;border-radius:10px;padding:1rem;margin-bottom:8px;border-left:3px solid #534AB7}}
 .pb{{background:#f0f0f8;border-radius:8px;padding:.65rem .85rem;font-size:12px;font-family:monospace;margin-top:.5rem;white-space:pre-wrap;word-break:break-word}}
 .footer{{text-align:center;padding:2rem;font-size:12px;color:#aaa}}
-@media(max-width:600px){{.wrap{{padding:1rem}}}}
+@media(max-width:600px){{.wrap{{padding:1rem}}body{{font-size:17px}}}}
 </style></head>
 <body>
 <div class="header">
@@ -3932,9 +3978,15 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
 
     # Architecture diagram — pre-built server-side (build_architecture_diagram),
     # embedded verbatim here exactly as it was on the live streaming view.
+    # The purpose caption reuses step1's `summary` (a separate, reliable
+    # Claude call, not subject to the same truncation risk as the per-box
+    # labels below it) so the diagram still reads as specific to this app
+    # even on a run where box labels come out generic.
     diagram = data.get("architecture_diagram")
     if diagram:
-        out.append(f'<div class="st">How Your App Fits Together</div><div class="card">{diagram}</div>')
+        purpose = data.get("summary", "")
+        purpose_line = f'<div style="font-size:13px;color:#666;margin-bottom:.75rem">{purpose}</div>' if purpose else ""
+        out.append(f'<div class="st">How Your App Fits Together</div><div class="card">{purpose_line}{diagram}</div>')
 
     # Coverage — this is where "deep scan" becomes visible as a fact, not a
     # label: 150/570 files reads very differently from 25/570.
@@ -4025,7 +4077,11 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     _ask_url = "https://claude.ai/new?q=" + _urlparse.quote(_ask_q)
     out.append(f'<div style="margin:.75rem 0;padding:.85rem 1rem;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><div style="font-size:13px;font-weight:600;color:#3C3489;margin-bottom:2px">🤖 Confused about a finding?</div><div style="font-size:12px;color:#3C3489">Ask AI to explain any issue in plain English and suggest how to fix it.</div></div><a href="{_ask_url}" target="_blank" style="font-size:12px;padding:7px 16px;border-radius:20px;background:#534AB7;color:#fff;text-decoration:none;white-space:nowrap;font-weight:500">Ask AI about this report →</a></div>')
 
-    # Layers
+    # Layers — <details> rather than a plain <div>: this page has no JS at
+    # all, so this is the ONLY way to let a non-developer open one layer at
+    # a time instead of facing every layer's full findings list expanded
+    # at once. Collapsed by default, native browser disclosure triangle,
+    # no custom JS needed.
     if layers:
         out.append('<div class="st">Layer Analysis</div>')
         for layer in layers:
@@ -4039,14 +4095,25 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
                 findings_html += f'<div class="finding" style="background:{sev_bg.get(sev,"#EAF3DE")};color:{sev_tc.get(sev,"#27500A")}"><strong>{f2.get("title","")}</strong> — {f2.get("detail","")}</div>'
             analogy = f'<div style="background:#EEEDFE;border-radius:8px;padding:.6rem .8rem;font-size:13px;color:#3C3489;margin-bottom:.5rem;font-style:italic">&#128161; {lrn["analogy"]}</div>' if lrn.get("analogy") else ""
             concept = f'<div style="background:#534AB7;color:#fff;border-radius:8px;padding:.6rem .8rem;font-size:13px;margin-top:.5rem">&#128161; Key concept: {lrn["key_concept"]}</div>' if lrn.get("key_concept") else ""
-            out.append(f'<div class="layer"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem"><span style="font-weight:600;font-size:14px">{layer.get("name","")}</span><span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{status}</span></div>{analogy}<div style="font-size:13px;color:#555;margin-bottom:.5rem">{ex.get("summary","")}</div>{findings_html}{concept}</div>')
+            out.append(
+                f'<details class="layer"><summary style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem">'
+                f'<span style="font-weight:600;font-size:14px">{layer.get("name","")}</span>'
+                f'<span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{status}</span>'
+                f'</summary>{analogy}<div style="font-size:13px;color:#555;margin-bottom:.5rem">{ex.get("summary","")}</div>{findings_html}{concept}</details>'
+            )
 
-    # Fixes
+    # Fixes — same reasoning: collapsed by default, one at a time, instead
+    # of every fix (including its full advice prompt) dumped open at once.
     if fixes:
         out.append('<div class="st">Recommended Fixes</div>')
         for fix in fixes:
             prompt = f'<div style="font-size:12px;color:#888;margin-top:.35rem">Fix prompt:</div><div class="pb">{fix.get("lovable_prompt","")}</div>' if fix.get("lovable_prompt") else ""
-            out.append(f'<div class="fix"><div style="font-weight:600;margin-bottom:.35rem">{fix.get("priority","")}. {fix.get("title","")}</div><div style="font-size:13px;color:#555;margin-bottom:.35rem">{fix.get("why_it_matters","")}</div><div style="font-size:13px;color:#444"><strong>How:</strong> {fix.get("how_to_fix","")}</div><div style="font-size:12px;color:#888">Effort: {fix.get("estimated_effort","")}</div>{prompt}</div>')
+            out.append(
+                f'<details class="fix"><summary style="cursor:pointer;font-weight:600">{fix.get("priority","")}. {fix.get("title","")}</summary>'
+                f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{fix.get("why_it_matters","")}</div>'
+                f'<div style="font-size:13px;color:#444"><strong>How:</strong> {fix.get("how_to_fix","")}</div>'
+                f'<div style="font-size:12px;color:#888">Effort: {fix.get("estimated_effort","")}</div>{prompt}</details>'
+            )
 
     # Second opinion
     if so.get("summary_prompt"):
@@ -4281,7 +4348,7 @@ input:focus{border-color:var(--pu)}
 .p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
 .bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:640px){body{font-size:16px}.wrap{padding:1.25rem 1rem}}
+@media(max-width:640px){body{font-size:17px}.wrap{padding:1.25rem 1rem}}
 /* Accessibility: underline links inside text blocks */
 .hint a,.scope-notice a,.next-steps a,p a{text-decoration:underline;text-underline-offset:2px}
 #hero-section a,#report-content a{text-decoration:underline;text-underline-offset:2px}

@@ -815,6 +815,19 @@ def deep_job_progress(job_id):
     if job["status"] == "done" and job.get("report_id"):
         return redirect(f"/report/{job['report_id']}")
 
+    if job["status"] == "cancelled":
+        body = f"""
+  <div class="eyebrow">Deep scan cancelled</div>
+  <h1>{_esc(job["repo"])}</h1>
+  <div class="card">
+    <p style="margin:0">You cancelled this scan. No report was saved and nothing was counted
+    against your scans.</p>
+  </div>
+  <p class="note"><a href="/deep/{_esc(job["repo"])}">Start a new scan on this repo</a>
+  &nbsp;·&nbsp; <a href="/account">Your account</a></p>
+"""
+        return _page("Deep scan cancelled", body, robots="noindex")
+
     already_running_banner = ""
     if request.args.get("already_running"):
         already_running_banner = (
@@ -832,6 +845,9 @@ def deep_job_progress(job_id):
   <div class="card">
     <p id="progress-text" style="margin-bottom:0">{_esc(job.get("progress","Starting..."))}</p>
   </div>
+  <form method="POST" action="/deep-job/{job_id}/cancel" id="cancel-form" style="margin-top:.75rem">
+    <button type="submit" class="btn btn-quiet" style="font-size:13px">Cancel scan</button>
+  </form>
   <p class="note">This usually takes several minutes for a real codebase. Feel free
   to close this tab — <a href="/account">your account</a> will have the report when
   it's ready, and this page will jump there automatically if you leave it open.</p>
@@ -844,10 +860,17 @@ def deep_job_progress(job_id):
         window.location.href = '/report/' + d.report_id;
         return;
       }}
+      if (d.status === 'cancelled') {{
+        document.getElementById('progress-text').textContent = 'Cancelling — this stops at the next checkpoint, may take a moment.';
+        setTimeout(function() {{ window.location.reload(); }}, 4000);
+        return;
+      }}
       if (d.status === 'error') {{
         document.getElementById('progress-text').textContent =
           'Something went wrong: ' + (d.error || 'unknown error') +
           '. Email moses@verilay.dev and it will be sorted out.';
+        var cf = document.getElementById('cancel-form');
+        if (cf) cf.style.display = 'none';
         return;
       }}
       document.getElementById('progress-text').textContent = d.progress || 'Working...';
@@ -859,6 +882,22 @@ def deep_job_progress(job_id):
 </script>
 """
     return _page("Deep scan running", body, robots="noindex")
+
+
+@bp.route("/deep-job/<job_id>/cancel", methods=["POST"])
+def deep_job_cancel(job_id):
+    """Best-effort, cooperative cancel — see deepscan.cancel_job() for why
+    this can't be instant. Same entitlement check as every other job route,
+    so only the person who can see this job can stop it."""
+    job = deepscan.get_job(job_id)
+    if not job:
+        return redirect(f"/deep-job/{job_id}")
+    ent = entitlement_for_request(job["repo"])
+    if not ent:
+        return _page("Deep scan", "<h1>Not your scan</h1><p>Sign in with the "
+                     "email you purchased with to see this.</p>", robots="noindex"), 403
+    deepscan.cancel_job(job_id)
+    return redirect(f"/deep-job/{job_id}")
 
 
 @bp.route("/deep-job/<job_id>/status")

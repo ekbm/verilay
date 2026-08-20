@@ -168,6 +168,36 @@ def _update_job(job_id, **fields):
             _JOBS[job_id].update(fields)
 
 
+class _JobCancelled(Exception):
+    """Raised internally by _check_cancelled() when a job has been marked
+    cancelled since it started. Caught separately in _run_job() so it never
+    gets relabeled as an "error" by the generic exception handler -- a
+    cancelled scan is not a failure."""
+    pass
+
+
+def _check_cancelled(job_id):
+    """Cooperative cancellation. The scan runs in a background thread and
+    an in-flight Claude/GitHub call can't be interrupted mid-call, so this
+    is checked BETWEEN _run_job()'s existing progress checkpoints instead
+    (fetch, each analysis pass, dependency check, etc.) -- a cancel takes
+    effect at the next checkpoint, not instantly."""
+    job = get_job(job_id)
+    if job and job.get("status") == "cancelled":
+        raise _JobCancelled()
+
+
+def cancel_job(job_id):
+    """Marks a job cancelled if it's still queued/running. Returns True if
+    it was actually still cancellable (False for a job that's already
+    done/errored/cancelled -- nothing to do there)."""
+    job = get_job(job_id)
+    if not job or job.get("status") not in ("queued", "running"):
+        return False
+    _update_job(job_id, status="cancelled", progress="Cancelling...")
+    return True
+
+
 # ── Prompt store — Supabase only, no silent fallback ────────────────────────
 # Unlike the job store, a missing prompt is a reason to STOP, not degrade —
 # running a paid deep scan with a placeholder prompt would produce a worse
@@ -277,20 +307,25 @@ def _run_job(job_id, user_id=None):
         _update_job(job_id, progress=f"Reading {len(files)} files across {len(batches)} passes...")
         raw_results = []
         for i, batch in enumerate(batches, start=1):
+            _check_cancelled(job_id)
             _update_job(job_id, progress=f"Analysing pass {i} of {len(batches)}...")
             s2 = _deps["analyse_step2"](batch, repo)
             s3 = _deps["analyse_step3"](batch, repo)
             raw_results.append({"batch": i, "step2": s2, "step3": s3})
 
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Checking every file for exposed keys...")
         scan_findings = _deps["scan_repo"](all_files)
 
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Checking dependencies against OSV.dev...")
         osv_vulns, osv_checked = _deps["check_dependencies"](all_files)
 
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Detecting your tech stack...")
         stack_result = _deps["analyse_step1"](files, list(all_files.keys()), repo, "github")
 
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Merging everything into one report...")
         scan_block = _deps["secret_to_prompt_block"](scan_findings, len(all_files))
         osv_block = _deps["osv_to_prompt_block"](osv_vulns, osv_checked)
@@ -318,6 +353,7 @@ def _run_job(job_id, user_id=None):
         # tier legitimately can: real package names/CVE ids for Libraries
         # findings, not just a count (Decision 6 only restricts what the
         # FREE tier is shown, not what this prompt can say).
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Writing advice prompts for your AI builder...")
         findings_summary = _build_findings_summary(report)
         # Same cap app.py's run_step4() applies to the free tier's version of
@@ -333,6 +369,7 @@ def _run_job(job_id, user_id=None):
         except Exception as e:
             print(f"[deepscan] advice prompts failed, report still valid without them: {e}", flush=True)
 
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Saving your report...")
         report_id = _deps["save_report_data"](report, user_id)
         _deps["consume_scan"](job["purchase_id"])
@@ -365,6 +402,11 @@ def _run_job(job_id, user_id=None):
             print(f"[deepscan] completion email skipped: {e}", flush=True)
 
         _update_job(job_id, status="done", progress="Done", report_id=report_id)
+    except _JobCancelled:
+        # Status is already "cancelled" (set by cancel_job(), called from a
+        # real user request) -- nothing more to do. No report saved, no
+        # scan consumed, no completion email: as if it never ran.
+        print(f"[deepscan] job {job_id} cancelled by user", flush=True)
     except Exception as e:
         print(f"[deepscan] job {job_id} failed: {e}", flush=True)
         _update_job(job_id, status="error", error=str(e))
@@ -416,7 +458,14 @@ def _synthesise(repo_name, raw_results, scan_block, osv_block):
         "WHAT/ANALOGY/DOES/CONNECTS/CONCEPT/Q/A/QWHY. If a layer genuinely has no real findings "
         "after merging, say so — do not invent one."
     )
-    merged_text = _deps["call_claude_text"](prompt, 4000)
+    # 20000 -- all 6 layers merged in one call (vs the free tier's 2 calls
+    # of 3, each now budgeted 10000 tokens after live testing showed real
+    # generation length varies a lot and repeatedly exceeded smaller
+    # guesses, up to ~5470 tokens observed on just a 3-layer call).
+    # Matching that per-layer rate for 6 layers in one call: a paying
+    # customer's report should never come out worse than a free one
+    # because this call ran short on tokens.
+    merged_text = _deps["call_claude_text"](prompt, 20000)
     return _deps["parse_flat_response"](merged_text, ALL_LAYERS)
 
 
