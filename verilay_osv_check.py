@@ -12,8 +12,15 @@ How it works:
      versions) over manifests (version RANGES like ^1.2.3, which can't be
      queried precisely) — this sidesteps the semver-range-parsing problem
      flagged in DEEP-SCAN-DESIGN.md as the fiddly part, rather than solving
-     it. When only a manifest is available, best-effort strips the range
-     operator and queries the base version; less exact, still useful.
+     it. For npm, a manifest-only fallback strips the range operator and
+     queries the base version when no lockfile is present — imprecise but
+     still useful, since real npm projects almost always commit a lockfile
+     anyway. For PyPI there is no equivalent lockfile to prefer, so an
+     unpinned requirements.txt line (anything but ==) is skipped rather than
+     guessed at — querying the floor of a range like flask>=3.0.0 as if it
+     were the real installed version produced a 100% false-positive rate in
+     practice (see _pypi_requirements_deps), which is worse than reporting
+     nothing.
   3. One batch call to OSV.dev (free, no key) — it does the version-range
      matching server-side, so no semver code is needed here either. The
      batch endpoint returns only {id, modified} per match; a second call per
@@ -111,8 +118,20 @@ _PY_LINE = re.compile(
 
 
 def _pypi_requirements_deps(content: str) -> Dict[str, str]:
-    """requirements.txt. Only pinned (==) or the best available operator's
-    version is used — a bare 'requests' with no version can't be queried."""
+    """requirements.txt. Only truly PINNED (==) versions are used.
+
+    Unlike npm, Python projects almost never commit a lockfile with the
+    actual resolved versions, so there's no accurate fallback to prefer the
+    way extract_dependencies() prefers package-lock.json over package.json.
+    That means a range like 'flask>=3.0.0' has no exact-version signal to
+    query at all -- treating the floor of the range as if it were what's
+    actually installed produced a 100% false-positive rate on Verilay's own
+    requirements.txt (every one of its 7 unpinned deps flagged "vulnerable"
+    against old floor versions, while the real installed versions were all
+    clean). Skipping unpinned lines entirely -- same treatment a bare
+    'requests' with no version at all already got -- is less coverage but
+    means every finding this DOES report is real, not a guess dressed up as
+    a fact."""
     deps = {}
     for line in content.splitlines():
         line = line.split("#", 1)[0].split(";", 1)[0].strip()
@@ -122,7 +141,7 @@ def _pypi_requirements_deps(content: str) -> Dict[str, str]:
         if not m:
             continue
         name, op, version = m.groups()
-        if name and version:
+        if name and version and op == "==":
             deps[name] = version
     return deps
 
