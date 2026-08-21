@@ -3908,6 +3908,34 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 21, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">See your app's structure in one picture</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Every report now includes a visual map of your app — Auth, Database, API, Frontend and more, laid out and labelled specific to what you actually built, not generic categories. A plain-English breakdown of what each part does sits right underneath.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 21, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Ask Verilay now knows your actual results</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Ask a real question about your report — "why is this critical?" or "how do I fix the database one?" — and get an answer grounded in your actual scan, not a generic response. Right there on the report page.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 21, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">See how far along your analysis is</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">While your scan is running, you'll now see a real progress indicator and a clear note that nothing needs your input — instead of just a spinner and no sense of how much longer it'll take.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 21, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">More reliable on large repos, and more complete findings</div>
+    <div><span class="tag fix">Fix</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Bigger repositories now scan reliably instead of occasionally failing with a "try ZIP" error. Findings also come back more complete — a token-limit issue was occasionally cutting an analysis short partway through.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 19, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">The deep scan is here</div>
     <div><span class="tag new">New</span></div>
