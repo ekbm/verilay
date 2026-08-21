@@ -564,10 +564,22 @@ function handleStreamEvent(evt) {
   switch(evt.event) {
     case 'status':
       document.getElementById('lm').textContent = evt.data;
+      // Also updates the steps23-loading banner's message (see updateStepsLabel)
+      // -- #lm lives inside the big #ld loading screen, which gets hidden once
+      // step1 renders, so status updates after that point were previously
+      // updating an element nobody could see. Harmless before step1 too: the
+      // banner just isn't visible yet at that point.
+      updateStepsLabel(evt.data);
       break;
     case 'step1':
       stopMsgs();
       document.getElementById('ld').classList.remove('vis');
+      // The "still analysing layers" banner (own spinner, own message) takes
+      // over from here -- previously built but never actually shown by any
+      // code path, so a visitor had no visible sign anything was still
+      // happening between step1 rendering and the full report completing.
+      var stepsBanner = document.getElementById('steps23-loading');
+      if (stepsBanner) stepsBanner.style.display = 'flex';
       currentReport = evt.data;
       renderReport(evt.data);
       // Track analysis completion in Plausible
@@ -582,12 +594,20 @@ function handleStreamEvent(evt) {
     case 'step2':
       if (evt.data && evt.data.layers) appendLayers(evt.data.layers);
       window._step2Done = true;
-      if (window._step2Done && window._step3Done) window._analysisComplete = true;
+      if (window._step2Done && window._step3Done) {
+        window._analysisComplete = true;
+      } else {
+        updateStepsLabel('Still analysing API, Frontend, Libraries layers...');
+      }
       break;
     case 'step3':
       if (evt.data && evt.data.layers) appendLayers(evt.data.layers);
       window._step3Done = true;
-      if (window._step2Done && window._step3Done) window._analysisComplete = true;
+      if (window._step2Done && window._step3Done) {
+        window._analysisComplete = true;
+      } else {
+        updateStepsLabel('Still analysing Auth, Config, Database layers...');
+      }
       break;
     case 'step2_error':
       // Progressive reveal (backend now yields step2/step3 independently,
@@ -595,13 +615,24 @@ function handleStreamEvent(evt) {
       // apart -- _analysisComplete must only flip once BOTH are resolved
       // (success or error), not after the first one, or the "mark as
       // verified" buttons enable while half the layers haven't loaded yet.
+      // The steps23-loading banner's message updates to name whichever
+      // half is still actually pending, not a generic placeholder, so
+      // "nothing seems to be happening" never happens silently again.
       window._step2Done = true;
-      if (window._step2Done && window._step3Done) window._analysisComplete = true;
+      if (window._step2Done && window._step3Done) {
+        window._analysisComplete = true;
+      } else {
+        updateStepsLabel('Still analysing API, Frontend, Libraries layers...');
+      }
       showLayerError('Layer analysis error: ' + evt.data);
       break;
     case 'step3_error':
       window._step3Done = true;
-      if (window._step2Done && window._step3Done) window._analysisComplete = true;
+      if (window._step2Done && window._step3Done) {
+        window._analysisComplete = true;
+      } else {
+        updateStepsLabel('Still analysing Auth, Config, Database layers...');
+      }
       showLayerError('Layer analysis error: ' + evt.data);
       break;
     case 'diagram':
@@ -1048,6 +1079,19 @@ function filesCoverageHTML(data) {
     html += 'Verilay reads the files most likely to carry security risk — a first-pass scan, not a full audit. <strong>' + uncovered + ' files were not analysed.</strong> Static scans also cannot run your code or read your live database dashboard, so treat this as a starting point, not a clean bill of health.';
   } else {
     html += 'Near-complete coverage of this codebase. This is still a first-pass surface scan — it cannot run your code or read your live database dashboard, so for apps handling real users or payments, get a deeper review before launch.';
+  }
+  html += '</div>';
+
+  // This is the free tier's own live view -- a deep scan report never
+  // renders through this function (it's a background job that lands
+  // straight on the saved page), so this CTA can be unconditional.
+  html += '<div style="font-size:12px;color:var(--txt);margin-top:8px">';
+  if (scanned > read) {
+    html += 'Want the layer analysis extended across all ' + scanned + ' files, plus the exact dependency package names and fixes? That\'s what the <a href="/deep-scan" style="color:var(--pu)">deep scan</a> adds.';
+  } else if (partial) {
+    html += 'Want the other ' + uncovered + ' files reviewed too? The <a href="/deep-scan" style="color:var(--pu)">deep scan</a> reads up to 150 files and hands you exact dependency fixes.';
+  } else {
+    html += 'Want exact dependency package names and fixes, plus unlimited re-scans for 30 days? Check out the <a href="/deep-scan" style="color:var(--pu)">deep scan</a>.';
   }
   html += '</div>';
 

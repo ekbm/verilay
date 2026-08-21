@@ -4264,7 +4264,9 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
             f'<div style="font-size:13px;color:#666;margin-top:.35rem">'
             + ("A deep scan reads far more of your codebase than the free analysis, which "
                "covers the 25 files most likely to carry risk." if is_deep else
-               "The free analysis covers the 25 files most likely to carry risk.")
+               "The free analysis covers the 25 files most likely to carry risk. Want more files reviewed, "
+               "plus exact dependency package names and fixes? See the "
+               '<a href="/deep-scan" style="color:#534AB7">deep scan</a>.')
             + '</div></div>'
         )
 
