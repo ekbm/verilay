@@ -5291,7 +5291,10 @@ input:focus{border-color:var(--pu)}
 
   <div id="p2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
     <div class="spin" style="width:28px;height:28px;border-width:2.5px;margin-bottom:.75rem"></div>
-    <div style="font-size:14px;color:var(--mut)">Writing your fix list...</div>
+    <div style="font-size:14px;color:var(--mut);margin-bottom:.65rem" id="p2-msg">Writing your fix list — this finishes automatically, no action needed.</div>
+    <div style="max-width:260px;margin:0 auto;background:var(--bdr);border-radius:20px;height:5px;overflow:hidden">
+      <div id="p2-bar" style="height:100%;border-radius:20px;background:var(--pu);width:5%;transition:width 0.6s ease"></div>
+    </div>
   </div>
 
   <div id="p2-results"></div>

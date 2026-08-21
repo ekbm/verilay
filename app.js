@@ -520,6 +520,8 @@ async function runAnalysis() {
   window._step3Done = false;
   window._analysisComplete = false;
   window._pendingHalfLabel = null;
+  stopTrickle();
+  stopP2Trickle();
   var p2banner = document.getElementById('p2-banner');
   if (p2banner) p2banner.style.display = 'none';
   var p2loading = document.getElementById('p2-loading');
@@ -612,6 +614,7 @@ function handleStreamEvent(evt) {
       var stepsBanner = document.getElementById('steps23-loading');
       if (stepsBanner) stepsBanner.style.display = 'flex';
       updateStepsProgress(15);
+      startTrickle(15, 48);
       currentReport = evt.data;
       renderReport(evt.data);
       // Track analysis completion in Plausible
@@ -629,11 +632,13 @@ function handleStreamEvent(evt) {
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
         window._pendingHalfLabel = null;
+        stopTrickle();
         updateStepsProgress(80);
       } else {
         window._pendingHalfLabel = 'Still analysing API, Frontend, Libraries layers — this finishes automatically, no action needed.';
         updateStepsLabel(window._pendingHalfLabel);
         updateStepsProgress(55);
+        startTrickle(55, 75);
       }
       break;
     case 'step3':
@@ -642,11 +647,13 @@ function handleStreamEvent(evt) {
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
         window._pendingHalfLabel = null;
+        stopTrickle();
         updateStepsProgress(80);
       } else {
         window._pendingHalfLabel = 'Still analysing Auth, Config, Database layers — this finishes automatically, no action needed.';
         updateStepsLabel(window._pendingHalfLabel);
         updateStepsProgress(55);
+        startTrickle(55, 75);
       }
       break;
     case 'step2_error':
@@ -662,11 +669,13 @@ function handleStreamEvent(evt) {
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
         window._pendingHalfLabel = null;
+        stopTrickle();
         updateStepsProgress(80);
       } else {
         window._pendingHalfLabel = 'Still analysing API, Frontend, Libraries layers — this finishes automatically, no action needed.';
         updateStepsLabel(window._pendingHalfLabel);
         updateStepsProgress(55);
+        startTrickle(55, 75);
       }
       showLayerError('Layer analysis error: ' + evt.data);
       break;
@@ -675,11 +684,13 @@ function handleStreamEvent(evt) {
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
         window._pendingHalfLabel = null;
+        stopTrickle();
         updateStepsProgress(80);
       } else {
         window._pendingHalfLabel = 'Still analysing Auth, Config, Database layers — this finishes automatically, no action needed.';
         updateStepsLabel(window._pendingHalfLabel);
         updateStepsProgress(55);
+        startTrickle(55, 75);
       }
       showLayerError('Layer analysis error: ' + evt.data);
       break;
@@ -754,6 +765,7 @@ function handleStreamEvent(evt) {
       }
       break;
     case 'layers_complete':
+      stopTrickle();
       updateStepsProgress(100);
       var lb = document.getElementById('steps23-loading');
       if (lb) lb.style.display = 'none';
@@ -761,6 +773,7 @@ function handleStreamEvent(evt) {
       if (p2 && !(currentReport && currentReport.preview_only)) p2.style.display = 'block';
       break;
     case 'error':
+      stopTrickle();
       stopMsgs();
       if (document.getElementById('ld').classList.contains('vis')) {
         document.getElementById('ld').classList.remove('vis');
@@ -791,8 +804,61 @@ function updateStepsProgress(pct) {
   if (pctEl) pctEl.textContent = pct + '%';
 }
 
+// The two slow stretches (waiting for the first Claude layer-call, then
+// waiting for the second) can genuinely run 30s-several minutes with NO
+// real milestone in between -- the bar just sat still the whole time.
+// This creeps it slowly toward a CEILING it can never reach or pass, so
+// there's always visible motion without ever claiming to be further along
+// than is actually known. The real milestone (55%/80%) always lands ABOVE
+// the ceiling, so the jump when it actually happens is still a genuine,
+// visible increase, never a step backward.
+var trickleTimer = null;
+function startTrickle(fromPct, ceilingPct) {
+  stopTrickle();
+  var current = fromPct;
+  trickleTimer = setInterval(function() {
+    var remaining = ceilingPct - current;
+    if (remaining <= 0.5) return;
+    current += remaining * 0.08;
+    updateStepsProgress(Math.round(current * 10) / 10);
+  }, 1500);
+}
+function stopTrickle() {
+  if (trickleTimer) { clearInterval(trickleTimer); trickleTimer = null; }
+}
+
+// Part 2 (/analyse-step4) is a single request/response, not the SSE stream
+// analyse-stream() uses -- there are no real milestones to hook a bar to at
+// all, just one fetch() that resolves once at the end. Same honest-creep
+// approach as above (own timer, own bar), calibrated for the "15-20
+// seconds" the banner already tells the user to expect: it stays visibly
+// moving toward a ceiling it never reaches, then the loading block gets
+// replaced by the real results the moment the response actually arrives --
+// never claims done before it is.
+var p2TrickleTimer = null;
+function startP2Trickle() {
+  stopP2Trickle();
+  var current = 5;
+  updateP2Progress(current);
+  p2TrickleTimer = setInterval(function() {
+    var remaining = 90 - current;
+    if (remaining <= 0.5) return;
+    current += remaining * 0.1;
+    updateP2Progress(Math.round(current * 10) / 10);
+  }, 1200);
+}
+function stopP2Trickle() {
+  if (p2TrickleTimer) { clearInterval(p2TrickleTimer); p2TrickleTimer = null; }
+}
+function updateP2Progress(pct) {
+  var bar = document.getElementById('p2-bar');
+  if (bar) bar.style.width = pct + '%';
+}
+
 function resetForm(goToForm) {
   // Clear the report
+  stopTrickle();
+  stopP2Trickle();
   document.getElementById('rpt').classList.remove('vis');
   if (document.getElementById('report-content'))
     document.getElementById('report-content').innerHTML = '';
@@ -1638,11 +1704,13 @@ function renderLayer() {
 async function runPart2() {
   document.getElementById('p2-banner').style.display = 'none';
   document.getElementById('p2-loading').style.display = 'block';
+  startP2Trickle();
 
   try {
     var h = currentReport ? (currentReport.health||{}) : {};
     // Don't run Part 2 if app is already production ready
     if (h.score === 'A' && h.critical === 0) {
+      stopP2Trickle();
       document.getElementById('p2-loading').style.display = 'none';
       document.getElementById('p2-results').innerHTML = `
         <div style="background:var(--grl);border:0.5px solid var(--grt);border-radius:var(--r);padding:1.25rem 1.5rem;margin-bottom:1rem">
@@ -1734,6 +1802,7 @@ async function runPart2() {
       })
     });
     var data = await resp.json();
+    stopP2Trickle();
     document.getElementById('p2-loading').style.display = 'none';
     if (data.error) {
       document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:13px;margin-top:.75rem">' + esc(data.error) + '</div>';
@@ -1742,6 +1811,7 @@ async function runPart2() {
     window._step4Data = data;
     renderPart2(data);
   } catch(e) {
+    stopP2Trickle();
     document.getElementById('p2-loading').style.display = 'none';
     document.getElementById('p2-results').innerHTML = '<div style="background:var(--rdl);border-radius:8px;padding:.85rem;color:var(--rdt);font-size:13px;margin-top:.75rem">Part 2 timed out or failed — this can happen with large or complex apps. <a href=\'#\' onclick=\'runPart2();return false;\' style=\'color:var(--rd);font-weight:600\'>Try again</a> or skip and use the advice prompts above.</div>';
   }
