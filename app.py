@@ -2264,6 +2264,22 @@ def analyse_step4(repo_name, built_with, findings_summary):
 
 
 
+# Without these, a reverse proxy in front of the app (Railway's edge, or
+# anything nginx-like) can buffer the WHOLE response instead of forwarding
+# each yielded line as it's written -- the generator keeps producing
+# keepalive pings on schedule, but nothing actually reaches the browser
+# until a buffer threshold fills or the connection is killed, which reads
+# to the client as "connection interrupted" partway through a long wait
+# even though the server was working the whole time. X-Accel-Buffering is
+# the standard nginx/nginx-compatible-proxy signal to disable that; explicit
+# Cache-Control guards against any layer treating this as cacheable.
+def _sse_response(generator):
+    resp = Response(stream_with_context(generator), mimetype="application/x-ndjson")
+    resp.headers["X-Accel-Buffering"] = "no"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 # ── Main analysis route — streams results as JSON events ───────────────────────
 @app.route("/analyse-stream", methods=["POST"])
 def analyse_stream():
@@ -2273,7 +2289,7 @@ def analyse_stream():
     if not allowed:
         def blocked():
             yield json.dumps({"event":"error","data":f"Rate limit reached. Try again in {reset_in//60} minutes."}) + "\n"
-        return Response(stream_with_context(blocked()), mimetype="application/x-ndjson")
+        return _sse_response(blocked())
 
     method = request.form.get("method","github")
 
@@ -2537,7 +2553,7 @@ def analyse_stream():
         except Exception as e:
             yield json.dumps({"event":"error","data":str(e)}) + "\n"
 
-    return Response(stream_with_context(generate()), mimetype="application/x-ndjson")
+    return _sse_response(generate())
 
 
 @app.route("/analyse-step4", methods=["POST"])
