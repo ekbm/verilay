@@ -2417,15 +2417,24 @@ def analyse_stream():
             s3 = {"layers":[]}
             s2_err = None
             s3_err = None
-            # Run in parallel with keepalive pings to prevent Railway timeout
+            # Run in parallel, yielding EACH step's result the moment it's
+            # ready rather than waiting for both. step2 (Auth/Config/
+            # Database) and step3 (API/Frontend/Libraries) are two separate
+            # Claude calls that don't finish at the same time -- the OLD
+            # code batched their results together regardless, so a visitor
+            # saw nothing new until the SLOWER of the two finished, even
+            # though the faster one might have been ready much earlier.
+            # Progressive reveal: whichever layers arrive first show up
+            # first, so there's real content to read while the rest is
+            # still generating, instead of a blank wait either way.
             import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f2 = executor.submit(analyse_step2, files, repo_name, scan_block)
                 f3 = executor.submit(analyse_step3, files, repo_name, osv_teaser_block)
                 # Send keepalive every 15s while waiting — prevents Railway's
                 # own connection timeout from firing. Loops until BOTH futures
-                # are actually done (not a fixed cutoff then a blocking wait) --
-                # a real analysis can now legitimately take a few minutes since
+                # are handled (not a fixed cutoff then a blocking wait) -- a
+                # real analysis can now legitimately take a few minutes since
                 # the token budgets were raised to stop silent truncation
                 # (see analyse_step2/step3's own comments), and the old design
                 # had a genuine gap: after its 90s keepalive loop it switched to
@@ -2433,31 +2442,50 @@ def analyse_stream():
                 # which is exactly the kind of silent gap that looks like a
                 # hang/timeout to the platform even before our own code errors.
                 deadline = _time.time() + 240
-                while _time.time() < deadline:
-                    done2 = f2.done()
-                    done3 = f3.done()
-                    if done2 and done3:
+                while _time.time() < deadline and (f2 is not None or f3 is not None):
+                    if f2 is not None and f2.done():
+                        try:
+                            s2 = f2.result()
+                        except Exception as e:
+                            s2_err = str(e)
+                        if s2_err:
+                            yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
+                        else:
+                            yield json.dumps({"event":"step2","data":s2}) + "\n"
+                        f2 = None
+                    if f3 is not None and f3.done():
+                        try:
+                            s3 = f3.result()
+                        except Exception as e:
+                            s3_err = str(e)
+                        if s3_err:
+                            yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
+                        else:
+                            s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
+                            yield json.dumps({"event":"step3","data":s3}) + "\n"
+                        f3 = None
+                    if f2 is None and f3 is None:
                         break
                     yield json.dumps({"event":"status","data":"Analysing your codebase — layers will appear shortly..."}) + "\n"
                     _time.sleep(15)
-                try:
-                    s2 = f2.result(timeout=10)
-                except Exception as e:
-                    s2_err = str(e)
-                try:
-                    s3 = f3.result(timeout=10)
-                except Exception as e:
-                    s3_err = str(e)
-            # Now yield results from main thread
-            if s2_err:
-                yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
-            else:
-                yield json.dumps({"event":"step2","data":s2}) + "\n"
-            if s3_err:
-                yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
-            else:
-                s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
-                yield json.dumps({"event":"step3","data":s3}) + "\n"
+                # Deadline passed with one or both still outstanding -- same
+                # short grace window the old code always used, now scoped to
+                # only whichever future(s) haven't been yielded yet.
+                if f2 is not None:
+                    try:
+                        s2 = f2.result(timeout=10)
+                        yield json.dumps({"event":"step2","data":s2}) + "\n"
+                    except Exception as e:
+                        s2_err = str(e)
+                        yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
+                if f3 is not None:
+                    try:
+                        s3 = f3.result(timeout=10)
+                        s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
+                        yield json.dumps({"event":"step3","data":s3}) + "\n"
+                    except Exception as e:
+                        s3_err = str(e)
+                        yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
 
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)

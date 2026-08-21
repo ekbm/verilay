@@ -580,12 +580,28 @@ function handleStreamEvent(evt) {
       }
       break;
     case 'step2':
+      if (evt.data && evt.data.layers) appendLayers(evt.data.layers);
+      window._step2Done = true;
+      if (window._step2Done && window._step3Done) window._analysisComplete = true;
+      break;
     case 'step3':
       if (evt.data && evt.data.layers) appendLayers(evt.data.layers);
-      window._analysisComplete = true;  // All layers loaded
+      window._step3Done = true;
+      if (window._step2Done && window._step3Done) window._analysisComplete = true;
       break;
     case 'step2_error':
+      // Progressive reveal (backend now yields step2/step3 independently,
+      // whichever finishes first) means these two can now arrive minutes
+      // apart -- _analysisComplete must only flip once BOTH are resolved
+      // (success or error), not after the first one, or the "mark as
+      // verified" buttons enable while half the layers haven't loaded yet.
+      window._step2Done = true;
+      if (window._step2Done && window._step3Done) window._analysisComplete = true;
+      showLayerError('Layer analysis error: ' + evt.data);
+      break;
     case 'step3_error':
+      window._step3Done = true;
+      if (window._step2Done && window._step3Done) window._analysisComplete = true;
       showLayerError('Layer analysis error: ' + evt.data);
       break;
     case 'diagram':
