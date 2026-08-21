@@ -5227,9 +5227,15 @@ input:focus{border-color:var(--pu)}
   <div id="report-content"></div>
 
   <!-- Steps 2+3 loading banner — shown while layers load in background -->
-  <div id="steps23-loading" style="display:none;align-items:center;gap:10px;background:var(--pul);border-radius:var(--r);padding:.75rem 1rem;margin-top:.75rem;margin-bottom:.75rem">
-    <div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>
-    <div style="font-size:13px;color:var(--put);font-weight:500" id="steps23-msg">Analysing Auth, Config, Database layers...</div>
+  <div id="steps23-loading" style="display:none;flex-direction:column;gap:8px;background:var(--pul);border-radius:var(--r);padding:.75rem 1rem;margin-top:.75rem;margin-bottom:.75rem">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>
+      <div style="font-size:13px;color:var(--put);font-weight:500;flex:1" id="steps23-msg">Analysing Auth, Config, Database layers...</div>
+      <div style="font-size:12px;color:var(--put);font-weight:600;flex-shrink:0" id="steps23-pct">15%</div>
+    </div>
+    <div style="background:rgba(255,255,255,.4);border-radius:20px;height:5px;overflow:hidden">
+      <div id="steps23-bar" style="height:100%;border-radius:20px;background:var(--pu);width:15%;transition:width 0.6s ease"></div>
+    </div>
   </div>
 
   <!-- Layers injected here by appendLayers -->
@@ -5274,6 +5280,7 @@ input:focus{border-color:var(--pu)}
       <div style="flex:1">
         <div style="font-size:15px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for Part 2?</div>
         <div style="font-size:13px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
+        <div style="font-size:12px;color:var(--put);opacity:.85;line-height:1.5;margin-bottom:.85rem">Two ways to fix what's found: Part 2's prompts are free to copy into your own AI, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
           <button id="btn-skip" style="padding:7px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:13px;cursor:pointer">Skip for now</button>

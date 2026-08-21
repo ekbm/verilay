@@ -505,6 +505,29 @@ function stopMsgs() {
 
 async function runAnalysis() {
   hideErr();
+  // Guard against stale state from a PREVIOUS analysis in the same tab --
+  // these flags/elements only ever get cleared by resetForm() (the "New
+  // analysis" buttons), so any path into runAnalysis() that skips that
+  // (e.g. a re-scan entry point) would otherwise start this run with
+  // _step2Done/_step3Done already true from last time. That makes the
+  // very first layer-half to arrive on the NEW run look like BOTH halves
+  // are already done -- the progress bar jumps straight past 55%, "mark
+  // as verified" buttons unlock before the real analysis is half loaded,
+  // and a leftover "ready for Part 2" banner can still be sitting visible
+  // from the previous run. Reset explicitly here so every run starts clean
+  // regardless of how the user got to this point.
+  window._step2Done = false;
+  window._step3Done = false;
+  window._analysisComplete = false;
+  window._pendingHalfLabel = null;
+  var p2banner = document.getElementById('p2-banner');
+  if (p2banner) p2banner.style.display = 'none';
+  var p2loading = document.getElementById('p2-loading');
+  if (p2loading) p2loading.style.display = 'none';
+  var p2results = document.getElementById('p2-results');
+  if (p2results) p2results.innerHTML = '';
+  var stepsBannerReset = document.getElementById('steps23-loading');
+  if (stepsBannerReset) stepsBannerReset.style.display = 'none';
   var fd = new FormData();
   fd.append('method', currentMethod);
   if (currentMethod === 'github') {
@@ -569,7 +592,15 @@ function handleStreamEvent(evt) {
       // step1 renders, so status updates after that point were previously
       // updating an element nobody could see. Harmless before step1 too: the
       // banner just isn't visible yet at that point.
-      updateStepsLabel(evt.data);
+      // Once we know exactly which half is still pending (one of step2/step3
+      // has already arrived), keep showing THAT specific "no action needed"
+      // message instead of letting this generic heartbeat (sent every ~15s
+      // while waiting) overwrite it with vaguer text every time it arrives.
+      if (window._pendingHalfLabel) {
+        updateStepsLabel(window._pendingHalfLabel);
+      } else {
+        updateStepsLabel(evt.data);
+      }
       break;
     case 'step1':
       stopMsgs();
@@ -580,6 +611,7 @@ function handleStreamEvent(evt) {
       // happening between step1 rendering and the full report completing.
       var stepsBanner = document.getElementById('steps23-loading');
       if (stepsBanner) stepsBanner.style.display = 'flex';
+      updateStepsProgress(15);
       currentReport = evt.data;
       renderReport(evt.data);
       // Track analysis completion in Plausible
@@ -596,8 +628,12 @@ function handleStreamEvent(evt) {
       window._step2Done = true;
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
+        window._pendingHalfLabel = null;
+        updateStepsProgress(80);
       } else {
-        updateStepsLabel('Still analysing API, Frontend, Libraries layers...');
+        window._pendingHalfLabel = 'Still analysing API, Frontend, Libraries layers — this finishes automatically, no action needed.';
+        updateStepsLabel(window._pendingHalfLabel);
+        updateStepsProgress(55);
       }
       break;
     case 'step3':
@@ -605,8 +641,12 @@ function handleStreamEvent(evt) {
       window._step3Done = true;
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
+        window._pendingHalfLabel = null;
+        updateStepsProgress(80);
       } else {
-        updateStepsLabel('Still analysing Auth, Config, Database layers...');
+        window._pendingHalfLabel = 'Still analysing Auth, Config, Database layers — this finishes automatically, no action needed.';
+        updateStepsLabel(window._pendingHalfLabel);
+        updateStepsProgress(55);
       }
       break;
     case 'step2_error':
@@ -621,8 +661,12 @@ function handleStreamEvent(evt) {
       window._step2Done = true;
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
+        window._pendingHalfLabel = null;
+        updateStepsProgress(80);
       } else {
-        updateStepsLabel('Still analysing API, Frontend, Libraries layers...');
+        window._pendingHalfLabel = 'Still analysing API, Frontend, Libraries layers — this finishes automatically, no action needed.';
+        updateStepsLabel(window._pendingHalfLabel);
+        updateStepsProgress(55);
       }
       showLayerError('Layer analysis error: ' + evt.data);
       break;
@@ -630,8 +674,12 @@ function handleStreamEvent(evt) {
       window._step3Done = true;
       if (window._step2Done && window._step3Done) {
         window._analysisComplete = true;
+        window._pendingHalfLabel = null;
+        updateStepsProgress(80);
       } else {
-        updateStepsLabel('Still analysing Auth, Config, Database layers...');
+        window._pendingHalfLabel = 'Still analysing Auth, Config, Database layers — this finishes automatically, no action needed.';
+        updateStepsLabel(window._pendingHalfLabel);
+        updateStepsProgress(55);
       }
       showLayerError('Layer analysis error: ' + evt.data);
       break;
@@ -651,8 +699,10 @@ function handleStreamEvent(evt) {
         currentReport.architecture_diagram = diagramSvg;
         currentReport.module_purpose_rows = moduleRows;
       }
+      updateStepsProgress(90);
       break;
     case 'saved':
+      updateStepsProgress(97);
       savedReportId = evt.data.report_id;
       currentVerifications = {};  // Reset verifications for new report
       // The report-grounded Ask Verilay box (in the "Have questions" card)
@@ -704,6 +754,7 @@ function handleStreamEvent(evt) {
       }
       break;
     case 'layers_complete':
+      updateStepsProgress(100);
       var lb = document.getElementById('steps23-loading');
       if (lb) lb.style.display = 'none';
       var p2 = document.getElementById('p2-banner');
@@ -726,6 +777,18 @@ function handleStreamEvent(evt) {
 function updateStepsLabel(msg) {
   var el = document.getElementById('steps23-msg');
   if (el) el.textContent = msg;
+}
+
+// Tied to real milestones the backend actually reaches (step1 shown, one
+// layer-half done, both halves done, diagram computed, report saved) --
+// not a fake timer. A time-based bar would routinely lie now that a real
+// analysis can take anywhere from 30s to a few minutes depending on repo
+// size and how much Claude has to generate.
+function updateStepsProgress(pct) {
+  var bar = document.getElementById('steps23-bar');
+  var pctEl = document.getElementById('steps23-pct');
+  if (bar) bar.style.width = pct + '%';
+  if (pctEl) pctEl.textContent = pct + '%';
 }
 
 function resetForm(goToForm) {
