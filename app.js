@@ -530,6 +530,16 @@ async function runAnalysis() {
   if (p2results) p2results.innerHTML = '';
   var stepsBannerReset = document.getElementById('steps23-loading');
   if (stepsBannerReset) stepsBannerReset.style.display = 'none';
+  // Undo whatever showAnalysisInterruptedError() may have left behind on a
+  // previous run's connection failure (hidden spinner/percentage, the
+  // message swapped for an error + retry link) -- otherwise those stay
+  // broken for every run after the first interrupted one, not just that run.
+  var stepsSpinnerReset = document.getElementById('steps23-spinner');
+  if (stepsSpinnerReset) stepsSpinnerReset.style.display = '';
+  var stepsPctReset = document.getElementById('steps23-pct');
+  if (stepsPctReset) stepsPctReset.style.display = '';
+  var stepsMsgReset = document.getElementById('steps23-msg');
+  if (stepsMsgReset) stepsMsgReset.textContent = 'Analysing Auth, Config, Database layers...';
   var fd = new FormData();
   fd.append('method', currentMethod);
   if (currentMethod === 'github') {
@@ -570,8 +580,6 @@ async function runAnalysis() {
     }
   } catch(e) {
     stopMsgs();
-    document.getElementById('ld').classList.remove('vis');
-    document.getElementById('form-section').style.display = 'block';
     var errMsg = e.message || 'Something went wrong. Please try again.';
     // Make network errors more helpful
     if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('Load failed')) {
@@ -581,7 +589,25 @@ async function runAnalysis() {
     } else if (errMsg.includes('503')) {
       errMsg = 'Server is busy — please wait 30 seconds and try again.';
     }
-    showErr(errMsg);
+    // This used to unconditionally re-show the empty starting form here --
+    // fine when written, since step1 used to finish almost instantly, so a
+    // stream failure basically always happened DURING the #ld loading
+    // screen. Now that step2/step3 can run for minutes, the connection can
+    // just as easily drop AFTER step1 already rendered a real partial
+    // report -- re-showing the blank form on top of that just stacks it
+    // over a still-visible report frozen mid-progress (a real user hit
+    // exactly this: the bar sat frozen at 74.5% while the error had nowhere
+    // sensible to appear, since #eb lives inside the now-hidden form).
+    // Replace the frozen banner in place instead when there's already a
+    // report on screen; only fall back to the pristine form when there
+    // genuinely isn't one yet.
+    if (document.getElementById('rpt').classList.contains('vis')) {
+      showAnalysisInterruptedError(errMsg);
+    } else {
+      document.getElementById('ld').classList.remove('vis');
+      document.getElementById('form-section').style.display = 'block';
+      showErr(errMsg);
+    }
   }
 }
 
@@ -825,6 +851,26 @@ function startTrickle(fromPct, ceilingPct) {
 }
 function stopTrickle() {
   if (trickleTimer) { clearInterval(trickleTimer); trickleTimer = null; }
+}
+
+// The connection to the SSE stream itself can die after a partial report
+// is already showing (not just a backend-reported step2_error/step3_error,
+// which handleStreamEvent() already covers). Reuses the same steps23-loading
+// banner the user was already looking at -- swaps its spinner+bar for the
+// error message and a retry link in place, rather than discarding the
+// partial report and reopening the empty starting form on top of it.
+function showAnalysisInterruptedError(msg) {
+  stopTrickle();
+  var banner = document.getElementById('steps23-loading');
+  if (banner) banner.style.display = 'flex';
+  var spinner = document.getElementById('steps23-spinner');
+  if (spinner) spinner.style.display = 'none';
+  var pctEl = document.getElementById('steps23-pct');
+  if (pctEl) pctEl.style.display = 'none';
+  var msgEl = document.getElementById('steps23-msg');
+  if (msgEl) {
+    msgEl.innerHTML = esc(msg) + ' <a href="#" onclick="resetForm(true);return false;" style="color:var(--put);text-decoration:underline;font-weight:600">Try again</a>';
+  }
 }
 
 // Part 2 (/analyse-step4) is a single request/response, not the SSE stream

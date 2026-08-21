@@ -5229,7 +5229,7 @@ input:focus{border-color:var(--pu)}
   <!-- Steps 2+3 loading banner — shown while layers load in background -->
   <div id="steps23-loading" style="display:none;flex-direction:column;gap:8px;background:var(--pul);border-radius:var(--r);padding:.75rem 1rem;margin-top:.75rem;margin-bottom:.75rem">
     <div style="display:flex;align-items:center;gap:10px">
-      <div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>
+      <div id="steps23-spinner" style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>
       <div style="font-size:13px;color:var(--put);font-weight:500;flex:1" id="steps23-msg">Analysing Auth, Config, Database layers...</div>
       <div style="font-size:12px;color:var(--put);font-weight:600;flex-shrink:0" id="steps23-pct">15%</div>
     </div>
