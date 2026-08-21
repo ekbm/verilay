@@ -2749,6 +2749,111 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "the-lockfile-was-lying",
+        "title": "The Scariest Number in My Security Report Wasn&rsquo;t the Vulnerability. It Was the File That Was Lying About Them.",
+        "date": "August 21, 2026",
+        "category": "Story",
+        "excerpt": "I ran my own free tool on my own app and got an F. Fixing the one real vulnerability didn&rsquo;t explain why the score jumped to a perfect A &mdash; the real answer was a file that had quietly stopped telling the truth.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p>I ran Verilay &mdash; the tool I built &mdash; on my own app, BuildBook. It came back with a grade of F. 23 critical findings, 18 warnings, 41 &ldquo;dependencies&rdquo; flagged as risky.</p>
+<p>If you&rsquo;ve built something with Lovable, Bolt, or Replit, you&rsquo;ve got dependencies too, whether you&rsquo;ve ever seen that word or not. Think of them as ingredients your app borrows instead of making from scratch &mdash; a calendar widget, a way to generate PDFs, a login system. Nobody hand-builds all of that themselves. You (or rather, your AI builder) reach for hundreds of these pre-made pieces, bundle them together, and that&rsquo;s most of what your app actually is.</p>
+<p>Which means when one of those borrowed ingredients has a known security problem, it&rsquo;s now a problem in <em>your</em> app too, even though you never wrote a line of it.</p>
+<p>That&rsquo;s what a &ldquo;dependency vulnerability&rdquo; scan checks. And I want to walk you through what happened when I ran that check on my own app &mdash; not because the vulnerability itself was dramatic, but because of something much quieter I found underneath it, that I think is worth understanding if you&rsquo;re building with AI tools too.</p>
+
+<h2>What the scan actually told me</h2>
+<p>Verilay&rsquo;s free scan checks every one of your app&rsquo;s ingredients against a public list of known security problems. It came back and said: 41 out of 963 ingredients have a documented issue, 23 of them serious.</p>
+<p>On purpose, the free scan doesn&rsquo;t tell you <em>which</em> 41 &mdash; that detail is reserved for the paid version. Instead, it hands you a ready-to-paste message and tells you to give it to your own AI builder, so <em>it</em> can go find the specifics. So that&rsquo;s what I did: copied the message Verilay gave me, pasted it into Lovable, and asked it to investigate.</p>
+
+<h2>Most of the alarm turned out to be noise</h2>
+<p>Here&rsquo;s the first thing worth knowing: not every &ldquo;vulnerability&rdquo; is something a stranger could actually use against you.</p>
+<p>Lovable&rsquo;s investigation split the 41 flagged ingredients into two very different piles. Most of them &mdash; the majority &mdash; were tools that only run on <em>my</em> computer while I&rsquo;m building the app. Things like the tool that packages everything together before it goes live. A security problem in a tool like that is a real thing, technically, but nobody visiting BuildBook could ever touch it. It&rsquo;s like a security flaw in the factory machine that boxes up a product, versus a flaw in the product itself &mdash; only one of those can hurt a customer.</p>
+<p>Buried in that pile was one real one: a login-related library called react-router, sitting on an old version with a documented bug called an &ldquo;open redirect.&rdquo; In plain terms: a link that looks like it&rsquo;s taking you somewhere trusted, but can be secretly rigged to bounce you somewhere else instead &mdash; the exact kind of thing someone could exploit right after a person logs in, since BuildBook uses that library to decide where to send you after signing in.</p>
+<p>That one, Lovable fixed: one small version bump, no other changes needed. Small, targeted, done.</p>
+
+<h2>The re-scan that didn&rsquo;t move</h2>
+<p>I ran Verilay again to confirm the fix. Same result. Still 41 flagged, still an F.</p>
+<p>Turned out the fix had been made inside Lovable, but hadn&rsquo;t actually been pushed out to the real, live version of the code yet &mdash; a boring, easy-to-miss gap between &ldquo;I told it to fix this&rdquo; and &ldquo;the fix is actually live.&rdquo; Once I double-checked and made sure it had gone out properly, I ran the scan a third time.</p>
+<p>This time: zero critical, zero warnings. Grade A. Every single ingredient checked out clean.</p>
+<p>Not &ldquo;most of them.&rdquo; All of them. And that&rsquo;s the part that didn&rsquo;t make sense to me.</p>
+
+<h2>Why would fixing one thing fix forty?</h2>
+<p>I&rsquo;d only asked Lovable to fix the one real issue &mdash; the login redirect bug. That shouldn&rsquo;t have had anything to do with the other 40 unrelated build-tool flags. So I asked Lovable directly: tell me exactly what changed, don&rsquo;t summarize, I want the real answer.</p>
+<p>It turned out two completely separate things had happened, back to back, that I&rsquo;d assumed were one:</p>
+<p><strong>The actual fix</strong> was exactly as small as it looked &mdash; just that one login library, bumped to a newer, safer version. Nothing else touched.</p>
+<p><strong>Everything else got cleaned up by accident</strong>, because of something unrelated: the file that&rsquo;s supposed to be an exact, accurate list of every ingredient the app actually uses &mdash; its &ldquo;lockfile&rdquo; &mdash; had quietly fallen out of date. It was missing dozens of ingredients the app was genuinely using (things for generating PDFs, handling 3D graphics, running tests) that it simply didn&rsquo;t know about anymore. When a routine &ldquo;refresh this list&rdquo; step ran, it rebuilt that file from scratch &mdash; and rebuilding it happened to update all those old, flagged build-tools to their current, safe versions at the same time.</p>
+<p>Two unrelated events, landing back to back, that looked from the outside like one satisfying fix.</p>
+
+<h2>The file whose only job was to tell the truth</h2>
+<p>This is the part I actually want you to remember.</p>
+<p>That lockfile has exactly one job: be an honest, accurate record of what your app is really running. Nothing more. And it had been quietly wrong &mdash; missing real ingredients that were genuinely in use &mdash; for who knows how long, without a single symptom. Nothing broke. Nothing looked off. The app worked completely normally the entire time it was wrong.</p>
+<p>The only reason anyone found out is that a security check happened to go looking at exactly the right moment, and someone (well &mdash; Lovable) refused to just say &ldquo;looks fine&rdquo; without checking.</p>
+<p>That&rsquo;s the pattern I keep running into, over and over, building a tool that reads AI-built apps for a living: the scariest problems aren&rsquo;t the ones that break something visibly. They&rsquo;re the ones that just quietly stop being true, and keep on working anyway, right up until the day someone actually checks.</p>
+
+<h2>What this means for your own app</h2>
+<p>A few honest things worth taking away, if you&rsquo;re building with Lovable, Bolt, Replit, or anything similar:</p>
+<p><strong>A vulnerability count is only as honest as the record it&rsquo;s reading from.</strong> If that record has drifted &mdash; like mine had &mdash; the number you&rsquo;re looking at could be wrong in either direction: hiding a real risk that isn&rsquo;t showing up, or scaring you over something nobody can actually reach.</p>
+<p><strong>Not every flagged issue is equally dangerous.</strong> A scanner can&rsquo;t always tell the difference between &ldquo;a stranger could exploit this tomorrow&rdquo; and &ldquo;this only matters to someone who already has access to your build tools.&rdquo; That&rsquo;s exactly why the free scan hands you a prompt instead of a verdict &mdash; go get your AI builder to actually look, rather than panicking at a raw number.</p>
+<p><strong>When something fixes itself more than you expected, ask why.</strong> I almost just wrote down &ldquo;we fixed one bug and it cleared 41 issues&rdquo; and moved on &mdash; which would have been a nice story and a wrong one. The real answer took one more question to find, and it turned out to be the more useful thing to know.</p>
+<p>The good news, this time, was real. It just wasn&rsquo;t the good news I thought I was getting &mdash; and the extra five minutes it took to find out the real reason taught me more than the fix itself did.</p>
+""",
+    },
+    {
+        "slug": "part-of-my-tool-that-trusted-a-strangers-page",
+        "title": "The Part of My Tool That Trusted a Stranger&rsquo;s Page",
+        "date": "August 20, 2026",
+        "category": "Build",
+        "excerpt": "My SSRF guard checked the address you typed. It never checked the addresses pulled out of the page that address returned &mdash; so the dangerous request never had to pass through the box where anyone types anything.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": True,
+        "body": """
+<p>Two posts ago I found a part of Verilay that was asking an AI to do a lookup instead of a judgement. One post ago I found a rate limit that had never actually limited anything. This one&rsquo;s about a hole that never went anywhere near the box where people type.</p>
+<p>That last part is what makes it worth writing up. Most security advice assumes the danger arrives through the front door &mdash; a form field, a search box, a URL you paste in. This one came in through the back, carried by a page that wasn&rsquo;t even mine.</p>
+
+<h2>What the URL scan does</h2>
+<p>Verilay can check a live app three ways: paste a GitHub link, upload a ZIP, or paste the app&rsquo;s actual web address. That third one is for people who don&rsquo;t have their code handy, or just want a quick look before digging further.</p>
+<p>Give it a URL and Verilay fetches the page, the same way your browser would. Then it goes a step further &mdash; it looks for <code>&lt;script src=&quot;...&quot;&gt;</code> tags in the HTML and fetches those too, because that&rsquo;s where hardcoded API keys most often turn up in a live app. A key sitting in <code>main.js</code> is invisible if you only look at the HTML that loaded it.</p>
+<p>Two fetches, then. The page, and whatever scripts it points to.</p>
+
+<h2>The thing I thought I had</h2>
+<p>Fetching an address someone gives you is a genuinely dangerous thing for a server to do, and I knew it going in. A server sitting on Railway isn&rsquo;t sitting on the open internet the way your laptop is &mdash; it can potentially reach internal addresses that have no business being reachable from outside. Cloud metadata endpoints. Internal services with no login screen because nobody ever expected a request to reach them from where they are. Point a careless fetcher at the right internal address and it&rsquo;ll happily hand back whatever&rsquo;s there.</p>
+<p>This has a name &mdash; server-side request forgery, SSRF &mdash; and I&rsquo;d built a guard against it before Verilay ever went live. Reject anything that isn&rsquo;t <code>http</code> or <code>https</code>. Reject the addresses everyone knows to reject: <code>localhost</code>, <code>127.0.0.1</code>, <code>169.254.169.254</code> (the cloud metadata address, the one attackers actually go looking for), the private ranges that start <code>10.</code>, <code>172.16.</code>, <code>192.168.</code>.</p>
+<p>That felt thorough. It checked out fine every time I tested it with an obviously internal address.</p>
+
+<h2>Where it actually had gaps</h2>
+<p>Three, once I went looking properly.</p>
+<p><strong>It checked the address you typed, not the address it actually talked to.</strong> <code>169.254.169.254</code> was blocked. A hostname like <code>sneaky.example.com</code> was not &mdash; even if that hostname&rsquo;s DNS record quietly pointed straight at <code>169.254.169.254</code>. The guard was reading the name on the envelope and never checking where the letter actually got delivered.</p>
+<p><strong>It followed redirects without looking again.</strong> A perfectly ordinary, public URL is allowed to reply &ldquo;actually, go here instead&rdquo; &mdash; and it&rsquo;s allowed to send you somewhere else again after that. My code followed those redirects automatically, the default and the convenient thing to do, and only ever checked the <em>first</em> address. A safe-looking URL that redirected to an internal one would sail through, because nothing re-checked the final destination.</p>
+<p>Both of those are real, and both are now fixed &mdash; every hostname gets resolved to an actual address before it&rsquo;s trusted, and every redirect is followed by hand, one hop at a time, with each new address checked exactly like the first.</p>
+
+<h2>The one that actually surprised me</h2>
+<p>Here&rsquo;s the third, and it&rsquo;s the one I keep coming back to, because I&rsquo;d built a careful guard and still walked straight past it.</p>
+<p>Remember the two fetches &mdash; the page, then the scripts it points to? I&rsquo;d put my SSRF guard on the <em>first</em> one. The address you type gets validated properly. Blocked ranges, resolved DNS, revalidated redirects, all of it.</p>
+<p>But the second fetch doesn&rsquo;t come from you. It comes from <code>&lt;script src=&quot;...&quot;&gt;</code> tags sitting inside <em>someone else&rsquo;s page</em> &mdash; a page I don&rsquo;t control, that could say anything. And that second fetch was going out with none of the same checking.</p>
+<p>It&rsquo;s the difference between checking ID at the front door and then letting in anyone your guest phones up and waves through the side. The front door was solid. I&rsquo;d just never asked who else the front door was quietly vouching for.</p>
+<p>So a malicious page didn&rsquo;t need to attack Verilay&rsquo;s input box at all. It just needed a <code>&lt;script src=&quot;http://169.254.169.254/whatever&quot;&gt;</code> sitting somewhere in its own HTML, and Verilay would fetch it on the page&rsquo;s behalf, no user input involved at any point.</p>
+<p>That&rsquo;s what made it worth its own post rather than a line in the last one. It&rsquo;s not a clever trick. It&rsquo;s the second fetch nobody thought to ask &ldquo;does this one need checking too?&rdquo; &mdash; because the obvious, scrutinised, this-is-where-attacks-come-from spot was the first fetch, and the second one just rode along on the same trust.</p>
+
+<h2>The fix</h2>
+<p>One rule now, applied everywhere Verilay fetches anything: every address gets resolved, checked, and revalidated at each redirect &mdash; the page you gave it, and every script address pulled out of that page. Same function, called from both places. No side door with its own, weaker set of rules.</p>
+<p>That&rsquo;s really the whole fix. The interesting part wasn&rsquo;t the code &mdash; it&rsquo;s about four lines different from before. The interesting part was noticing there were two doors and I&rsquo;d only ever locked one of them.</p>
+<p>One honest limitation, since overselling a fix is its own kind of dishonesty: Verilay resolves a hostname and <em>then</em> makes the request. If a name&rsquo;s DNS record changed in the gap between those two moments, the address it checked and the address it fetched wouldn&rsquo;t be quite the same one. Closing that completely means pinning the connection to the exact address you validated, which breaks how modern web hosting actually works under the hood. For a tool reading public web apps, checking properly at every hop and not hanging around is the right trade-off &mdash; but &ldquo;fixed&rdquo; here means &ldquo;no longer wide open,&rdquo; not &ldquo;provably airtight,&rdquo; and I&rsquo;d rather say that than let this post imply more than the code actually guarantees.</p>
+
+<h2>If you&rsquo;re building anything that fetches URLs</h2>
+<p><strong>Ask what &ldquo;the input&rdquo; actually is.</strong> I thought the input was the URL box. It was also every address extracted from whatever that URL returned &mdash; a second, invisible input I hadn&rsquo;t counted as one.</p>
+<p><strong>Validating once isn&rsquo;t validating everywhere it matters.</strong> If your server ever makes a follow-up request based on the <em>result</em> of an earlier request &mdash; a redirect, a linked resource, a reference pulled out of a response &mdash; that follow-up needs the exact same scrutiny as the original. It&rsquo;s easy to write the careful check once, feel done, and never notice a second path exists.</p>
+<p><strong>Resolve before you trust a hostname.</strong> Blocking known-bad addresses is not the same as blocking known-bad <em>destinations</em>. A name can point anywhere, and DNS will happily tell you where, if you ask before you fetch instead of after.</p>
+
+<h2>The uncomfortable part, again</h2>
+<p>I keep writing these posts with the same shape: I built the careful-looking version first, felt satisfied, and the actual gap was somewhere I&rsquo;d stopped looking precisely because I&rsquo;d already decided that part was handled.</p>
+<p>The front door was genuinely solid. That&rsquo;s what made the side door so easy to miss &mdash; everything about the first fetch <em>looked</em> like the security-sensitive part, so it got all the attention, and the second fetch inherited none of it by default.</p>
+<p>Verilay&rsquo;s code is public at <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener">github.com/ekbm/verilay</a>, including the fetch logic this post is about. If there&rsquo;s a fourth door I haven&rsquo;t found, I&rsquo;d rather someone tell me than find out the way I found this one.</p>
+""",
+    },
+    {
         "slug": "free-tool-limit-wasnt-real",
         "title": "My Free Tool Had a Limit. It Turned Out the Limit Wasn&rsquo;t Real.",
         "date": "August 11, 2026",
@@ -2863,7 +2968,7 @@ went back to.</p>
         "excerpt": "My security tool asked an AI to look for passwords in 25 of your files. Finding a password isn't a judgement call — it's a lookup. What changed when I stopped asking.",
         "medium_url": None,
         "read_time": "7 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>Back in June I wrote about
 <a href="/blog/ran-own-security-tool-different-grade">running Verilay on Verilay and getting a
