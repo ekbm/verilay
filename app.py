@@ -1114,16 +1114,19 @@ ASK_PAGE_HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ask Verilay</title>
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-fast:120ms;--dur-base:180ms;--shadow-sm:0 1px 2px rgba(26,25,23,.06),0 1px 1px rgba(26,25,23,.04)}
 *{box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;margin:0;font-size:15px;line-height:1.6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;margin:0;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto;padding:2rem 1.25rem 7rem;min-height:100vh}
 .top{margin-bottom:1.25rem}
-.top h1{font-size:22px;font-weight:700;margin:0 0 .35rem}
+.top h1{font-size:22px;font-weight:700;margin:0 0 .35rem;letter-spacing:-.01em}
 .top p{font-size:13px;color:#6b6966;margin:0}
+.close-link{display:inline-block;font-size:13px;color:#6b6966;text-decoration:none;margin-bottom:1rem;transition:color var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){.close-link:hover{color:#1a1917}}
 .msgs{display:flex;flex-direction:column;gap:.85rem}
-.m{padding:.8rem 1rem;border-radius:12px;max-width:90%;white-space:pre-wrap;word-wrap:break-word}
+.m{padding:.8rem 1rem;border-radius:12px;max-width:90%;white-space:pre-wrap;word-wrap:break-word;animation:vlMsgIn 260ms var(--ease-out) both}
 .m.you{align-self:flex-end;background:#1a1917;color:#fff;border-bottom-right-radius:3px}
-.m.v{align-self:flex-start;background:#fff;border:0.5px solid #e8e6e0;border-bottom-left-radius:3px}
+.m.v{align-self:flex-start;background:#fff;border:0.5px solid #e8e6e0;border-bottom-left-radius:3px;box-shadow:var(--shadow-sm)}
 .m.note{align-self:center;background:#fdf6e3;border:0.5px solid #f0e0b0;color:#7a6a30;font-size:13px;text-align:center;max-width:100%}
 .m.v{white-space:normal}
 .m.v h3{font-size:15px;font-weight:700;color:#0B5E57;margin:.9em 0 .3em;line-height:1.35}
@@ -1135,18 +1138,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .m.v strong{font-weight:700;color:#1a1917}
 .m.v hr{border:none;border-top:0.5px solid #e8e6e0;margin:.9em 0}
 .hint{font-size:12px;color:#9a9894;margin:.4rem 2px 0}
-.bar{position:fixed;bottom:0;left:0;right:0;background:#f8f8f7;border-top:0.5px solid #e8e6e0;padding:.75rem 1.25rem}
+.bar{position:fixed;bottom:0;left:0;right:0;background:rgba(248,248,247,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:0.5px solid #e8e6e0;padding:.75rem 1.25rem}
 .bar .inner{max-width:680px;margin:0 auto;display:flex;gap:.5rem;align-items:flex-end}
-#q{flex:1;border:0.5px solid #d8d6d0;border-radius:10px;padding:.7rem .85rem;font-size:15px;font-family:inherit;resize:none;max-height:140px;background:#fff;color:#1a1917}
-#q:focus{outline:none;border-color:#1a1917}
-#send{background:#1a1917;color:#fff;border:none;border-radius:10px;padding:.7rem 1.1rem;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+#q{flex:1;border:0.5px solid #d8d6d0;border-radius:10px;padding:.7rem .85rem;font-size:15px;font-family:inherit;resize:none;max-height:140px;background:#fff;color:#1a1917;transition:border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}
+#q:focus{outline:none;border-color:#1a1917;box-shadow:0 0 0 3px rgba(26,25,23,.08)}
+#send{background:#1a1917;color:#fff;border:none;border-radius:10px;padding:.7rem 1.1rem;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){ #send:hover:not(:disabled){opacity:.88}}
+#send:active:not(:disabled){transform:scale(.96)}
 #send:disabled{opacity:.45;cursor:default}
+#q:focus-visible,#send:focus-visible,.close-link:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
 .dots span{display:inline-block;width:6px;height:6px;border-radius:50%;background:#b0aeaa;margin:0 1px;animation:b 1.2s infinite}
 .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
 @keyframes b{0%,60%,100%{opacity:.3}30%{opacity:1}}
+@keyframes vlMsgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style></head><body>
 <div class="wrap">
-  <a href="/" onclick="window.close();" style="display:inline-block;font-size:13px;color:#6b6966;text-decoration:none;margin-bottom:1rem">&#10005; Close</a>
+  <a href="/" onclick="window.close();" class="close-link">&#10005; Close</a>
   <div class="top">
     <h1>Ask Verilay</h1>
     <p>Plain-English answers about apps built with AI tools &mdash; building, fixing, securing, launching. Free, no jargon. I can't see your specific app, so I'll be honest about what's general advice vs. what needs checking.</p>
@@ -3209,14 +3217,23 @@ CAT_COLORS = {
 }
 
 BLOG_CSS = """
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:800px;margin:0 auto;padding:2rem 1.5rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+nav a{transition:opacity var(--dur-base) ease,color var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
 @media(max-width:600px){.grid{grid-template-columns:1fr}}
-a.card{display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;transition:box-shadow .15s}
-a.card:hover{box-shadow:0 4px 20px rgba(0,0,0,.08)}
+a.card{display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;transition:box-shadow var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){a.card:hover{box-shadow:0 8px 24px rgba(26,25,23,.08),0 2px 8px rgba(26,25,23,.05);transform:translateY(-2px);border-color:#d8d6d0}}
+a.card:active{transform:translateY(0)}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 """
 
 def _render_card(p, big=False):
@@ -3275,7 +3292,7 @@ def blog():
   <div class="grid">""" + grid_html + """</div>
   <div style="margin-top:3rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
     <p style="font-size:13px;color:#6b6966">Ready to check your own app?</p>
-    <a href="/" style="display:inline-block;margin-top:.75rem;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+    <a href="/" class="cta-btn" style="margin-top:.75rem;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
 <script>
@@ -3349,18 +3366,27 @@ def render_evident_case_study():
 <title>How Evident-AI Went From C to B - Verilay Case Study</title>
 <meta name="description" content="Two real vulnerabilities, one false positive, three advice conversations. Zero broken features.">
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+nav a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
 .wrap{max-width:680px;margin:0 auto;padding:0 1.5rem 3rem}
 h2{font-size:18px;font-weight:700;margin:2rem 0 .75rem}
 p{color:#4a4846;line-height:1.75;margin-bottom:1rem;font-size:15px}
-.finding{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;margin:.5rem 0}
+.finding{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;margin:.5rem 0;transition:box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.finding:hover{box-shadow:0 2px 10px rgba(26,25,23,.06)}}
 .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;margin-right:6px}
 .tag-critical{background:#FCEBEB;color:#A32D2D}
 .tag-false{background:#E1F5EE;color:#085041}
 blockquote{border-left:3px solid #534AB7;padding:.75rem 1rem;margin:1rem 0;background:#EEEDFE;border-radius:0 8px 8px 0;font-size:14px;color:#3C3489;line-height:1.65;font-style:italic}
 .score{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:10px;font-size:22px;font-weight:700}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -3442,7 +3468,7 @@ blockquote{border-left:3px solid #534AB7;padding:.75rem 1rem;margin:1rem 0;backg
   <div style="background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;padding:1.5rem;margin-top:2rem;text-align:center">
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">What score does your app get?</div>
     <div style="font-size:13px;color:#3C3489;margin-bottom:1rem">Free analysis. No login. Takes 2 minutes.</div>
-    <a href="/" style="display:inline-block;font-size:14px;padding:10px 24px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none;font-weight:500">Run a free analysis &#8594;</a>
+    <a href="/" class="cta-btn" style="font-size:14px;padding:10px 24px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none;font-weight:500">Run a free analysis &#8594;</a>
   </div>
 </div>
 </body>
@@ -3465,7 +3491,8 @@ code{background:#EEEDFE;color:#3C3489;padding:1px 6px;border-radius:5px;font-siz
 pre{background:#1a1917;color:#e8e6e0;padding:1rem 1.15rem;border-radius:10px;overflow-x:auto;margin:1.5rem 0;font-size:13px;line-height:1.6}
 pre code{background:none;color:inherit;padding:0;font-size:13px}
 hr{border:none;border-top:0.5px solid #e8e6e0;margin:2.5rem 0}
-a{color:#534AB7}
+a{color:#534AB7;transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){a:hover{opacity:.75}}
 .cta{background:#EEEDFE;border:0.5px solid #534AB7;border-radius:10px;padding:1.25rem 1.5rem;margin-top:2.5rem;font-size:15px;line-height:1.7;color:#3C3489}
 """
 
@@ -3597,14 +3624,24 @@ def privacy():
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Privacy Policy - Verilay</title>
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+nav a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
 h2{font-size:17px;font-weight:600;margin:1.5rem 0 .5rem}
 p{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px}
 ul{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px;padding-left:1.25rem}
 li{margin-bottom:.35rem}
+a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){a:hover{opacity:.75}}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -3665,7 +3702,7 @@ li{margin-bottom:.35rem}
   <p>Questions about privacy: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
-    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+    <a href="/" class="cta-btn" style="font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
 </body>
@@ -3681,15 +3718,25 @@ def terms():
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Terms of Use - Verilay</title>
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+nav a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
 h2{font-size:17px;font-weight:600;margin:1.5rem 0 .5rem}
 p{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px}
 ul{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px;padding-left:1.25rem}
 li{margin-bottom:.35rem}
 .highlight{background:#EEEDFE;border:0.5px solid #534AB7;border-radius:8px;padding:1rem;margin:1rem 0;font-size:13px;color:#3C3489}
+a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){a:hover{opacity:.75}}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -3771,7 +3818,7 @@ li{margin-bottom:.35rem}
   <p>Questions: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
-    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+    <a href="/" class="cta-btn" style="font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
 </body>
@@ -3788,12 +3835,25 @@ def about():
 <title>About - Verilay</title>
 <meta name="description" content="Verilay was built by Moses Ekbote — a non-developer who built real apps and needed to know if they were secure.">
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+nav a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
 p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
-.card{background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1.25rem;margin-bottom:.75rem}
+.card{background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1.25rem;margin-bottom:.75rem;transition:box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.card:hover{box-shadow:0 4px 16px rgba(26,25,23,.06)}}
+.product-card{display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.product-card:hover{box-shadow:0 8px 22px rgba(26,25,23,.08);transform:translateY(-2px);border-color:#d8d6d0}}
+a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){a:not(.product-card):hover{opacity:.75}}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -3822,16 +3882,16 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
 
   <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Other products</h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:2rem">
-    <a href="https://evident-ai.net" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
+    <a href="https://evident-ai.net" target="_blank" class="product-card">
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">Evident AI &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">AI-powered study and document management platform. Built on Replit with PostgreSQL and OpenAI.</div>
     </a>
 
-    <a href="https://buildstory.com.au" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
+    <a href="https://buildstory.com.au" target="_blank" class="product-card">
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">BuildStory &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">Document your build journey. Track what you built, why, and what you learned along the way.</div>
     </a>
-    <a href="https://loginsight.app" target="_blank" style="display:block;text-decoration:none;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.07)'" onmouseout="this.style.boxShadow='none'">
+    <a href="https://loginsight.app" target="_blank" class="product-card">
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">LogInsight &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">Log analysis and environment monitoring tool. Plain-English explanations for complex server logs.</div>
     </a>
@@ -3887,7 +3947,7 @@ p{color:#4a4846;line-height:1.7;margin-bottom:1rem;font-size:15px}
   </div>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
-    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+    <a href="/" class="cta-btn" style="font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
 </body>
@@ -3903,16 +3963,26 @@ def ai_disclaimer():
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI Disclaimer - Verilay</title>
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
+nav a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
 h2{font-size:17px;font-weight:600;margin:1.5rem 0 .5rem}
 p{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px}
 ul{color:#4a4846;line-height:1.65;margin-bottom:.75rem;font-size:14px;padding-left:1.25rem}
 li{margin-bottom:.4rem}
 .good{background:#E1F5EE;border:0.5px solid #1D9E75;border-radius:8px;padding:1rem;margin:.5rem 0}
 .warn{background:#FEF9C3;border:0.5px solid #EF9F27;border-radius:8px;padding:1rem;margin:.5rem 0}
+a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){a:hover{opacity:.75}}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -3971,7 +4041,7 @@ li{margin-bottom:.4rem}
   <p>Claude is built by Anthropic with a focus on AI safety and responsible deployment. Learn more at <a href="https://anthropic.com/responsible-scaling-policy" target="_blank" style="color:#534AB7">anthropic.com</a>.</p>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
-    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+    <a href="/" class="cta-btn" style="font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
 </body>
@@ -3987,17 +4057,29 @@ def changelog():
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Changelog - Verilay</title>
 <style>
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--dur-base:180ms;--dur-fast:120ms}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8f7;color:#1a1917;min-height:100vh;font-size:15px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:680px;margin:0 auto;padding:2rem 1.5rem}
 nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:#fff;border-bottom:0.5px solid #e8e6e0;margin-bottom:2.5rem}
-.entry{border-left:2px solid #e8e6e0;padding-left:1.25rem;margin-bottom:2rem;position:relative}
-.entry::before{content:"";width:10px;height:10px;background:#534AB7;border-radius:50%;position:absolute;left:-6px;top:4px}
+nav a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){nav a:hover{opacity:.75}}
+.entry{border-left:2px solid #e8e6e0;padding-left:1.25rem;margin-bottom:2rem;position:relative;transition:border-color var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.entry:hover{border-left-color:#534AB7}}
+.entry::before{content:"";width:10px;height:10px;background:#534AB7;border-radius:50%;position:absolute;left:-6px;top:4px;transition:transform var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.entry:hover::before{transform:scale(1.2)}}
 .tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-right:4px;margin-bottom:4px}
 .new{background:#E1F5EE;color:#085041}
 .fix{background:#FCEBEB;color:#A32D2D}
 .improve{background:#EFF6FF;color:#1D4ED8}
 .feature{background:#EEEDFE;color:#3C3489}
+a{transition:opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){a:hover{opacity:.75}}
+.cta-btn{display:inline-block;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.cta-btn:hover{opacity:.92;box-shadow:0 6px 18px rgba(83,74,183,.22);transform:translateY(-1px)}}
+.cta-btn:active{transform:translateY(0) scale(.97)}
+a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -4181,13 +4263,13 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:1rem 1
 
   <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">May 20, 2026</div>
-    <div style="font-weight:700;font-size=16px;margin-bottom:.5rem">&#x1F680; Verilay launched</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">&#x1F680; Verilay launched</div>
     <div><span class="tag new">New</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem">First public release. GitHub and URL analysis, plain-English security reports, layer map with Expert and Learner modes. Free, no login required.</p>
   </div>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
-    <a href="/" style="display:inline-block;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
+    <a href="/" class="cta-btn" style="font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
   </div>
 </div>
 </body>
@@ -4323,23 +4405,36 @@ Run a new analysis &rarr;</a>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verilay — {data.get('repo','Report')}</title>
 <style>
+:root{{--shadow-sm:0 1px 2px rgba(26,26,46,.06),0 1px 1px rgba(26,26,46,.04);--shadow-md:0 6px 16px rgba(26,26,46,.08),0 2px 6px rgba(26,26,46,.05);--ease-out:cubic-bezier(.23,1,.32,1);--dur-fast:120ms;--dur-base:180ms}}
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8fc;color:#1a1a2e;font-size:15px;line-height:1.6}}
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8fc;color:#1a1a2e;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}}
 .wrap{{max-width:860px;margin:0 auto;padding:2rem 1.5rem}}
 .header{{background:#534AB7;color:#fff;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}}
-.header a{{color:#fff;opacity:.8;font-size:13px;text-decoration:none}}
-.card{{background:#fff;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;border:0.5px solid #e5e5f0}}
+.header a{{color:#fff;opacity:.8;font-size:13px;text-decoration:none;transition:opacity var(--dur-base) ease}}
+@media (hover: hover) and (pointer: fine){{.header a:hover{{opacity:1}}}}
+.card{{background:#fff;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;border:0.5px solid #e5e5f0;transition:box-shadow var(--dur-base) var(--ease-out)}}
 .sg{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:1rem}}
-.sb{{background:#f8f8fc;border-radius:8px;padding:.75rem;text-align:center}}
+.sb{{background:#f8f8fc;border-radius:8px;padding:.75rem;text-align:center;transition:transform var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}}
+@media (hover: hover) and (pointer: fine){{.sb:hover{{transform:translateY(-2px);box-shadow:var(--shadow-sm)}}}}
 .sn{{font-size:28px;font-weight:700}}
 .sl{{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em}}
 .st{{font-size:11px;font-weight:600;color:#888;letter-spacing:.06em;text-transform:uppercase;margin:1.5rem 0 .65rem}}
-.tag{{display:inline-block;background:#EEEDFE;color:#3C3489;font-size:12px;padding:3px 10px;border-radius:20px;margin:2px}}
-.layer{{background:#fff;border-radius:10px;padding:1rem;margin-bottom:8px;border:0.5px solid #e5e5f0}}
+.tag{{display:inline-block;background:#EEEDFE;color:#3C3489;font-size:12px;padding:3px 10px;border-radius:20px;margin:2px;transition:background-color var(--dur-base) var(--ease-out)}}
+.layer{{background:#fff;border-radius:10px;padding:1rem;margin-bottom:8px;border:0.5px solid #e5e5f0;transition:box-shadow var(--dur-base) var(--ease-out)}}
+@media (hover: hover) and (pointer: fine){{.layer:hover{{box-shadow:var(--shadow-sm)}}}}
+.layer summary,.fix summary{{cursor:pointer;transition:color var(--dur-base) ease}}
+@media (hover: hover) and (pointer: fine){{.layer summary:hover,.fix summary:hover{{color:#534AB7}}}}
 .finding{{border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;font-size:13px}}
-.fix{{background:#f8f8fc;border-radius:10px;padding:1rem;margin-bottom:8px;border-left:3px solid #534AB7}}
+.fix{{background:#f8f8fc;border-radius:10px;padding:1rem;margin-bottom:8px;border-left:3px solid #534AB7;transition:box-shadow var(--dur-base) var(--ease-out)}}
+@media (hover: hover) and (pointer: fine){{.fix:hover{{box-shadow:var(--shadow-sm)}}}}
 .pb{{background:#f0f0f8;border-radius:8px;padding:.65rem .85rem;font-size:12px;font-family:monospace;margin-top:.5rem;white-space:pre-wrap;word-break:break-word}}
 .footer{{text-align:center;padding:2rem;font-size:12px;color:#aaa}}
+.footer a{{transition:opacity var(--dur-base) ease}}
+@media (hover: hover) and (pointer: fine){{.footer a:hover{{opacity:.75}}}}
+@media (hover: hover) and (pointer: fine){{.ask-ai-cta:hover{{transform:translateY(-1px);box-shadow:var(--shadow-sm)}}}}
+.ask-ai-cta:active{{transform:translateY(0) scale(.98)}}
+a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #534AB7;outline-offset:2px}}
+@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{animation-duration:.01ms!important;transition-duration:.01ms!important}}}}
 @media(max-width:600px){{.wrap{{padding:1rem}}body{{font-size:17px}}}}
 </style></head>
 <body>
@@ -4486,7 +4581,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
     _critical = [f'{l.get("name")}: {f2.get("title","")}' for l in layers for f2 in l.get("expert",{}).get("findings",[]) if f2.get("severity") in ["critical","warning"]]
     _ask_q = f"I ran Verilay on {data.get('repo','my app')} (Score {h.get('score','?')}) and got these issues:\n" + ("\n".join(_critical[:5]) or "No critical issues") + "\n\nExplain these simply and how to fix them. I am not a developer."
     _ask_url = "https://claude.ai/new?q=" + _urlparse.quote(_ask_q)
-    out.append(f'<div style="margin:.75rem 0;padding:.85rem 1rem;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><div style="font-size:13px;font-weight:600;color:#3C3489;margin-bottom:2px">🤖 Confused about a finding?</div><div style="font-size:12px;color:#3C3489">Ask AI to explain any issue in plain English and suggest how to fix it.</div></div><a href="{_ask_url}" target="_blank" style="font-size:12px;padding:7px 16px;border-radius:20px;background:#534AB7;color:#fff;text-decoration:none;white-space:nowrap;font-weight:500">Ask AI about this report →</a></div>')
+    out.append(f'<div style="margin:.75rem 0;padding:.85rem 1rem;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><div style="font-size:13px;font-weight:600;color:#3C3489;margin-bottom:2px">🤖 Confused about a finding?</div><div style="font-size:12px;color:#3C3489">Ask AI to explain any issue in plain English and suggest how to fix it.</div></div><a href="{_ask_url}" target="_blank" class="ask-ai-cta" style="font-size:12px;padding:7px 16px;border-radius:20px;background:#534AB7;color:#fff;text-decoration:none;white-space:nowrap;font-weight:500;transition:transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)">Ask AI about this report →</a></div>')
 
     # Layers — <details> rather than a plain <div>: this page has no JS at
     # all, so this is the ONLY way to let a non-developer open one layer at
@@ -4676,9 +4771,15 @@ HTML = """<!DOCTYPE html>
   --or:#EF9F27;--orl:#FAEEDA;--ort:#633806;
   --rd:#E24B4A;--rdl:#FCEBEB;--rdt:#A32D2D;
   --bll:#E6F1FB;--blt:#0C447C;
+  --shadow-sm:0 1px 2px rgba(26,25,23,.06),0 1px 1px rgba(26,25,23,.04);
+  --shadow-md:0 6px 16px rgba(26,25,23,.08),0 2px 6px rgba(26,25,23,.05);
+  --shadow-pu:0 6px 18px rgba(83,74,183,.2);
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --ease-in-out:cubic-bezier(.77,0,.175,1);
+  --dur-fast:120ms;--dur-base:180ms;--dur-slow:260ms;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:16px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:1100px;margin:0 auto;padding:2rem 2.5rem}
 #nav-toggle:checked + #burger-menu{display:block!important}
 #nav-toggle:checked + * #burger-btn{background:var(--pul);color:var(--pu)}
@@ -4688,9 +4789,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .tagline{font-size:15px;color:var(--mut);margin-bottom:2rem}
 .label{font-size:15px;font-weight:500;margin-bottom:.65rem}
 .mg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1.25rem}
-.mc{border:1.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem;cursor:pointer;background:var(--sur);transition:all .15s;user-select:none}
-.mc:hover{border-color:#aaa8ff}
-.mc.sel{border-color:var(--pu);background:var(--pul)}
+.mc{border:1.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem;cursor:pointer;background:var(--sur);transition:border-color var(--dur-base) var(--ease-out),background-color var(--dur-base) var(--ease-out),transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-base) var(--ease-out);user-select:none}
+@media (hover: hover) and (pointer: fine){.mc:hover{border-color:#aaa8ff;box-shadow:var(--shadow-sm);transform:translateY(-1px)}}
+.mc:active{transform:translateY(0) scale(.99)}
+.mc.sel{border-color:var(--pu);background:var(--pul);box-shadow:var(--shadow-sm)}
 .mc-icon{font-size:20px;margin-bottom:.4rem}
 .mc-title{font-size:14px;font-weight:500;margin-bottom:2px}
 .mc-desc{font-size:12px;color:var(--mut);line-height:1.4}
@@ -4699,19 +4801,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .ip.vis{display:block}
 .lbl{font-size:13px;font-weight:500;margin-bottom:.4rem;display:block}
 .sub{font-size:12px;color:var(--mut);margin-bottom:.6rem;line-height:1.45}
-input[type=url],input[type=text]{width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:14px;background:var(--bg);color:var(--txt);outline:none}
-input:focus{border-color:var(--pu)}
+input[type=url],input[type=text]{width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:14px;background:var(--bg);color:var(--txt);outline:none;transition:border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}
+input:focus{border-color:var(--pu);box-shadow:0 0 0 3px var(--pul)}
 .hint{background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:13px;color:var(--put);margin-top:.65rem;line-height:1.5}
 .hint ol{margin-top:.35rem;padding-left:1.1rem}
 .hint li{margin-bottom:2px}
-.fd{border:1.5px dashed var(--bdr);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;position:relative;transition:all .15s;background:var(--bg)}
-.fd:hover{border-color:var(--pu);background:var(--pul)}
+.fd{border:1.5px dashed var(--bdr);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;position:relative;transition:border-color var(--dur-base) var(--ease-out),background-color var(--dur-base) var(--ease-out),transform var(--dur-fast) var(--ease-out);background:var(--bg)}
+@media (hover: hover) and (pointer: fine){.fd:hover{border-color:var(--pu);background:var(--pul);transform:translateY(-1px)}}
+.fd:active{transform:translateY(0)}
 .fd input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .erbox{background:var(--rdl);border-radius:var(--r);padding:1rem;color:var(--rdt);font-size:14px;margin-bottom:1rem;display:none}
 .erbox.vis{display:block}
-.btn{width:100%;padding:12px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
-.btn:hover{opacity:.9}
+.btn{width:100%;padding:12px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-base) var(--ease-out),opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){.btn:hover:not(:disabled){opacity:.92;box-shadow:var(--shadow-pu)}}
+.btn:active:not(:disabled){transform:scale(.97)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--pu);outline-offset:2px}
 .ld{display:none;text-align:center;padding:2.5rem}
 .ld.vis{display:block}
 .spin{width:36px;height:36px;border:3px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 1rem}
@@ -4719,26 +4824,32 @@ input:focus{border-color:var(--pu)}
 .rpt{display:none}
 .rpt.vis{display:block}
 .sticky-bar{display:flex;align-items:center;justify-content:space-between;padding:.65rem .9rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);position:sticky;top:0;z-index:10;margin-bottom:1rem}
-.btn-sm{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer}
+.btn-sm{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;font-size:13px;font-weight:500;border:none;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.btn-sm:hover{opacity:.92;box-shadow:var(--shadow-pu)}}
+.btn-sm:active{transform:scale(.96)}
 .prod-banner{border-radius:var(--r);padding:1rem 1.1rem;margin-bottom:10px;display:flex;align-items:center;gap:12px}
 .rh{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.1rem;margin-bottom:10px}
 .pill{font-size:12px;font-weight:500;padding:3px 10px;border-radius:20px;display:inline-block;margin:2px}
 .hg{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem}
 .hc{border-radius:8px;padding:.55rem;text-align:center}
 .tabs{display:flex;gap:5px;margin-bottom:1rem;flex-wrap:wrap}
-.tab{padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut)}
+.tab{padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);transition:background-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.tab:hover{border-color:var(--pu);color:var(--put)}}
 .tab.on{background:var(--pu);color:#fff;border-color:transparent}
-.panel{display:none}.panel.on{display:block}
+@media (hover: hover) and (pointer: fine){.tab.on:hover{color:#fff}}
+.panel{display:none}.panel.on{display:block;animation:vlFadeUp 220ms var(--ease-out) both}
 .ll{display:grid;grid-template-columns:175px 1fr;gap:12px}
 .lnav{display:flex;flex-direction:column;gap:5px}
-.lb{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;border:0.5px solid transparent;background:var(--bg);width:100%;text-align:left;font-size:13px;font-weight:500}
-.lb:hover,.lb.act{background:var(--sur);border-color:var(--bdr)}
+.lb{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;border:0.5px solid transparent;background:var(--bg);width:100%;text-align:left;font-size:13px;font-weight:500;transition:background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out)}
+.lb.act{background:var(--sur);border-color:var(--bdr)}@media (hover: hover) and (pointer: fine){.lb:hover{background:var(--sur);border-color:var(--bdr)}}
 .ldot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-left:auto}
 .lico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
 .ca{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem;min-height:280px}
 .mt{display:flex;gap:4px;margin-bottom:.85rem;flex-wrap:wrap}
-.mb{font-size:12px;font-weight:500;padding:4px 14px;border-radius:20px;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);transition:all .15s}
+.mb{font-size:12px;font-weight:500;padding:4px 14px;border-radius:20px;cursor:pointer;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);transition:background-color var(--dur-base) var(--ease-out),color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){.mb:hover{border-color:var(--pu);color:var(--put)}}
 .mb.on{background:var(--pu);color:#fff;border-color:transparent}
+@media (hover: hover) and (pointer: fine){.mb.on:hover{color:#fff}}
 .mb[data-mode="learner"]{border-color:var(--pu);color:var(--put)}
 .mb[data-mode="learner"].on{background:var(--pu);color:#fff}
 .mb[data-mode="learner"]::before{content:"✦ ";font-size:12px}
@@ -4770,6 +4881,33 @@ input:focus{border-color:var(--pu)}
 }
 @media(min-width:1200px){
   .ll{grid-template-columns:220px 1fr;gap:20px}
+}
+/* ── Design polish: consistent feedback on every interactive element ── */
+@keyframes vlFadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+button:not(.btn):not(.btn-sm){transition:transform var(--dur-fast) var(--ease-out),opacity var(--dur-base) ease,box-shadow var(--dur-base) var(--ease-out)}
+@media (hover: hover) and (pointer: fine){button:not(:disabled):hover{opacity:.92}}
+button:not(:disabled):active{transform:scale(.96)}
+button:focus-visible,a:focus-visible,input:focus-visible,.mc:focus-visible,.lb:focus-visible{outline:2px solid var(--pu);outline-offset:2px}
+a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--ease-out),border-color var(--dur-base) var(--ease-out),opacity var(--dur-base) ease}
+@media (hover: hover) and (pointer: fine){ #nav-links a:hover,#burger-menu a:hover{color:var(--pu)!important;border-color:var(--pu)!important;background:var(--pul)!important}}
+@media (hover: hover) and (pointer: fine){main + div a:hover,#star-prompt a:hover{color:var(--pu)!important}}
+/* Informational cards: a subtle lift on hover instead of sitting dead flat */
+#hero-section [style^="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding"],
+#hero-section [style="background:var(--sur);padding:1.25rem 1.4rem"]{
+  transition:transform var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine){
+#hero-section [style^="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding"]:hover,
+#hero-section [style="background:var(--sur);padding:1.25rem 1.4rem"]:hover{
+  transform:translateY(-2px);box-shadow:var(--shadow-md);
+}
+}
+/* Gentle one-time entrance for the hero on first paint */
+@media(prefers-reduced-motion:no-preference){
+  #hero-section{animation:vlFadeUp 420ms var(--ease-out) both}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 @media print{
   .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner{display:none!important}
@@ -5411,8 +5549,8 @@ input:focus{border-color:var(--pu)}
   <div id="feedback-widget" style="display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;text-align:center">
     <div style="font-size:14px;font-weight:500;margin-bottom:.65rem">Was this analysis helpful?</div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:.5rem">
-      <button id="btn-feedback-up" onclick="submitFeedback(true)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:all .15s">👍</button>
-      <button id="btn-feedback-down" onclick="submitFeedback(false)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:all .15s">👎</button>
+      <button id="btn-feedback-up" onclick="submitFeedback(true)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-base) var(--ease-out)">👍</button>
+      <button id="btn-feedback-down" onclick="submitFeedback(false)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-base) var(--ease-out)">👎</button>
     </div>
     <div id="feedback-text-area" style="display:none;margin-top:.5rem">
       <textarea id="feedback-text" placeholder="What could be better? (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;background:var(--bg);color:var(--txt)"></textarea>
