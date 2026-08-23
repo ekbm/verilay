@@ -28,11 +28,19 @@ Tools like CodeRabbit and Snyk answer these questions — for developers, in dev
 
 **Stack map** — every framework, library, and tool detected with plain-English descriptions
 
+**Architecture diagram** — a visual map of your app's layers and how they connect, labelled specific to what you actually built, with a plain-English breakdown of what each part does
+
 **Layer map** — your app broken into Auth, Database, API, Frontend, Libraries and Config
 
 **Two view modes per layer:**
 - **Expert** — technical findings with severity, file references and specific issues
 - **Learner** — plain-English explanations, real-world analogies and key concepts
+
+**Verified secret scan** — every file checked directly for exposed API keys, passwords and database logins. Not a sample, not AI-guessed — a fact.
+
+**Dependency vulnerability check** — every dependency checked against OSV.dev, a public database of known security issues
+
+**Ask Verilay** — ask a real question about your own report and get an answer grounded in your actual findings, not a generic response
 
 **Production verdict** — is this app ready to ship?
 
@@ -40,9 +48,11 @@ Tools like CodeRabbit and Snyk answer these questions — for developers, in dev
 
 **Second opinion prompts** — copy into Claude or ChatGPT for independent verification
 
-**Security checklist** — exposed secrets, auth configuration, RLS policies, dependency currency
-
 > ⚠️ Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C → B) after applying fixes indicates real progress. Verilay is a first-pass overview — not a penetration test or professional security audit.
+
+### The deep scan (optional, paid)
+
+The free analysis above covers the 25 files most likely to carry risk, and is free forever with no account needed. A one-time **$19 AUD deep scan** goes further: reads far more of your codebase, gives exact package names and fixes for every dependency vulnerability instead of just a count, and includes unlimited re-scans of the same app for 30 days so you can confirm a fix actually worked. See [verilay.dev/deep-scan](https://verilay.dev/deep-scan).
 
 ---
 
@@ -73,10 +83,10 @@ cp .env.example .env
 ```
 
 Edit `.env` and add:
-- `GITHUB_TOKEN` — free from https://github.com/settings/tokens (read-only scope)
-- `ANTHROPIC_API_KEY` — from https://console.anthropic.com
+- `ANTHROPIC_API_KEY` — **required.** From https://console.anthropic.com. Each analysis costs approximately $0.01–0.03 in API credits.
+- `GITHUB_TOKEN` — optional but recommended. Free from https://github.com/settings/tokens (read-only scope). Without it: 60 GitHub API requests/hour. With it: 5,000/hour.
 
-Each analysis costs approximately **$0.01–0.03** in API credits.
+That's everything needed for the free analysis tool to run locally. `.env.example` also lists variables for the deep scan, accounts, and Stripe — those are all optional, and the app runs fine without them (the paid path just doesn't load). See [PAYWALL_SETUP.md](PAYWALL_SETUP.md) if you want to set those up too.
 
 ### 3. Run Verilay
 
@@ -124,12 +134,7 @@ Verilay is a trust and validation tool. Being open source means anyone can inspe
 
 ## Roadmap
 
-- [ ] Private repo support via GitHub OAuth
-- [ ] Email report delivery
-- [ ] Comparison view — before and after fixing issues
-- [ ] GitHub badge — show your Verilay score in your README
-- [ ] Chrome extension — Verilay panel inside Lovable and Replit
-- [ ] Stripe — $2.99/month for permanent reports and history
+See [ROADMAP.md](ROADMAP.md) for what's shipped and what's next.
 
 ---
 
@@ -140,6 +145,8 @@ Verilay is open source and welcomes contributions.
 - Found a bug → open an issue
 - Want to add a feature → open a PR
 - Want to help build → reach out at moses@verilay.dev
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 
@@ -154,7 +161,6 @@ Verilay is open source and welcomes contributions.
 ---
 
 *Built in Perth, Australia. For the 99% of people who build real things with AI tools and deserve to understand what they built.*
-
 
 ## Forking & Reuse
 

@@ -35,7 +35,7 @@ GET  /auth/callback             sign in from the emailed link
 POST /auth/session              (used by the page above)
 GET  /logout
 GET  /account                   purchases and saved reports
-GET  /deep/<owner>/<repo>       the deep scan — gated, engine not built yet
+GET  /deep/<owner>/<repo>       the deep scan — gated, engine live
 GET  /billing-health            is everything wired up? no secrets in the output
 ```
 

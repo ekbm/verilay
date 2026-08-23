@@ -36,7 +36,6 @@ Open an issue tagged `enhancement`. Describe:
 
 **Good first issues:**
 - Improving error messages when GitHub rate limits hit
-- Adding a loading progress indicator
 - Better mobile responsive layout
 - Dark mode support
 
