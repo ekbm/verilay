@@ -21,6 +21,10 @@ concrete reason to build them rather than speculatively.
 
 - Re-scan comparison — show what changed since your last scan of the same
   app, instead of a fresh report every time
+- Continuous monitoring — the same weekly re-scan + diff Verilay already
+  runs on its own apps, available for yours
+- GitHub App — webhook-triggered scans and PR comments instead of pasting
+  a URL each time
 - Smarter dependency version detection for projects that don't pin exact
   versions
 - Browser extension — a Verilay panel inside Lovable and Replit
