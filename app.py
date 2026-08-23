@@ -4721,6 +4721,140 @@ def _js_version():
 JS_VERSION = _js_version()
 
 
+# Without an apple-touch-icon link tag, iOS's "Add to Home Screen" falls
+# back to a screenshot of the page instead of the actual logo -- this was
+# the whole gap (no manifest, no favicon, no apple-touch-icon existed at
+# all). 512x512 PNG, generated once offline from the exact logo geometry
+# (the same viewBox 0 0 44 44 solid-square + checkmark used everywhere
+# else on the site) and embedded here as base64 so no separate binary file
+# needs to be uploaded alongside this one, matching how the rest of the
+# app already keeps everything self-contained in app.py.
+_APPLE_TOUCH_ICON_B64 = (
+    "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"
+    "mk72YEoAAAAASUVORK5CYII="
+)
+_APPLE_TOUCH_ICON_BYTES = None
+
+
+@app.route("/apple-touch-icon.png")
+def apple_touch_icon():
+    global _APPLE_TOUCH_ICON_BYTES
+    if _APPLE_TOUCH_ICON_BYTES is None:
+        _APPLE_TOUCH_ICON_BYTES = base64.b64decode(_APPLE_TOUCH_ICON_B64)
+    resp = Response(_APPLE_TOUCH_ICON_BYTES, mimetype="image/png")
+    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
+
+
 @app.route("/")
 def index():
     count = get_analysis_count()
@@ -4759,6 +4893,9 @@ HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verilay - Understand your AI-built app</title>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#534AB7">
 <!-- Privacy-friendly analytics by Plausible -->
 <script defer data-domain="verilay.dev" src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>
 <script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>
