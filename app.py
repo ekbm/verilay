@@ -3871,7 +3871,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:32px;flex-shrink:0">👋</div>
     <div>
       <div style="font-weight:700;font-size:16px;margin-bottom:.25rem">Moses Ekbote</div>
-      <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.5rem">I build things in my spare time. Verilay, Evident, LogInsight, and BuildStory are all live products built without a traditional development background.</div>
+      <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.5rem">I build things in my spare time. Verilay, Evident, LogInsight, BuildStory, and DIYChatbots are all live products built without a traditional development background.</div>
       <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.75rem">Follow the journey on <a href="https://medium.com/@mosesekbote" target="_blank" style="color:#534AB7">Medium</a>.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a href="https://medium.com/@mosesekbote" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">Medium</a>
@@ -3882,6 +3882,10 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Other products</h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:2rem">
+    <a href="https://diychatbots.com" target="_blank" class="product-card">
+      <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">DIYChatbots &#x2197;</div>
+      <div style="font-size:12px;color:#6b6966;line-height:1.5">Free AI chatbot generator for small businesses — no code, no signup, self-hosted forever.</div>
+    </a>
     <a href="https://evident-ai.net" target="_blank" class="product-card">
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">Evident AI &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">AI-powered study and document management platform. Built on Replit with PostgreSQL and OpenAI.</div>
