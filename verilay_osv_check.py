@@ -59,6 +59,10 @@ class Vulnerability:
     fixed_version: Optional[str]
     plain: str                 # plain-English one-liner for non-developers
     action: str
+    is_dev: bool = False       # True only when CONFIRMED dev/build-tool-only —
+                                # see extract_dependencies(). Unknown defaults to
+                                # False (counts toward risk) — never hide a real
+                                # finding behind an uncertain classification.
 
 
 # ── Manifest / lockfile parsing ─────────────────────────────────────────────
@@ -68,14 +72,20 @@ _VERSION_TOKEN = re.compile(r"\d+(?:\.\d+){1,3}(?:[-.][0-9A-Za-z.]+)?")
 _UNRESOLVABLE_NPM = ("*", "latest", "x", "next")
 
 
-def _npm_manifest_deps(content: str) -> Dict[str, str]:
-    """package.json — version RANGES, not exact. Fallback when no lockfile."""
+def _npm_manifest_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """package.json — version RANGES, not exact. Fallback when no lockfile.
+    Returns {name: (version, is_dev)} — is_dev comes straight from which of
+    the two top-level keys the entry was declared under. This only ever
+    covers DIRECT dependencies; it cannot see whether a transitive package
+    is dev-only, which is exactly why the lockfile parser below is preferred
+    whenever a lockfile is present."""
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return {}
-    deps = {}
+    deps: Dict[str, Tuple[str, bool]] = {}
     for key in ("dependencies", "devDependencies"):
+        is_dev_key = (key == "devDependencies")
         for name, spec in (data.get(key) or {}).items():
             if not isinstance(spec, str):
                 continue
@@ -85,30 +95,53 @@ def _npm_manifest_deps(content: str) -> Dict[str, str]:
             stripped = _NPM_RANGE_PREFIX.sub("", spec)
             m = _VERSION_TOKEN.match(stripped)
             if m:
-                deps[name] = m.group(0)
+                # A name listed under both keys (unusual but possible) reaches
+                # production via the "dependencies" copy — never let a dev
+                # declaration hide that.
+                prev = deps.get(name)
+                deps[name] = (m.group(0), (prev[1] and is_dev_key) if prev else is_dev_key)
     return deps
 
 
-def _npm_lockfile_deps(content: str) -> Dict[str, str]:
-    """package-lock.json — exact RESOLVED versions. Preferred source when present.
-    Handles both v1 ("dependencies") and v2/v3 ("packages") shapes."""
+def _npm_lockfile_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """package-lock.json — exact RESOLVED versions, plus each entry's own
+    `dev` flag. Preferred source when present. Handles both v1 ("dependencies")
+    and v2/v3 ("packages") shapes.
+
+    The `dev` flag matters far more here than in the manifest fallback above:
+    npm computes it per RESOLVED package, including every transitive one, so
+    it is the only reliable way to know a nested dependency (e.g. a lint
+    tool's own sub-dependency) never reaches production — package.json's
+    top-level keys only describe DIRECT dependencies (found via a real
+    Loginsight scan, 2026-09-15: 12 of 17 High-severity findings were on
+    transitive packages that only the lockfile's flag correctly identifies
+    as dev-only)."""
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return {}
-    deps = {}
+    deps: Dict[str, Tuple[str, bool]] = {}
     if "packages" in data:  # lockfile v2/v3
         for path, info in data["packages"].items():
             if not path or not isinstance(info, dict):
                 continue
             name = path.rsplit("node_modules/", 1)[-1]
             version = info.get("version")
-            if name and version:
-                deps[name] = version
+            if not (name and version):
+                continue
+            is_dev = bool(info.get("dev"))
+            # The SAME package name can resolve at multiple nesting levels —
+            # e.g. a dev tool's own copy of minimatch alongside a different,
+            # production-reachable copy pulled in elsewhere. If ANY occurrence
+            # is NOT dev-only, the package reaches production overall; never
+            # let one dev-only copy mask a real prod-facing one under the
+            # same name.
+            prev = deps.get(name)
+            deps[name] = (version, (prev[1] and is_dev) if prev else is_dev)
     elif "dependencies" in data:  # lockfile v1
         for name, info in data["dependencies"].items():
             if isinstance(info, dict) and info.get("version"):
-                deps[name] = info["version"]
+                deps[name] = (info["version"], bool(info.get("dev")))
     return deps
 
 
@@ -117,7 +150,7 @@ _PY_LINE = re.compile(
 )
 
 
-def _pypi_requirements_deps(content: str) -> Dict[str, str]:
+def _pypi_requirements_deps(content: str) -> Dict[str, Tuple[str, bool]]:
     """requirements.txt. Only truly PINNED (==) versions are used.
 
     Unlike npm, Python projects almost never commit a lockfile with the
@@ -131,8 +164,13 @@ def _pypi_requirements_deps(content: str) -> Dict[str, str]:
     clean). Skipping unpinned lines entirely -- same treatment a bare
     'requests' with no version at all already got -- is less coverage but
     means every finding this DOES report is real, not a guess dressed up as
-    a fact."""
-    deps = {}
+    a fact.
+
+    is_dev is always False here — a flat requirements.txt carries no dev/prod
+    signal the way an npm lockfile does (no separate dev-requirements.txt
+    convention is handled), so every PyPI dependency counts toward risk.
+    Defaulting to "counts" rather than guessing "safe" is deliberate."""
+    deps: Dict[str, Tuple[str, bool]] = {}
     for line in content.splitlines():
         line = line.split("#", 1)[0].split(";", 1)[0].strip()
         if not line or line.startswith("-"):
@@ -142,7 +180,7 @@ def _pypi_requirements_deps(content: str) -> Dict[str, str]:
             continue
         name, op, version = m.groups()
         if name and version and op == "==":
-            deps[name] = version
+            deps[name] = (version, False)
     return deps
 
 
@@ -154,12 +192,13 @@ _MANIFEST_PARSERS: List[Tuple[str, callable, str, bool]] = [
 ]
 
 
-def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], str]:
-    """Returns {(name, ecosystem): version}. Lockfiles win over manifests for
-    the same ecosystem when both are present, since they carry the exact
-    resolved version rather than a range."""
-    from_manifest: Dict[Tuple[str, str], str] = {}
-    from_lockfile: Dict[Tuple[str, str], str] = {}
+def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], Tuple[str, bool]]:
+    """Returns {(name, ecosystem): (version, is_dev)}. Lockfiles win over
+    manifests for the same ecosystem when both are present, since they carry
+    the exact resolved version rather than a range — and, for npm, the only
+    reliable per-package dev/prod signal for TRANSITIVE dependencies too."""
+    from_manifest: Dict[Tuple[str, str], Tuple[str, bool]] = {}
+    from_lockfile: Dict[Tuple[str, str], Tuple[str, bool]] = {}
     for path, content in files.items():
         if not isinstance(content, str):
             continue
@@ -168,8 +207,8 @@ def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], str]:
             if fname != suffix:
                 continue
             target = from_lockfile if is_lockfile else from_manifest
-            for name, version in parser(content).items():
-                target[(name, ecosystem)] = version
+            for name, version_and_dev in parser(content).items():
+                target[(name, ecosystem)] = version_and_dev
 
     merged = dict(from_manifest)
     merged.update(from_lockfile)  # lockfile entries override manifest entries
@@ -178,14 +217,14 @@ def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], str]:
 
 # ── OSV.dev queries ─────────────────────────────────────────────────────────
 
-def _query_batch(deps: Dict[Tuple[str, str], str]) -> Dict[Tuple[str, str], List[str]]:
+def _query_batch(deps: Dict[Tuple[str, str], Tuple[str, bool]]) -> Dict[Tuple[str, str], List[str]]:
     """One request for all dependencies. Returns {(name, ecosystem): [vuln_id, ...]}."""
     if not deps:
         return {}
     keys = list(deps.keys())
     queries = [
         {"package": {"name": name, "ecosystem": ecosystem}, "version": version}
-        for (name, ecosystem), version in deps.items()
+        for (name, ecosystem), (version, _is_dev) in deps.items()
     ]
     try:
         resp = requests.post(OSV_BATCH_URL, json={"queries": queries}, timeout=OSV_TIMEOUT)
@@ -296,7 +335,7 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
     details = _fetch_details(all_ids)
 
     findings: List[Vulnerability] = []
-    for (name, ecosystem), version in deps.items():
+    for (name, ecosystem), (version, is_dev) in deps.items():
         package_ids = _dedupe_advisory_ids(matches.get((name, ecosystem), []), details)
         for vid in package_ids:
             vuln = details.get(vid)
@@ -308,6 +347,12 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
                 f"Update {name} to {fixed} or later."
                 if fixed else
                 f"Check {vid} for a patched version of {name} — none listed yet, may need a workaround."
+            )
+            dev_note = (
+                " This is a development/build tool, not something that ships to your users — "
+                "still worth fixing, but it does not put visitors at risk the way a runtime "
+                "dependency issue would."
+                if is_dev else ""
             )
             findings.append(Vulnerability(
                 id=vid,
@@ -322,8 +367,10 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
                     f"Your app uses {name} version {version}, which has a known, publicly documented "
                     f"security issue ({vid}). This isn't a guess — it's a named, verifiable record, "
                     f"the same kind of check tools like Snyk and GitHub's own security alerts use."
+                    f"{dev_note}"
                 ),
                 action=action,
+                is_dev=is_dev,
             ))
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity, 4), f.package))
@@ -350,24 +397,59 @@ def to_prompt_block(vulns: List[Vulnerability], packages_checked: int) -> str:
         f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev) — {packages_checked} {noun} checked against "
         "the public OSV.dev vulnerability database. These are VERIFIED, named, publicly documented "
         "vulnerabilities, not guesses. Include every one at the severity given. Do not invent "
-        "additional dependency findings beyond this list.\n"
+        "additional dependency findings beyond this list. Entries marked (DEV-ONLY) are build/tooling "
+        "dependencies that never ship to a real user — mention them as lower-priority housekeeping, "
+        "not urgent user-facing risk, and do not let them inflate how alarming the overall write-up "
+        "sounds.\n"
     ]
     for v in vulns:
         fix = f", fix: upgrade to {v.fixed_version}" if v.fixed_version else ", no fix published yet"
-        lines.append(f"- [{v.severity.upper()}] {v.package}@{v.version_found} — {v.id}: {v.summary}{fix}")
+        dev_tag = " (DEV-ONLY)" if v.is_dev else ""
+        lines.append(f"- [{v.severity.upper()}]{dev_tag} {v.package}@{v.version_found} — {v.id}: {v.summary}{fix}")
     lines.append("")
     return "\n".join(lines)
 
 
 def severity_counts(vulns: List[Vulnerability]) -> Tuple[int, int]:
     """(critical_bucket, warning_bucket) for the grade floor — same idea as the
-    secret scanner's scan_critical/scan_warning. OSV's 4-tier severity collapses
-    to Verilay's 2-tier critical/warning: critical+high -> critical (a HIGH
-    dependency CVE is genuinely serious, not a soft warning), moderate+low+unknown
-    -> warning."""
-    critical = sum(1 for v in vulns if v.severity in ("critical", "high"))
-    warning = sum(1 for v in vulns if v.severity in ("moderate", "low", "unknown"))
+    secret scanner's scan_critical/scan_warning.
+
+    Two corrections made 2026-09-15, found by running this exact function
+    against Loginsight's real dependency tree: it produced "18 critical",
+    while Verilay's own OSV data actually shows only 1 finding OSV itself
+    rates critical (the rest were 17 High, 20 Moderate, 3 Low):
+
+      1. OSV `high` no longer collapses into Verilay's `critical` bucket —
+         it moves to `warning`. A HIGH dependency CVE is still real and still
+         reported at HIGH severity in every finding list; it just no longer
+         inflates the headline "critical" count the way an actual CRITICAL
+         does. The previous critical+high -> critical collapse is exactly
+         what turned 1 real critical into 18.
+      2. A dependency confirmed dev/build-tool-only (see extract_dependencies
+         — covers transitive packages too, via the lockfile's own `dev` flag,
+         not just top-level declared ones) never counts toward EITHER bucket.
+         It still appears in the findings list and prompt block, just doesn't
+         drive the grade, since it doesn't reach a live user or production
+         runtime. Unknown/unconfirmed dev status defaults to counting the
+         finding — never hide real risk behind an uncertain classification."""
+    counted = _countable(vulns)
+    critical = sum(1 for v in counted if v.severity == "critical")
+    warning = sum(1 for v in counted if v.severity in ("high", "moderate", "low", "unknown"))
     return critical, warning
+
+
+def _countable(vulns: List[Vulnerability]) -> List[Vulnerability]:
+    """Findings that count toward user-facing risk — excludes confirmed
+    dev/build-tool-only ones. Shared by severity_counts() and the teaser
+    functions below so a "found N vulnerabilities (X serious, Y less severe)"
+    sentence always has N == X + Y — a dev-only finding is left out of ALL
+    three figures in the free-tier teaser, not just the severity split,
+    otherwise the total would look inflated against its own breakdown. Full
+    detail (to_report_dict, for paying customers) still lists every finding
+    including dev-only ones — this exclusion is about what counts toward the
+    headline risk figure, not about hiding anything from someone who paid
+    for the full list."""
+    return [v for v in vulns if not v.is_dev]
 
 
 def to_teaser_block(vulns: List[Vulnerability], packages_checked: int) -> str:
@@ -381,16 +463,18 @@ def to_teaser_block(vulns: List[Vulnerability], packages_checked: int) -> str:
             "\n\nDEPENDENCY VULNERABILITY CHECK: no dependency manifest found to check. "
             "Do not invent dependency findings.\n\n"
         )
-    if not vulns:
+    counted = _countable(vulns)
+    if not counted:
         return (
             f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev): {packages_checked} {noun} checked "
-            "against the public OSV.dev vulnerability database. None have known vulnerabilities. "
+            "against the public OSV.dev vulnerability database. None have known vulnerabilities "
+            "that affect your users (any dev/build-tool-only findings don't count here). "
             "State this plainly as a positive in the Libraries layer.\n\n"
         )
     crit, warn = severity_counts(vulns)
     return (
         f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev) — {packages_checked} {noun} checked. "
-        f"Found {len(vulns)} known vulnerabilities ({crit} serious, {warn} less severe) in this "
+        f"Found {len(counted)} known vulnerabilities ({crit} serious, {warn} less severe) in this "
         "app's dependencies, verified against the public OSV.dev database. This is a FREE-TIER "
         "summary — you know the count and severity split, NOT which specific packages or CVEs. "
         "Report ONLY the count and severity split in the Libraries findings. Do NOT name specific "
@@ -408,7 +492,7 @@ def to_teaser_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
     crit, warn = severity_counts(vulns)
     return {
         "packages_checked": packages_checked,
-        "vulnerabilities_found": len(vulns),
+        "vulnerabilities_found": len(_countable(vulns)),
         "critical": crit,
         "warnings": warn,
     }
@@ -416,7 +500,11 @@ def to_teaser_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
 
 def to_report_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
     """Full shape WITH package/CVE detail — for the paid deep scan once it
-    exists. Do not attach this to a free-tier report."""
+    exists. Do not attach this to a free-tier report. Lists EVERY finding,
+    including dev-only ones — full transparency for someone who paid for the
+    complete list. "critical"/"high" here are literal OSV severity counts for
+    display, unrelated to severity_counts()'s grade-floor bucketing (which
+    excludes dev-only and moves high out of the critical bucket)."""
     return {
         "packages_checked": packages_checked,
         "critical": sum(1 for v in vulns if v.severity == "critical"),
@@ -427,6 +515,7 @@ def to_report_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
                 "ecosystem": v.ecosystem, "version_found": v.version_found,
                 "severity": v.severity, "summary": v.summary,
                 "fixed_version": v.fixed_version, "plain": v.plain, "action": v.action,
+                "is_dev": v.is_dev,
             }
             for v in vulns
         ],
