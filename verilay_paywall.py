@@ -649,6 +649,7 @@ def account():
                         'account yet. Any analysis you run while signed in shows up here.</p></div>')
 
     admin_note = ""
+    monitor_note = ""
     if is_admin:
         admin_note = (
             '<div class="card" style="background:#EEEDFE;border-color:#534AB7;margin-bottom:1rem">'
@@ -657,6 +658,32 @@ def account():
             'Analyse</a> — no purchase needed, so it will not show in the "bought" list below. '
             'Repos you have already scanned as admin get a Re-scan link under Your reports.</p></div>'
         )
+
+        # Real critical/warning counts, unlike the public homepage badge —
+        # safe here because this whole block is already gated on is_admin,
+        # i.e. only ever rendered for Moses's own signed-in account.
+        import verilay_self_monitor as self_monitor
+        mon_rows = self_monitor.admin_summary()
+        if mon_rows:
+            mon_items = "".join(
+                '<div class="row"><span><strong>' + _esc(r.get("app_name") or "") + '</strong>'
+                '<br><span class="note">' + _esc(r.get("repo") or "")
+                + (' — checked ' + (self_monitor._humanize_ago(r.get("last_checked_at")) or "recently")
+                   if r.get("last_checked_at") else '')
+                + '</span></span><span>'
+                + _esc(r.get("score") or "—") + ' ('
+                + str(r.get("critical") if r.get("critical") is not None else "—") + ' critical, '
+                + str(r.get("warnings") if r.get("warnings") is not None else "—") + ' warnings)'
+                + ('<br><span class="note" style="color:#A32D2D">⚠ '
+                   + _esc(str(r.get("last_error"))[:80]) + '</span>' if r.get("last_error") else '')
+                + '</span></div>'
+                for r in mon_rows
+            )
+            monitor_note = (
+                '<div class="card" style="margin-bottom:1rem">'
+                '<p style="margin:0 0 .5rem;font-size:13px;font-weight:600">📡 Monitored apps</p>'
+                f'{mon_items}</div>'
+            )
 
     # A scan you started and then closed the tab on used to be genuinely lost
     # — nothing anywhere showed it was still going. This is the way back.
@@ -680,6 +707,7 @@ def account():
   <h1>{_esc(user["email"])}</h1>
   {running_note}
   {admin_note}
+  {monitor_note}
   <h2 id="reports">Your reports</h2>
   {reports_html}
   <h2>Deep scans you have bought</h2>

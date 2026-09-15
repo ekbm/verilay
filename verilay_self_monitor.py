@@ -39,6 +39,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+import verilay_notify as notify
+
 CHECK_INTERVAL_HOURS = 24
 MAX_FILES = 25  # same depth as a normal free scan — this is a teaser, not a deep scan
 SCHEDULER_TICK_SECONDS = 30 * 60  # frequent enough that both apps stay comfortably
@@ -171,6 +173,15 @@ def _run_scan(app_name, repo):
             "last_error": None,  # clear any stale error now that a scan actually succeeded
         }).eq("app_name", app_name).execute()
         print(f"[self-monitor] {app_name}: {score} ({crit} critical, {warn} warnings)", flush=True)
+
+        # Alert Moses ONLY when critical count went UP (including the first
+        # ever successful check finding any) — never on a routine unchanged
+        # or improved check. Best-effort: send_self_monitor_alert() never
+        # raises, so a failed/unconfigured email can't affect the scan result
+        # that was already saved above.
+        prev_critical = prev_row.get("critical")
+        if crit > (prev_critical or 0):
+            notify.send_self_monitor_alert(app_name, repo, score, crit, warn, prev_critical)
     except Exception as e:
         err_text = f"{type(e).__name__}: {e}"[:500]
         print(f"[self-monitor] scan failed for {app_name}: {err_text}", flush=True)
@@ -224,6 +235,24 @@ def health_data():
             for r in rows
         ],
     }
+
+
+def admin_summary():
+    """Full detail, including raw critical/warning COUNTS — unlike
+    health_data() (used by the public /self-monitor-health endpoint), this
+    deliberately breaks the "never show real counts publicly" rule the rest
+    of this module follows. Only ever call this from a route already gated
+    to Moses himself (e.g. /account's is_admin check) — never from a public
+    or customer-facing route."""
+    sb = _sb()
+    if sb is None:
+        return []
+    try:
+        res = sb.table("self_monitoring").select("*").order("app_name").execute()
+        return res.data or []
+    except Exception as e:
+        print(f"[self-monitor] admin_summary read failed: {e}", flush=True)
+        return []
 
 
 def _humanize_ago(iso_str):
