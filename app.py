@@ -3959,6 +3959,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-weight:600;margin-bottom:.35rem">&#x1F513; Free forever for non-developers</div>
     <div style="font-size:13px;color:#4a4846;line-height:1.6">Verilay will always be free to analyse your app. No login required. Pro features for power users coming soon.</div>
   </div>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F50D; Why not just ask your AI builder?</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">You could — once you know what to ask for. That's Verilay's job. And a check that lives outside your app can't be silently broken by a future code change the way something built into your own codebase can.</div>
+  </div>
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:.35rem">&#x1F4E1; Different job than your AI builder's monitor</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">Lovable's and Replit's own monitoring catches what's actively broken — a crash, a failed request. Verilay checks something else: known vulnerabilities already sitting in your dependencies, not broken yet, but waiting to be exploited.</div>
+  </div>
 
   <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">Built with</h2>
   <p style="font-size:13px">Python / Flask &nbsp;&middot;&nbsp; Claude AI (Anthropic) &nbsp;&middot;&nbsp; Supabase &nbsp;&middot;&nbsp; Railway &nbsp;&middot;&nbsp; Cloudflare</p>
