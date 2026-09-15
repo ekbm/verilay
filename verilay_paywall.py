@@ -706,6 +706,21 @@ def account():
                            if checked_abs else '<span class="note">never</span>')
                 status = (f'<span style="color:#A32D2D">⚠ {_esc(str(r.get("last_error"))[:100])}</span>'
                           if r.get("last_error") else '<span style="color:#1D9E75">✓ OK</span>')
+                # Straight to the DEEP scan gate, not the free homepage — as
+                # admin this is the full-detail, fix-prompt-generating path,
+                # not just a teaser. Opens in a new tab so the account page
+                # stays put. This is a landing page with its own "Start the
+                # deep scan" button (deep_scan() above), not an instant
+                # trigger — and /start already redirects to any job already
+                # running for this repo instead of duplicating it, so no
+                # extra confirmation or dedup logic is needed here.
+                repo = r.get("repo") or ""
+                owner_name, _, name = repo.partition("/")
+                scan_link = (
+                    f'<a href="/deep/{_esc(owner_name)}/{_esc(name)}" target="_blank" '
+                    f'rel="noopener" style="font-size:12px;font-weight:600">Scan now &rarr;</a>'
+                    if owner_name and name else ""
+                )
                 return (
                     f'<tr>'
                     f'<td style="{td}"><strong>{_esc(r.get("app_name") or "—")}</strong></td>'
@@ -715,6 +730,7 @@ def account():
                     f'<td style="{td};text-align:center">{r.get("warnings") if r.get("warnings") is not None else "—"}</td>'
                     f'<td style="{td}">{checked}</td>'
                     f'<td style="{td}">{status}</td>'
+                    f'<td style="{td}">{scan_link}</td>'
                     f'</tr>'
                 )
 
@@ -724,7 +740,7 @@ def account():
                 '<tr>'
                 f'<th style="{th}">App</th><th style="{th}">Repo</th><th style="{th}">Grade</th>'
                 f'<th style="{th};text-align:center">Critical</th><th style="{th};text-align:center">Warnings</th>'
-                f'<th style="{th}">Last checked</th><th style="{th}">Status</th>'
+                f'<th style="{th}">Last checked</th><th style="{th}">Status</th><th style="{th}"></th>'
                 '</tr>'
                 + "".join(_cell(r) for r in mon_rows)
                 + '</table></div>'
