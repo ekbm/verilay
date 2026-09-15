@@ -37,6 +37,11 @@ from verilay_url_guard import safe_get, validate_url, BlockedURL
 from verilay_secret_scan import (
     scan_repo, to_prompt_block, to_report_dict, fetch_all_files_tarball,
 )
+from verilay_crypto_hygiene import (
+    scan_repo as crypto_scan_repo,
+    to_prompt_block as crypto_to_prompt_block,
+    to_report_dict as crypto_to_report_dict,
+)
 from verilay_osv_check import (
     check_dependencies,
     severity_counts as osv_severity_counts,
@@ -2387,6 +2392,24 @@ def analyse_stream():
             osv_teaser_block = osv_to_teaser_block(osv_vulns, osv_checked)
             osv_critical, osv_warning = osv_severity_counts(osv_vulns)
 
+            # ── Crypto hygiene check ─────────────────────────────────────
+            # Same tarball text already fetched above, no extra GitHub call.
+            # Narrow on purpose — weak hashes, broken cipher modes, hardcoded
+            # keys, undersized RSA — not a "quantum-ready" claim. See
+            # verilay_crypto_hygiene.py's module docstring for why.
+            crypto_findings = []
+            try:
+                crypto_source = _all_text if _all_text is not None else files
+                crypto_findings = crypto_scan_repo(crypto_source)
+            except Exception as _crypto_err:
+                print(f"Crypto hygiene check skipped: {_crypto_err}", flush=True)
+            crypto_block = crypto_to_prompt_block(crypto_findings, scan_files_count)
+            # Every crypto finding counts toward the WARNING floor only, never
+            # critical — bad crypto practice is a real weakness but not "someone
+            # already has your data" the way a leaked key is. Moses's call,
+            # 2026-09-15.
+            crypto_warning = len(crypto_findings)
+
             yield json.dumps({"event":"status","data":f"Found {len(files)} files — detecting stack..."}) + "\n"
 
             # ── Step 1: Stack + overview ────────────────────────────────
@@ -2400,6 +2423,7 @@ def analyse_stream():
             # report, and is invisible during the live analysis.
             s1["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             s1["osv_scan"] = osv_to_teaser_dict(osv_vulns, osv_checked)
+            s1["crypto_scan"] = crypto_to_report_dict(crypto_findings, scan_files_count)
             s1["generated_at"] = datetime.now().strftime("%d %b %Y %H:%M")
             count = get_analysis_count()
             s1["analysis_count"] = count
@@ -2453,7 +2477,7 @@ def analyse_stream():
             # still generating, instead of a blank wait either way.
             import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                f2 = executor.submit(analyse_step2, files, repo_name, scan_block)
+                f2 = executor.submit(analyse_step2, files, repo_name, scan_block + crypto_block)
                 f3 = executor.submit(analyse_step3, files, repo_name, osv_teaser_block)
                 # Send keepalive every 15s while waiting — prevents Railway's
                 # own connection timeout from firing. Loops until BOTH futures
@@ -2541,13 +2565,14 @@ def analyse_stream():
             # for OSV: a named CVE against a version we can read in the manifest is
             # a fact, not a judgement call.
             _crit = max(_crit, scan_critical, osv_critical)
-            _warn = max(_warn, scan_warning, osv_warning)
+            _warn = max(_warn, scan_warning, osv_warning, crypto_warning)
             partial.setdefault("health", {})
             partial["health"]["critical"] = _crit
             partial["health"]["warnings"] = _warn
             partial["health"]["passing"] = _pass
             partial["health"]["score"] = grade_from_counts(_crit, _warn)
             partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
+            partial["crypto_scan"] = crypto_to_report_dict(crypto_findings, scan_files_count)
             report_id = save_report_data(partial)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
@@ -4541,6 +4566,24 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             out.append(f'<div class="st">Verified Findings</div><div class="card">'
                        f'{_collapsible(items, len(scan_findings))}</div>')
 
+    # Crypto hygiene — weak hashes, broken cipher modes, hardcoded keys,
+    # undersized RSA keys. Unlike secret_scan and osv above, this section is
+    # shown ONLY when something fires — no clean-state card. Moses's call,
+    # 2026-09-15: keeps the report shorter, and a "no crypto issues" claim
+    # would overstate what these four narrow checks actually cover.
+    crypto = data.get("crypto_scan") or {}
+    crypto_findings = crypto.get("findings", [])
+    if crypto_findings:
+        items = "".join(
+            f'<div class="finding" style="background:{sev_bg.get(f2.get("severity","warning"),"#FEF3C7")};'
+            f'color:{sev_tc.get(f2.get("severity","warning"),"#92400E")}">'
+            f'<strong>{f2.get("name","")}</strong> — {f2.get("file","")} line {f2.get("line","")}'
+            f'<div style="margin-top:.25rem">{f2.get("plain","")}</div></div>'
+            for f2 in crypto_findings
+        )
+        out.append(f'<div class="st">Crypto Hygiene</div><div class="card">'
+                   f'{_collapsible(items, len(crypto_findings))}</div>')
+
     # Dependency check (OSV.dev). Full package/CVE detail only appears here
     # when it was saved — the free scan's teaser shape (count only) never
     # carries a "vulnerabilities" list, so this naturally shows less for a
@@ -6365,6 +6408,9 @@ if _HAS_PAYWALL:
         scan_repo=scan_repo,
         secret_to_report_dict=to_report_dict,
         secret_to_prompt_block=to_prompt_block,
+        crypto_scan_repo=crypto_scan_repo,
+        crypto_to_report_dict=crypto_to_report_dict,
+        crypto_to_prompt_block=crypto_to_prompt_block,
         check_dependencies=check_dependencies,
         osv_severity_counts=osv_severity_counts,
         osv_to_report_dict=osv_to_report_dict,
