@@ -1896,19 +1896,22 @@ def analyse_step2(files, repo_name, scan_block=""):
         "DATABASE_A: plain English answer\n"
         "DATABASE_QWHY: why it matters\n"
     )
-    # 10000 -- 3 full layers (up to 5 findings each, plus narrative WHAT/
+    # 20000 -- 3 full layers (up to 5 findings each, plus narrative WHAT/
     # ANALOGY/DOES/CONNECTS/CONNECTS_TO/APP_LABEL/CONCEPT/quiz fields per
     # layer) was silently truncating real responses at 1200 (why fields
     # like DOES sometimes came back blank) -- confirmed live via
     # call_claude_text's new truncation log, which then caught 2000
-    # (~2200 real tokens), 3500 (~3900+), and 5000 (~5470+) ALL still
-    # truncating on different real runs against a real, complex repo. Real
-    # output length varies a lot with how much a given repo actually has
-    # to report, so this is set with real margin above the highest
-    # observed real usage rather than incrementally re-guessed again --
-    # the truncation log (this function, both branches) stays in place as
-    # an ongoing safety net if a future analysis exceeds even this.
-    text = call_claude_text(prompt, max_tokens=10000)
+    # (~2200 real tokens), 3500 (~3900+), 5000 (~5470+), and (2026-09-15,
+    # self-monitor scanning Loginsight -- 18 critical + 23 warnings, well
+    # past the "5 findings each" the prompt asks for) 10000 too -- ALL
+    # still truncating on different real runs against real, messy repos.
+    # Real output length scales with how many findings a repo actually has,
+    # not a fixed layer count, so a repo with unusually many findings can
+    # keep pushing this ceiling indefinitely -- set with a large real margin
+    # above the highest observed usage rather than incrementally re-guessed
+    # again. The truncation log (this function, both branches) stays in
+    # place as an ongoing safety net if a future analysis exceeds even this.
+    text = call_claude_text(prompt, max_tokens=20000)
     return parse_flat_response(text, ["Auth", "Config", "Database"])
 
 
@@ -2021,19 +2024,22 @@ def analyse_step3(files, repo_name, osv_block=""):
         "LIBRARIES_A: plain English answer\n"
         "LIBRARIES_QWHY: why it matters\n"
     )
-    # 10000 -- 3 full layers (up to 5 findings each, plus narrative WHAT/
+    # 20000 -- 3 full layers (up to 5 findings each, plus narrative WHAT/
     # ANALOGY/DOES/CONNECTS/CONNECTS_TO/APP_LABEL/CONCEPT/quiz fields per
     # layer) was silently truncating real responses at 1200 (why fields
     # like DOES sometimes came back blank) -- confirmed live via
     # call_claude_text's new truncation log, which then caught 2000
-    # (~2200 real tokens), 3500 (~3900+), and 5000 (~5470+) ALL still
-    # truncating on different real runs against a real, complex repo. Real
-    # output length varies a lot with how much a given repo actually has
-    # to report, so this is set with real margin above the highest
-    # observed real usage rather than incrementally re-guessed again --
-    # the truncation log (this function, both branches) stays in place as
-    # an ongoing safety net if a future analysis exceeds even this.
-    text = call_claude_text(prompt, max_tokens=10000)
+    # (~2200 real tokens), 3500 (~3900+), 5000 (~5470+), and (2026-09-15,
+    # self-monitor scanning Loginsight -- 18 critical + 23 warnings, well
+    # past the "5 findings each" the prompt asks for) 10000 too -- ALL
+    # still truncating on different real runs against real, messy repos.
+    # Real output length scales with how many findings a repo actually has,
+    # not a fixed layer count, so a repo with unusually many findings can
+    # keep pushing this ceiling indefinitely -- set with a large real margin
+    # above the highest observed usage rather than incrementally re-guessed
+    # again. The truncation log (this function, both branches) stays in
+    # place as an ongoing safety net if a future analysis exceeds even this.
+    text = call_claude_text(prompt, max_tokens=20000)
     return parse_flat_response(text, ["API", "Frontend", "Libraries"])
 
 
