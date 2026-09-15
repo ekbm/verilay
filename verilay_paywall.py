@@ -661,28 +661,57 @@ def account():
 
         # Real critical/warning counts, unlike the public homepage badge —
         # safe here because this whole block is already gated on is_admin,
-        # i.e. only ever rendered for Moses's own signed-in account.
+        # i.e. only ever rendered for Moses's own signed-in account. Table
+        # format (2026-09-15, Moses's request) rather than the stacked-card
+        # layout used elsewhere on this page, specifically so this section
+        # can be screenshotted/shown as evidence of results without any
+        # extra reformatting on his end.
         import verilay_self_monitor as self_monitor
         mon_rows = self_monitor.admin_summary()
         if mon_rows:
-            mon_items = "".join(
-                '<div class="row"><span><strong>' + _esc(r.get("app_name") or "") + '</strong>'
-                '<br><span class="note">' + _esc(r.get("repo") or "")
-                + (' — checked ' + (self_monitor._humanize_ago(r.get("last_checked_at")) or "recently")
-                   if r.get("last_checked_at") else '')
-                + '</span></span><span>'
-                + _esc(r.get("score") or "—") + ' ('
-                + str(r.get("critical") if r.get("critical") is not None else "—") + ' critical, '
-                + str(r.get("warnings") if r.get("warnings") is not None else "—") + ' warnings)'
-                + ('<br><span class="note" style="color:#A32D2D">⚠ '
-                   + _esc(str(r.get("last_error"))[:80]) + '</span>' if r.get("last_error") else '')
-                + '</span></div>'
-                for r in mon_rows
+            grade_color = {"A": "#1D9E75", "B": "#4A90D9", "C": "#EF9F27",
+                           "D": "#E24B4A", "F": "#A32D2D"}
+            th = ('padding:6px 10px;font-size:11px;font-weight:600;color:var(--mut);'
+                  'text-transform:uppercase;letter-spacing:.03em;text-align:left;'
+                  'border-bottom:1px solid var(--bdr)')
+            td = 'padding:8px 10px;font-size:13px;vertical-align:top;border-bottom:0.5px solid var(--bdr)'
+
+            def _cell(r):
+                score = r.get("score") or "—"
+                color = grade_color.get(score, "var(--txt)")
+                checked_abs = self_monitor._format_checked_at(r.get("last_checked_at"))
+                checked_rel = self_monitor._humanize_ago_full(r.get("last_checked_at"))
+                checked = (f'{checked_abs}<br><span class="note">{checked_rel}</span>'
+                           if checked_abs else '<span class="note">never</span>')
+                status = (f'<span style="color:#A32D2D">⚠ {_esc(str(r.get("last_error"))[:100])}</span>'
+                          if r.get("last_error") else '<span style="color:#1D9E75">✓ OK</span>')
+                return (
+                    f'<tr>'
+                    f'<td style="{td}"><strong>{_esc(r.get("app_name") or "—")}</strong></td>'
+                    f'<td style="{td}">{_esc(r.get("repo") or "—")}</td>'
+                    f'<td style="{td};font-weight:700;color:{color}">{_esc(score)}</td>'
+                    f'<td style="{td};text-align:center">{r.get("critical") if r.get("critical") is not None else "—"}</td>'
+                    f'<td style="{td};text-align:center">{r.get("warnings") if r.get("warnings") is not None else "—"}</td>'
+                    f'<td style="{td}">{checked}</td>'
+                    f'<td style="{td}">{status}</td>'
+                    f'</tr>'
+                )
+
+            mon_table = (
+                '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;'
+                'min-width:640px">'
+                '<tr>'
+                f'<th style="{th}">App</th><th style="{th}">Repo</th><th style="{th}">Grade</th>'
+                f'<th style="{th};text-align:center">Critical</th><th style="{th};text-align:center">Warnings</th>'
+                f'<th style="{th}">Last checked</th><th style="{th}">Status</th>'
+                '</tr>'
+                + "".join(_cell(r) for r in mon_rows)
+                + '</table></div>'
             )
             monitor_note = (
                 '<div class="card" style="margin-bottom:1rem">'
                 '<p style="margin:0 0 .5rem;font-size:13px;font-weight:600">📡 Monitored apps</p>'
-                f'{mon_items}</div>'
+                f'{mon_table}</div>'
             )
 
     # A scan you started and then closed the tab on used to be genuinely lost

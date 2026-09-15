@@ -258,7 +258,9 @@ def admin_summary():
 def _humanize_ago(iso_str):
     """'3 hours ago' / 'less than an hour ago'. Deliberately caps out around a
     day — CHECK_INTERVAL_HOURS keeps every real timestamp under ~24h, so this
-    never needs to handle (and never risks displaying) a multi-day figure."""
+    never needs to handle (and never risks displaying) a multi-day figure.
+    Public-facing (the badge) — use _humanize_ago_full() for an admin view
+    that should honestly show a stale app instead of hiding how stale."""
     if not iso_str:
         return None
     try:
@@ -270,6 +272,39 @@ def _humanize_ago(iso_str):
         return "less than an hour ago"
     h = int(hours)
     return f"{h} hour{'s' if h != 1 else ''} ago"
+
+
+def _humanize_ago_full(iso_str):
+    """Same idea as _humanize_ago() but scales to days — for the admin-only
+    /account view, where a genuinely overdue app (e.g. stuck on a repeated
+    failure) should show honestly as "6 days ago", not be hidden the way the
+    public badge deliberately bounds its figure to under a day."""
+    if not iso_str:
+        return None
+    try:
+        checked_at = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    hours = (datetime.now(timezone.utc) - checked_at).total_seconds() / 3600
+    if hours < 1:
+        return "less than an hour ago"
+    if hours < 24:
+        h = int(hours)
+        return f"{h} hour{'s' if h != 1 else ''} ago"
+    d = int(hours // 24)
+    return f"{d} day{'s' if d != 1 else ''} ago"
+
+
+def _format_checked_at(iso_str):
+    """'15 Sep 2026, 03:07 UTC' — absolute timestamp for the admin table,
+    same %d %b %Y %H:%M convention used for report generated_at elsewhere."""
+    if not iso_str:
+        return None
+    try:
+        checked_at = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return checked_at.strftime("%d %b %Y, %H:%M UTC")
 
 
 def badge_html():
