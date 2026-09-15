@@ -8,15 +8,27 @@ list against his own products. Only a score and critical/warning COUNTS are
 kept, plus the previous check's counts so the landing page can say "N issues
 resolved since last check" without ever naming what they were.
 
-No external cron needed — piggybacks on ordinary homepage traffic. maybe_tick()
-is cheap (one indexed query) when nothing is due, and only starts a scan when
-an app is genuinely overdue (CHECK_INTERVAL_DAYS). Railway runs 4 Gunicorn
-workers, so the "is anything due" check and the "claim it" update are two
-separate steps: the claim is a conditional UPDATE that only succeeds if the
+maybe_tick() is cheap (one indexed query) when nothing is due, and only starts
+a scan when an app is genuinely overdue (CHECK_INTERVAL_HOURS). Railway runs 4
+Gunicorn workers, so the "is anything due" check and the "claim it" update are
+two separate steps: the claim is a conditional UPDATE that only succeeds if the
 row STILL looks overdue at that exact moment, so if two workers race, only one
 of them actually gets rows back and starts a scan — same atomic-claim pattern
 Stripe webhook idempotency already uses elsewhere in this codebase, just via
 a WHERE clause instead of a unique constraint.
+
+UPDATE 2026-09-15: originally ticked ONLY on ordinary homepage traffic, with
+no external cron — deliberate, Moses's call. On 2026-08-19 he also had the
+"checked X ago" figure removed from the badge, because on a quiet traffic day
+CHECK_INTERVAL_DAYS (then 7) meant that figure could grow to look stale,
+undercutting the word "Continuously" right next to it. Both calls made sense
+for a traffic-only design. Moses has now asked for the timestamp back, so
+start_scheduler() adds a real timer loop (still calling the same maybe_tick(),
+same atomic claim — no new mechanism, just a second trigger for the existing
+one) so a check can no longer depend on traffic showing up. CHECK_INTERVAL_HOURS
+dropped from 7 days to 24 hours to match: worst case the badge now reads
+"checked ~23 hours ago," never the multi-day figure that caused the original
+complaint.
 
 Kept dependency-injected (configure(), called once from app.py) rather than
 importing app.py directly, to avoid a circular import — same pattern as
@@ -24,12 +36,17 @@ verilay_deepscan.py, and deliberately reuses its exact free-analysis
 functions rather than duplicating them.
 """
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
-CHECK_INTERVAL_DAYS = 7
+CHECK_INTERVAL_HOURS = 24
 MAX_FILES = 25  # same depth as a normal free scan — this is a teaser, not a deep scan
+SCHEDULER_TICK_SECONDS = 30 * 60  # frequent enough that both apps stay comfortably
+                                   # inside CHECK_INTERVAL_HOURS regardless of traffic
 
 _deps = {}
+_scheduler_started = False
+_scheduler_lock = threading.Lock()
 
 
 def configure(**kwargs):
@@ -41,7 +58,31 @@ def _sb():
 
 
 def _cutoff_iso():
-    return (datetime.now(timezone.utc) - timedelta(days=CHECK_INTERVAL_DAYS)).isoformat()
+    return (datetime.now(timezone.utc) - timedelta(hours=CHECK_INTERVAL_HOURS)).isoformat()
+
+
+def start_scheduler():
+    """Traffic-independent ticking. Call once at app startup (app.py, right
+    after self_monitor.configure()). Safe to call from every Gunicorn worker —
+    each just runs its own copy of this loop, and maybe_tick()'s atomic claim
+    is what actually prevents two workers from double-scanning the same app,
+    exactly as it already does for page-load-triggered ticks.
+
+    Guarded against starting twice in the same process (e.g. a module reload
+    in a debug server) — a second loop would just waste a thread, not corrupt
+    anything, but there's no reason to allow it."""
+    global _scheduler_started
+    with _scheduler_lock:
+        if _scheduler_started:
+            return
+        _scheduler_started = True
+
+    def _loop():
+        while True:
+            maybe_tick()
+            time.sleep(SCHEDULER_TICK_SECONDS)
+
+    threading.Thread(target=_loop, daemon=True).start()
 
 
 def maybe_tick():
@@ -136,15 +177,16 @@ def _run_scan(app_name, repo):
         # maybe_tick() already marked this app "checked" (last_checked_at=now)
         # the moment it claimed the row, before this scan ran — so a FAILED
         # scan looks identical to a successful one and would otherwise sit
-        # untried for the full CHECK_INTERVAL_DAYS. Back the timestamp off
-        # so the next homepage visit picks it up again shortly instead of a
-        # week from now. Best-effort — if even this fails, worst case is the
-        # original 7-day wait, not a crash. Also persist the actual error so
-        # it's visible from /self-monitor-health without needing Railway log
-        # access — Supabase's own dashboard logs are a different system and
-        # never show these application-level prints.
+        # untried for the full CHECK_INTERVAL_HOURS. Back the timestamp off
+        # so the next tick (traffic OR the scheduler, whichever comes first)
+        # picks it up again shortly instead of waiting a full day. Best-effort
+        # — if even this fails, worst case is the original wait, not a crash.
+        # Also persist the actual error so it's visible from
+        # /self-monitor-health without needing Railway log access — Supabase's
+        # own dashboard logs are a different system and never show these
+        # application-level prints.
         try:
-            retry_at = datetime.now(timezone.utc) - timedelta(days=CHECK_INTERVAL_DAYS) + timedelta(hours=1)
+            retry_at = datetime.now(timezone.utc) - timedelta(hours=CHECK_INTERVAL_HOURS) + timedelta(hours=1)
             sb.table("self_monitoring").update(
                 {"last_checked_at": retry_at.isoformat(), "last_error": err_text}
             ).eq("app_name", app_name).execute()
@@ -170,7 +212,7 @@ def health_data():
         return {"configured": True, "error": f"could not read self_monitoring table: {e}"}
     return {
         "configured": True,
-        "check_interval_days": CHECK_INTERVAL_DAYS,
+        "check_interval_hours": CHECK_INTERVAL_HOURS,
         "apps": [
             {
                 "app_name": r.get("app_name"),
@@ -182,6 +224,23 @@ def health_data():
             for r in rows
         ],
     }
+
+
+def _humanize_ago(iso_str):
+    """'3 hours ago' / 'less than an hour ago'. Deliberately caps out around a
+    day — CHECK_INTERVAL_HOURS keeps every real timestamp under ~24h, so this
+    never needs to handle (and never risks displaying) a multi-day figure."""
+    if not iso_str:
+        return None
+    try:
+        checked_at = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    hours = (datetime.now(timezone.utc) - checked_at).total_seconds() / 3600
+    if hours < 1:
+        return "less than an hour ago"
+    h = int(hours)
+    return f"{h} hour{'s' if h != 1 else ''} ago"
 
 
 def badge_html():
@@ -197,7 +256,14 @@ def badge_html():
     open-issue count is fine to show precisely (it's good news, reveals
     nothing) — but a NON-ZERO count is never shown as a number, only ever as
     a positive "N resolved" delta. Bold styling doesn't change what data is
-    safe to expose, only how visible the honest version of it is."""
+    safe to expose, only how visible the honest version of it is.
+
+    The "last checked" figure (re-added 2026-09-15) was removed on 2026-08-19
+    because it could grow stale on a quiet traffic day — see this module's
+    docstring. It's back now because start_scheduler() guarantees every row
+    is checked at least every CHECK_INTERVAL_HOURS regardless of traffic, so
+    the worst case is "~23 hours ago," not the multi-day figure that
+    prompted removing it the first time."""
     sb = _sb()
     if sb is None:
         return ""
@@ -232,13 +298,20 @@ def badge_html():
 
     detail_html = f" &nbsp;·&nbsp; {detail}" if detail else ""
 
+    most_recent = max(
+        (r["last_checked_at"] for r in checked if r.get("last_checked_at")),
+        default=None,
+    )
+    ago = _humanize_ago(most_recent) if most_recent else None
+    ago_html = f" &nbsp;·&nbsp; last checked {ago}" if ago else ""
+
     return (
         '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--grl);'
         'color:var(--grt);font-size:13px;font-weight:600;padding:5px 16px;border-radius:20px;'
         'display:inline-block">'
         '<span style="width:8px;height:8px;border-radius:50%;background:var(--gr);'
         'display:inline-block;flex-shrink:0"></span>'
-        f'Continuously monitoring {len(checked)} of our own apps — {names}{detail_html}'
+        f'Continuously monitoring {len(checked)} of our own apps — {names}{detail_html}{ago_html}'
         '</div>'
     )
 

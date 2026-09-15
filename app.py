@@ -6446,6 +6446,10 @@ self_monitor.configure(
     grade_from_counts=grade_from_counts,
     supabase_client=_sb,
 )
+# Traffic-independent ticking, added 2026-09-15 so the self-monitor badge's
+# "last checked" figure is always genuinely fresh instead of depending on
+# whether a visitor happens to load the homepage. See verilay_self_monitor.py.
+self_monitor.start_scheduler()
 
 # Run validation on startup (works with both local and Gunicorn)
 validate_startup()
