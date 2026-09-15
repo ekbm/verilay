@@ -2788,6 +2788,46 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "more-accurate-dependency-scoring",
+        "title": "How I Made Verilay&rsquo;s Dependency Scoring More Accurate &mdash; By Asking a Different AI to Check My Work",
+        "date": "September 15, 2026",
+        "category": "Build",
+        "excerpt": "Verilay and a different AI tool checked the same app for dependency risks and didn&rsquo;t fully agree. Tracing the gap made the scoring meaningfully more precise for every app Verilay checks.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": True,
+        "body": """
+<p>This week I tightened up one of the more important numbers Verilay shows you: how many of your app&rsquo;s dependencies actually put your users at risk. Here&rsquo;s the improvement, and the slightly unusual way I found it.</p>
+<p>I run Verilay on my own other apps as a matter of habit &mdash; it&rsquo;s the fastest way to catch something before a real user does. This time, on LogInsight, I also did something I don&rsquo;t normally bother with: I asked Lovable, the AI tool LogInsight is actually built with, to run its own independent check on the exact same code.</p>
+<p>Two different tools, same repository, checking for the same thing. I wanted to see whether they&rsquo;d agree.</p>
+
+<h2>Where the two didn&rsquo;t line up</h2>
+<p>They mostly did &mdash; both found the same one library, <code>react-router</code>, as the one genuine issue that could actually touch a real visitor. Good sign.</p>
+<p>Where they diverged was in how loudly each one described everything else. Lovable was calm about it: most of the remaining flags were tools like <code>vite</code> and <code>vitest</code>, things that only run on my own computer while building the app, nowhere near anything a visitor could reach. Verilay&rsquo;s own count was treating all of it as equally urgent.</p>
+<p>That gap was worth closing properly rather than shrugging off, since the whole point of Verilay is that the number means something.</p>
+
+<h2>Tracing it down to two specific things</h2>
+<p>Rather than guess, I ran Verilay&rsquo;s own dependency-checking logic directly against the real repository, outside the app, so I could watch exactly what it was doing with each finding.</p>
+<p>Two adjustments made the biggest difference.</p>
+<p><strong>Severity levels needed to line up more precisely</strong> with the public vulnerability database Verilay checks against. That database rates each issue as Critical, High, Moderate, or Low &mdash; Verilay was treating Critical and High as the same tier. High is genuinely worth fixing, but it isn&rsquo;t the same level of urgency as Critical, and folding them together made the headline number louder than it needed to be.</p>
+<p><strong>Build-only tools needed their own lane.</strong> A tool your app relies on while you&rsquo;re building it &mdash; but which never ships to a real visitor&rsquo;s browser &mdash; is a real thing to eventually clean up, but it isn&rsquo;t the same category of risk as something a stranger could actually exploit. The interesting part: even deeply buried, indirect tools (the ones your app pulls in automatically through other tools, several layers removed from anything you chose directly) already carry an honest label inside your project&rsquo;s own lockfile, saying exactly whether they&rsquo;re build-only or genuinely shipped. Verilay was reading that file for version numbers and skipping the one field that actually mattered.</p>
+
+<h2>What it looks like now</h2>
+<table style="width:100%;border-collapse:collapse;margin:1rem 0">
+<tr><th style="text-align:left;padding:6px 10px;border-bottom:1px solid #e8e6e0"></th><th style="text-align:left;padding:6px 10px;border-bottom:1px solid #e8e6e0">Before</th><th style="text-align:left;padding:6px 10px;border-bottom:1px solid #e8e6e0">After</th></tr>
+<tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">How severity is weighted</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Critical and High combined</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Matched to the real database, tier by tier</td></tr>
+<tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Build-only tools</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Counted the same as shipped ones</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Reported, but no longer inflate your score</td></tr>
+<tr><td style="padding:6px 10px">Cross-checked against an independent AI&rsquo;s own audit</td><td style="padding:6px 10px">Not yet</td><td style="padding:6px 10px">Yes &mdash; same conclusion, same real issue found</td></tr>
+</table>
+<p>On LogInsight specifically, the one real, user-facing issue was still flagged correctly the whole way through. What changed is that the dozens of build-only tools sitting around it no longer drown it out.</p>
+<p>Full technical detail is in <a href="/changelog" style="color:#534AB7">the changelog entry for this update</a>.</p>
+
+<h2>The bit worth taking away</h2>
+<p>If you&rsquo;re building anything that scores or ranks things automatically, it&rsquo;s worth occasionally handing the same input to a second, independent tool and seeing where the two disagree. Not because your first tool is untrustworthy &mdash; because a disagreement between two honest attempts is one of the fastest ways to find the specific spot worth double-checking, out of everything you could have double-checked.</p>
+<p>For your own AI-built app, the same idea applies at a smaller scale: if Lovable or Replit tells you something is fine and a separate check says otherwise (or the reverse), that disagreement is the interesting part, worth a few minutes to resolve &mdash; not something to average away.</p>
+""",
+    },
+    {
         "slug": "the-lockfile-was-lying",
         "title": "The Scariest Number in My Security Report Wasn&rsquo;t the Vulnerability. It Was the File That Was Lying About Them.",
         "date": "August 21, 2026",
@@ -2847,7 +2887,7 @@ BLOG_POSTS = [
         "excerpt": "My SSRF guard checked the address you typed. It never checked the addresses pulled out of the page that address returned &mdash; so the dangerous request never had to pass through the box where anyone types anything.",
         "medium_url": None,
         "read_time": "6 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>Two posts ago I found a part of Verilay that was asking an AI to do a lookup instead of a judgement. One post ago I found a rate limit that had never actually limited anything. This one&rsquo;s about a hole that never went anywhere near the box where people type.</p>
 <p>That last part is what makes it worth writing up. Most security advice assumes the danger arrives through the front door &mdash; a form field, a search box, a URL you paste in. This one came in through the back, carried by a page that wasn&rsquo;t even mine.</p>
