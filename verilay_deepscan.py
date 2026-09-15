@@ -497,9 +497,24 @@ def _fix_library_severities(merged_layers, osv_vulns):
     if not osv_vulns:
         return merged_layers
 
+    # 2026-09-15: this had its OWN copy of the exact bug fixed the same day
+    # in verilay_osv_check.severity_counts() -- folding High into Critical,
+    # and no is_dev awareness at all. Fixing severity_counts() alone did NOT
+    # fix the deep scan, because THIS function is what actually sets each
+    # Libraries finding's severity (and the layer's status) for the deep-scan
+    # report -- confirmed live: LogInsight's deep scan still showed an
+    # inflated critical count after the free-scan fix, because this
+    # deterministic-correction pass was overwriting Claude's severities with
+    # its own stale bucket logic afterwards. Kept in sync with
+    # severity_counts()'s rules: only a true OSV "critical" forces the
+    # critical bucket (High still counts, just as "warning"), and a
+    # confirmed dev/build-tool-only package never forces anything toward
+    # critical at all.
     worst_per_package = {}
     for v in osv_vulns:
-        bucket = "critical" if v.severity in ("critical", "high") else "warning"
+        if v.is_dev:
+            continue
+        bucket = "critical" if v.severity == "critical" else "warning"
         name = v.package.lower()
         if bucket == "critical" or worst_per_package.get(name) != "critical":
             worst_per_package[name] = bucket
