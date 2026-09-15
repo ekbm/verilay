@@ -92,6 +92,23 @@ input:focus{outline:none;border-color:#534AB7}
 .tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:#E1F5EE;color:#085041}
 .tag-off{background:#f0efec;color:#6b6966}
 a{color:#534AB7}
+/* Collapsible account sections (2026-09-15) — native <details>, no JS. Each
+   summary is a full-width tap target so this reads as three plain buttons on
+   a phone, not a dense wall of cards. */
+details.acc{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;margin-bottom:1rem;overflow:hidden}
+details.acc>summary{list-style:none;cursor:pointer;padding:1rem 1.25rem;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:.75rem;-webkit-tap-highlight-color:transparent}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::after{content:'+';font-size:20px;font-weight:400;color:#6b6966;flex-shrink:0}
+details.acc[open]>summary::after{content:'\2212'}
+details.acc>summary:focus-visible{outline:2px solid #534AB7;outline-offset:-2px}
+details.acc[open]>summary{border-bottom:0.5px solid #e8e6e0}
+details.acc .acc-body{padding:1rem 1.25rem}
+details.acc .acc-body>.card{margin-bottom:0}
+@media(max-width:480px){
+  .wrap{padding:1.5rem 1rem}
+  details.acc>summary{padding:.85rem 1rem;font-size:14px}
+  details.acc .acc-body{padding:.85rem 1rem}
+}
 </style>
 </head>
 <body>
@@ -671,14 +688,18 @@ def account():
         if mon_rows:
             grade_color = {"A": "#1D9E75", "B": "#4A90D9", "C": "#EF9F27",
                            "D": "#E24B4A", "F": "#A32D2D"}
-            th = ('padding:6px 10px;font-size:11px;font-weight:600;color:var(--mut);'
+            # Hardcoded to match THIS page's own stylesheet (top of file) —
+            # var(--mut)/var(--bdr)/var(--txt) are homepage-only CSS custom
+            # properties that don't exist here, so they were silently no-ops
+            # (found 2026-09-15 while reworking this section for mobile).
+            th = ('padding:6px 10px;font-size:11px;font-weight:600;color:#6b6966;'
                   'text-transform:uppercase;letter-spacing:.03em;text-align:left;'
-                  'border-bottom:1px solid var(--bdr)')
-            td = 'padding:8px 10px;font-size:13px;vertical-align:top;border-bottom:0.5px solid var(--bdr)'
+                  'border-bottom:1px solid #e8e6e0')
+            td = 'padding:8px 10px;font-size:13px;vertical-align:top;border-bottom:0.5px solid #e8e6e0'
 
             def _cell(r):
                 score = r.get("score") or "—"
-                color = grade_color.get(score, "var(--txt)")
+                color = grade_color.get(score, "#1a1917")
                 checked_abs = self_monitor._format_checked_at(r.get("last_checked_at"))
                 checked_rel = self_monitor._humanize_ago_full(r.get("last_checked_at"))
                 checked = (f'{checked_abs}<br><span class="note">{checked_rel}</span>'
@@ -709,9 +730,8 @@ def account():
                 + '</table></div>'
             )
             monitor_note = (
-                '<div class="card" style="margin-bottom:1rem">'
-                '<p style="margin:0 0 .5rem;font-size:13px;font-weight:600">📡 Monitored apps</p>'
-                f'{mon_table}</div>'
+                f'<details class="acc"><summary>📡 Monitored apps ({len(mon_rows)})</summary>'
+                f'<div class="acc-body">{mon_table}</div></details>'
             )
 
     # A scan you started and then closed the tab on used to be genuinely lost
@@ -731,21 +751,46 @@ def account():
             f'{job_lines}</div>'
         )
 
+    # Three collapsible sections, collapsed by default (2026-09-15, Moses's
+    # request) — reads as three plain buttons on a phone instead of a long
+    # scroll of always-open cards. Native <details>, no JS: the user taps to
+    # expand whichever one they actually came here for.
+    #
+    # Also widened from this shared shell's default 680px (built for narrow
+    # login/checkout forms, which still want that width) to match the
+    # homepage's 1100px -- Moses noticed /account only used the centre of the
+    # page. Scoped to this page alone via an inline override rather than
+    # changing _SHELL, since checkout/login/pricing share that stylesheet and
+    # should stay narrow. max-width only affects desktop/tablet widths, so
+    # this has no effect on the mobile layout above.
     body = f"""
+  <style>.wrap{{max-width:1100px}}</style>
   <div class="eyebrow">Your account</div>
   <h1>{_esc(user["email"])}</h1>
   {running_note}
   {admin_note}
   {monitor_note}
-  <h2 id="reports">Your reports</h2>
-  {reports_html}
-  <h2>Deep scans you have bought</h2>
-  {purchases_html}
+  <details class="acc" id="reports"><summary>Your reports ({len(reports)})</summary>
+    <div class="acc-body">{reports_html}</div>
+  </details>
+  <details class="acc"><summary>Deep scans purchased ({len(rows)})</summary>
+    <div class="acc-body">{purchases_html}</div>
+  </details>
   <p class="note" style="margin-top:2rem">
     <a href="/">Run an analysis</a> &nbsp;·&nbsp;
     <a href="/logout">Sign out</a> &nbsp;·&nbsp;
     Need help? <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>
   </p>
+  <script>
+  // The homepage links here as /account#reports to jump straight to reports.
+  // A URL fragment never reaches the server, and a collapsed <details> can't
+  // be forced open by CSS alone -- this is the few lines of JS needed to
+  // keep that existing deep link working now that the section collapses.
+  if (location.hash === '#reports') {{
+    var d = document.getElementById('reports');
+    if (d) d.open = true;
+  }}
+  </script>
 """
     return _page("Your account", body, robots="noindex")
 
