@@ -99,7 +99,7 @@ details.acc{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;margin
 details.acc>summary{list-style:none;cursor:pointer;padding:1rem 1.25rem;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:.75rem;-webkit-tap-highlight-color:transparent}
 details.acc>summary::-webkit-details-marker{display:none}
 details.acc>summary::after{content:'+';font-size:20px;font-weight:400;color:#6b6966;flex-shrink:0}
-details.acc[open]>summary::after{content:'\2212'}
+details.acc[open]>summary::after{content:'\\2212'}
 details.acc>summary:focus-visible{outline:2px solid #534AB7;outline-offset:-2px}
 details.acc[open]>summary{border-bottom:0.5px solid #e8e6e0}
 details.acc .acc-body{padding:1rem 1.25rem}
@@ -628,7 +628,7 @@ def account():
                    else '<span class="tag tag-off">Ended</span>')
             repo = _esc(r.get("repo", ""))
             when = _esc(str(r.get("expires_at", ""))[:10])
-            link = (f'<a href="/deep/{repo}">Re-scan</a>' if active else "")
+            link = (f'<a href="/deep/{repo}" target="_blank" rel="noopener">Re-scan</a>' if active else "")
             items.append(
                 f'<div class="row"><span><strong>{repo}</strong><br>'
                 f'<span class="note">Re-scans included until {when}</span></span>'
@@ -653,12 +653,13 @@ def account():
             # bought" list above genuinely has nothing to show for a repo
             # scanned via the bypass. This is where an admin actually finds
             # their way back to re-scanning it.
-            admin_rescan = f' &nbsp;<a href="/deep/{repo}">Re-scan</a>' if is_admin and repo else ""
+            admin_rescan = (f' &nbsp;<a href="/deep/{repo}" target="_blank" rel="noopener">Re-scan</a>'
+                             if is_admin and repo else "")
             items.append(
                 f'<div class="row"><span><strong>{repo or "Untitled"}</strong>'
                 f'<br><span class="note">{_esc(rep["when"])}</span></span>'
                 f'<span>{_esc(rep["score"] or "—")} &nbsp;'
-                f'<a href="/report/{_esc(rep["id"])}">Open</a>{admin_rescan}</span></div>'
+                f'<a href="/report/{_esc(rep["id"])}" target="_blank" rel="noopener">Open</a>{admin_rescan}</span></div>'
             )
         reports_html = '<div class="card">' + "".join(items) + "</div>"
     else:
@@ -793,10 +794,17 @@ def account():
     <div class="acc-body">{purchases_html}</div>
   </details>
   <p class="note" style="margin-top:2rem">
-    <a href="/">Run an analysis</a> &nbsp;·&nbsp;
+    <a href="/" target="_blank" rel="noopener">Run an analysis</a> &nbsp;·&nbsp;
     <a href="/logout">Sign out</a> &nbsp;·&nbsp;
     Need help? <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>
   </p>
+  <!-- "Sign out" deliberately stays a normal navigation, not a new tab
+       (2026-09-15) -- opening it in a new tab would leave THIS tab still
+       showing "signed in" content while the session is actually gone
+       elsewhere, which is more confusing than helpful. Every other link on
+       this page opens in a new tab so a signed-in user can look at a report
+       or kick off a scan without losing their place on /account. -->
+
   <script>
   // The homepage links here as /account#reports to jump straight to reports.
   // A URL fragment never reaches the server, and a collapsed <details> can't
