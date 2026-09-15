@@ -4138,6 +4138,27 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">September 15, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Cleaner account page, works properly on mobile</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Your reports and purchased deep scans now live in clean, collapsible sections — tap to expand just the one you need. The page also finally uses the full width of the screen instead of a narrow centre column, and every link opens in its own tab so you never lose your place.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">September 15, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">New: crypto hygiene checks</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Verilay now checks for weak password hashing, insecure encryption modes, hardcoded encryption keys, and undersized RSA keys — reported alongside your existing findings, with the same plain-English explanations.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">September 15, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">More precise dependency risk scoring</div>
+    <div><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem">Dependency findings are now weighted more precisely against the public vulnerability database, and build-only tools (your test runner, bundler, and similar) no longer count toward your critical/warning score the way a real runtime dependency does — verified against an independent second opinion from another AI tool on a real app.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">August 21, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">See your app's structure in one picture</div>
     <div><span class="tag new">New</span></div>
