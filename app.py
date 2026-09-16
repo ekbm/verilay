@@ -5685,6 +5685,11 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       {% endif %}
       __SELFMONITOR_BADGE__
     </div>
+    <div style="display:flex;justify-content:center;margin-bottom:.9rem">
+      <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
+        <img src="https://peerpush.com/p/verilay/rating-badge.png" alt="Verilay rating on PeerPush" style="width:100%;max-width:340px">
+      </a>
+    </div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:16px"></i> Analyse my app — it's free
