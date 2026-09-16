@@ -6372,6 +6372,11 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <a href="/ai-disclaimer" style="font-size:12px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
     <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:12px;color:var(--mut);text-decoration:none">Contact Moses</a>
   </div>
+  <div style="margin-top:1rem">
+    <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
+      <img src="https://peerpush.com/p/verilay/badge.png" alt="Verilay on PeerPush" style="width:230px;max-width:100%">
+    </a>
+  </div>
 </div>
 
 <script>
