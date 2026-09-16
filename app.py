@@ -3944,10 +3944,13 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
       <div style="font-weight:700;font-size:16px;margin-bottom:.25rem">Moses Ekbote</div>
       <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.5rem">I build things in my spare time. Verilay, Evident, LogInsight, BuildStory, and DIYChatbots are all live products built without a traditional development background.</div>
       <div style="font-size:13px;color:#4a4846;line-height:1.6;margin-bottom:.75rem">Follow the journey on <a href="https://medium.com/@mosesekbote" target="_blank" style="color:#534AB7">Medium</a>.</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.75rem">
         <a href="https://medium.com/@mosesekbote" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">Medium</a>
         <a href="https://github.com/ekbm" target="_blank" style="font-size:11px;padding:3px 10px;background:#fff;border:0.5px solid #534AB7;border-radius:20px;color:#534AB7;text-decoration:none">GitHub</a>
       </div>
+      <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
+        <img src="https://peerpush.com/p/verilay/badge.png" alt="Verilay on PeerPush" style="width:230px;max-width:100%">
+      </a>
     </div>
   </div>
 
