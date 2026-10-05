@@ -2818,6 +2818,99 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "free-first-check-for-employee-built-ai-apps",
+        "title": "Your Staff Are Building Apps With AI. Here&rsquo;s a Free First Check Before You Say Yes",
+        "date": "October 5, 2026",
+        "category": "Security",
+        "excerpt": "98% of AI-built apps have a security flaw, and staff are building them faster than IT can see. A light first-pass process for IT teams, and a free IT Review Pack in Verilay to help.",
+        "medium_url": None,
+        "read_time": "7 min read",
+        "featured": True,
+        "body": """
+<p>98% of apps built on AI platforms like Lovable and Bolt have at least one security flaw, and 16% have a critical one. (<a href="https://www.symbioticsec.ai/blog/we-scanned-1-072-vibe-coded-apps-98-had-security-flaws" style="color:#534AB7">Symbiotic Security, June 2026</a>)</p>
+<p>In most companies, the people building those apps now outnumber professional developers four to one. Yet fewer than a third of security leaders say they can see every app their staff have built. (<a href="https://kanopysecurity.com/knowledge-center/reports/ai-agents-business-apps-security-report-2026/" style="color:#534AB7">Kanopy Security, April 2026</a>)</p>
+<p>Put those together and you get a quiet problem most IT teams already suspect: someone in marketing, finance or operations has built a useful little app over a weekend, it's touching company data, and nobody who knows what a database access rule is has ever looked at it.</p>
+
+<div style="background:#EEEDFE;border-radius:10px;padding:1rem 1.2rem;margin:1.25rem 0;color:#3C3489">
+<p style="margin:0 0 .4rem;font-weight:700">In short: a free first check for IT teams</p>
+<p style="margin:0">Every Verilay report now includes an <strong>IT Review Pack</strong>: one printable page that tells you whether an AI-built app looks safe to approve, what to fix first, and what the check didn't cover. Upload the app's code, get the pack, attach it to your approval ticket. It's free, and it's a first pass, not a certificate. <a href="#it-review-pack" style="color:#534AB7">See what's in it &darr;</a></p>
+</div>
+
+<p>The rest of this post covers what the research says, what IT teams can realistically do about it, and exactly what the IT Review Pack checks.</p>
+
+<h2>The numbers, from people who went and checked</h2>
+<p>These studies scanned real, public apps built with AI tools. Not predictions or surveys about what <em>might</em> happen.</p>
+<table style="width:100%;border-collapse:collapse;margin:1rem 0;font-size:14px"><tr><th style="text-align:left;padding:6px 10px;border-bottom:1px solid #e8e6e0">What they found</th><th style="text-align:left;padding:6px 10px;border-bottom:1px solid #e8e6e0">Who found it</th></tr><tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top">98% of 1,072 AI-built apps had a security flaw; 16% had critical ones</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top"><a href="https://www.symbioticsec.ai/blog/we-scanned-1-072-vibe-coded-apps-98-had-security-flaws" style="color:#534AB7">Symbiotic Security</a>, June 2026</td></tr><tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top">Across 5,600 public AI-built apps: 2,000+ high-impact vulnerabilities, 400+ exposed keys and passwords, 175 leaks of personal data such as medical records and bank details</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top"><a href="https://escape.tech/blog/methodology-how-we-discovered-vulnerabilities-apps-built-with-vibe-coding/" style="color:#534AB7">Escape</a></td></tr><tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top">About 380,000 public AI-built apps and assets found; around 5,000 contained sensitive company information</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top"><a href="https://venturebeat.com/security/vibe-coded-apps-shadow-ai-s3-bucket-crisis-ciso-audit-framework" style="color:#534AB7">RedAccess, reported by VentureBeat</a></td></tr><tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top">170+ Lovable projects had databases anyone could read or change, because access rules weren't doing their job (tracked as CVE-2025-48757)</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top"><a href="https://www.superblocks.com/blog/lovable-vulnerabilities" style="color:#534AB7">Superblocks</a></td></tr><tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top">Business builders outnumber professional developers 4 to 1; over 80% of security leaders lack full visibility of what they build</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec;vertical-align:top"><a href="https://kanopysecurity.com/knowledge-center/reports/ai-agents-business-apps-security-report-2026/" style="color:#534AB7">Kanopy Security</a> survey of 200 security leaders</td></tr></table>
+<p>One honest caveat: no study I could find measures <em>employee-built</em> apps specifically. The vulnerability studies scan AI-built apps in general, and the visibility survey asks about employee-built apps without testing them. But the AI tools are the same ones, and so are the mistakes. There's no reason to think the app your colleague built is the exception.</p>
+
+<h2>Why the usual process doesn't catch these apps</h2>
+<p>Most IT teams already have a way to review software. The trouble is that it's built for two kinds of app:</p>
+<ul>
+<li><strong>Software you buy</strong>, which goes through vendor questionnaires, contracts and security reviews.</li>
+<li><strong>Software your developers write</strong>, which goes through code review and the security tools in their pipeline.</li>
+</ul>
+<p>An app built by a colleague in Lovable over a weekend is neither. It doesn't come with a vendor to question, and it never touches your developers' pipeline. It often lives on a public web address, and it frequently connects to a real database holding real data.</p>
+<p>The mistakes AI tools make are also a particular kind. They aren't exotic. They're the basic, boring ones that the person building the app can't see:</p>
+<ul>
+<li><strong>Database access rules that were never switched on</strong>, so anyone with the app's public key can read every row.</li>
+<li><strong>Passwords and API keys written straight into the code</strong>, sometimes in a file called <code>.env</code> that ends up in the project anyway.</li>
+<li><strong>Old libraries with known holes</strong>, because the AI copied an example that was current two years ago.</li>
+<li><strong>Login that only works in the browser</strong>, so a request sent directly to the server skips it.</li>
+</ul>
+<p>None of these needs a security expert to fix once someone has spotted it. The hard part is spotting it.</p>
+
+<h2>"But the AI tool already checked it"</h2>
+<p>Many AI builders now include a security scan, and your colleague may well tell you their app "passed". That's a good start, but it isn't a review.</p>
+<p>Here's a public example. In April 2025, Lovable added a security scan to its platform. According to <a href="https://www.superblocks.com/blog/lovable-vulnerabilities" style="color:#534AB7">Superblocks' write-up of the incident</a>, the scan <strong>only checked whether database access rules existed, not whether they actually worked</strong>. Around the same time, a researcher found 303 exposed endpoints across 170 Lovable projects whose access rules weren't doing their job.</p>
+<p>I'm a non-developer who builds my own products with AI tools, and I've seen the same pattern first-hand: ask the tool that built an app whether the app is safe, and it tends to say yes. The honest issues usually surface when something <em>else</em> looks: a different tool, or a person reading the result critically.</p>
+<p>That's not a criticism of any one platform. It's the reason the pattern matters: <strong>when the tool that built the app is also the tool grading it, nobody independent has looked.</strong> That's the gap an IT team fills: a second opinion from something that didn't write the code.</p>
+
+<h2>A practical first-pass process for IT teams</h2>
+<p>You don't need a full security programme to make a real difference. Here's a light process that fits a small IT team:</p>
+<ol>
+<li><strong>Ask staff to register what they've built.</strong> A simple form: what it does, what data it touches, where it's hosted, who uses it. Make it friendly, not punitive. The aim is visibility, and people hide what they think will get them in trouble.</li>
+<li><strong>Run a first-pass code check</strong> on anything that touches company or customer data. This is where Verilay can help (more below).</li>
+<li><strong>Fix the obvious things first:</strong> exposed keys, database access rules, known-vulnerable libraries. These are usually quick.</li>
+<li><strong>Test the running app for the things code checks can't see.</strong> Can one user see another user's data? Is it behind company sign-in?</li>
+<li><strong>Record a decision</strong> (approve, approve with fixes, or not yet) and re-check when the app changes.</li>
+</ol>
+<p>Steps 1 and 5 are about process. Steps 2 to 4 are where tools help.</p>
+
+<h2 id="it-review-pack">The new IT Review Pack in Verilay</h2>
+<p>Verilay has always been built for the person who made the app: plain English, no jargon, here's what's wrong and how to fix it. What it didn't have was a version for <strong>the person deciding whether that app is allowed to run.</strong></p>
+<p>So every Verilay report now includes a free <strong>IT Review Pack</strong>: a single printable page you can attach to an approval ticket. It shows:</p>
+<ul>
+<li><strong>A suggested decision:</strong> "Don't approve yet", "Approve with fixes" or "Approve, within the limits below", with a risk level. It's labelled as a suggestion; the reviewer decides.</li>
+<li><strong>Repeatable checks</strong> for exposed keys, known-vulnerable libraries and weak cryptography. These run over every file and give the same answer every time.</li>
+<li><strong>An AI review of each area of the app:</strong> login, database, server, settings, browser and libraries. It's labelled clearly as expert opinion, because it can vary slightly between runs.</li>
+<li><strong>Which security standard each check relates to</strong> (OWASP ASVS and the OWASP Top 10), so it maps onto language your team already uses.</li>
+<li><strong>A list of what the review did not check,</strong> written down plainly.</li>
+<li><strong>Free tools to confirm it independently,</strong> and a sign-off box.</li>
+</ul>
+<p>Your colleague can upload their project as a ZIP, so it works without GitHub access. The code is read in memory only, and never saved.</p>
+
+<h2>What it doesn't do</h2>
+<p>The IT Review Pack's banner says <strong>"Risk reduced and reviewed &mdash; not certified safe"</strong>, and I mean it. It reads the code. It doesn't:</p>
+<ul>
+<li>test the live, running app or its hosting</li>
+<li>prove that one user can't see another user's data (that needs a two-account test)</li>
+<li>see settings made outside the code, such as database rules set in a dashboard</li>
+<li>tell you where company data travels: which AI providers, which countries</li>
+<li>check software licences or business logic</li>
+</ul>
+<p>It's a first pass, and a good one: it catches the boring, common mistakes in minutes, for free. That's where most of the real risk in AI-built apps sits. But it isn't a penetration test or a compliance certificate, and anyone who tells you their automated tool is should make you suspicious.</p>
+
+<h2>Try it</h2>
+<ol>
+<li>Go to <a href="https://verilay.dev" style="color:#534AB7">verilay.dev</a>.</li>
+<li>Paste a GitHub link, or upload the project as a ZIP. Most AI builders have an "Export" or "Download ZIP" option.</li>
+<li>When the report is ready, click <strong>IT Review Pack</strong>, then <strong>Print or save as PDF</strong>.</li>
+</ol>
+<p>It's free, and there's no account needed. If you're running this across a team and want something it doesn't do yet, email me at <a href="mailto:moses@verilay.dev?subject=Verilay%20for%20IT%20teams" style="color:#534AB7">moses@verilay.dev</a>. I'm building the next part based on what IT teams actually ask for.</p>
+<p style="font-size:13px;color:#6b6966"><em>Verilay is open source: <a href="https://github.com/ekbm/verilay" style="color:#534AB7">github.com/ekbm/verilay</a>. AI-assisted analysis can contain false positives or miss issues, and is not a professional security audit. See the <a href="/ai-disclaimer" style="color:#534AB7">AI disclaimer</a>.</em></p>
+""",
+    },
+    {
         "slug": "more-accurate-dependency-scoring",
         "title": "How I Made Verilay&rsquo;s Dependency Scoring More Accurate &mdash; By Asking a Different AI to Check My Work",
         "date": "September 15, 2026",
@@ -2825,7 +2918,7 @@ BLOG_POSTS = [
         "excerpt": "Verilay and a different AI tool checked the same app for dependency risks and didn&rsquo;t fully agree. Tracing the gap made the scoring meaningfully more precise for every app Verilay checks.",
         "medium_url": None,
         "read_time": "6 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>This week I tightened up one of the more important numbers Verilay shows you: how many of your app&rsquo;s dependencies actually put your users at risk. Here&rsquo;s the improvement, and the slightly unusual way I found it.</p>
 <p>I run Verilay on my own other apps as a matter of habit &mdash; it&rsquo;s the fastest way to catch something before a real user does. This time, on LogInsight, I also did something I don&rsquo;t normally bother with: I asked Lovable, the AI tool LogInsight is actually built with, to run its own independent check on the exact same code.</p>
