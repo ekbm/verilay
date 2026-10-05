@@ -441,3 +441,54 @@ def fetch_all_files_tarball(owner: str, repo: str, token: str = "",
             except Exception:
                 continue
     return out
+
+
+MAX_ZIP_UNCOMPRESSED_BYTES = 100 * 1024 * 1024   # zip-bomb guard: total of what we read
+
+
+def fetch_all_files_zip(zip_file, max_files: int = 4000) -> Dict[str, str]:
+    """
+    Read every scannable text file from an uploaded ZIP and return {path: text}.
+
+    The ZIP equivalent of fetch_all_files_tarball. fetch_zip() in app.py still
+    picks the ~25 files Claude reads; this is what the secret scan, dependency
+    check and crypto check run over, so a ZIP scan covers the whole project the
+    way a GitHub scan does. Unlike fetch_zip() it keeps dotfiles (.env is
+    exactly where leaked keys live) and lockfiles such as package-lock.json
+    (exact versions for the dependency check).
+
+    Nothing is written to disk. Each file is read from memory, capped at
+    MAX_SCAN_BYTES, and the running total is capped so a small ZIP that
+    expands to gigabytes is cut off instead of exhausting memory.
+    """
+    import zipfile
+
+    out: Dict[str, str] = {}
+    with zipfile.ZipFile(zip_file) as zf:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        # Strip a single top-level folder ("myproject/src/app.py" -> "src/app.py")
+        # when every entry sits inside it, matching how GitHub paths look.
+        prefix = ""
+        first = infos[0].filename if infos else ""
+        if "/" in first:
+            candidate = first.split("/", 1)[0] + "/"
+            if all(i.filename.startswith(candidate) for i in infos):
+                prefix = candidate
+        total = 0
+        for info in infos:
+            if len(out) >= max_files:
+                break
+            path = info.filename[len(prefix):]
+            if not path or _should_skip(path) or info.file_size > MAX_SCAN_BYTES:
+                continue
+            if total + info.file_size > MAX_ZIP_UNCOMPRESSED_BYTES:
+                break
+            try:
+                # zipfile never returns more than the declared file_size, so the
+                # checks above also bound what this read can expand to.
+                data = zf.read(info)
+            except Exception:
+                continue  # encrypted, corrupt or unsupported entry
+            total += len(data)
+            out[path] = data.decode("utf-8", "replace")
+    return out

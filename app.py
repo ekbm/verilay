@@ -36,6 +36,7 @@ load_dotenv()
 from verilay_url_guard import safe_get, validate_url, BlockedURL
 from verilay_secret_scan import (
     scan_repo, to_prompt_block, to_report_dict, fetch_all_files_tarball,
+    fetch_all_files_zip,
 )
 from verilay_crypto_hygiene import (
     scan_repo as crypto_scan_repo,
@@ -2312,6 +2313,15 @@ def analyse_stream():
 
     method = request.form.get("method","github")
 
+    # Read the uploaded ZIP here, before streaming starts. Inside generate()
+    # the upload has already been closed, so f.read() there failed with
+    # "I/O operation on closed file" and every ZIP scan errored out.
+    zip_upload = None
+    if method == "zip":
+        _zf = request.files.get("zip_file")
+        if _zf:
+            zip_upload = (_zf.read(), _zf.filename)
+
     def generate():
         try:
             # ── Fetch files ────────────────────────────────────────────
@@ -2328,14 +2338,13 @@ def analyse_stream():
                     yield json.dumps({"event":"error","data":"URL is too long"}) + "\n"; return
                 files, tree, repo_name = fetch_github(url)
             elif method == "zip":
-                f = request.files.get("zip_file")
-                if not f:
+                if not zip_upload:
                     yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
-                zip_data = f.read()
+                zip_data, zip_filename = zip_upload
                 zip_size_mb = len(zip_data) / (1024 * 1024)
                 if zip_size_mb > 100:
                     yield json.dumps({"event":"error","data":f"ZIP file is {zip_size_mb:.0f}MB — too large. Please exclude the node_modules folder from your ZIP and try again. Alternatively use the GitHub URL method which has no size limit."}) + "\n"; return
-                files, tree, repo_name = fetch_zip(io.BytesIO(zip_data), f.filename)
+                files, tree, repo_name = fetch_zip(io.BytesIO(zip_data), zip_filename)
             elif method == "url":
                 url = request.form.get("live_url","").strip()
                 if not url:
@@ -2355,8 +2364,8 @@ def analyse_stream():
             # ── Deterministic secret scan ───────────────────────────────
             # Runs before Claude, over every file we can reach — not the 25-file
             # sample. Costs nothing and returns the same answer every run. For
-            # GitHub we pull the whole repo as one tarball; ZIP and URL scans
-            # cover the files already fetched.
+            # GitHub we pull the whole repo as one tarball; for ZIP we read every
+            # file in the upload; URL scans cover the files already fetched.
             yield json.dumps({"event":"status","data":"Checking every file for exposed keys..."}) + "\n"
             scan_findings, scan_files_count = [], 0
             _all_text = None
@@ -2364,6 +2373,10 @@ def analyse_stream():
                 if method == "github":
                     _owner, _, _repo = repo_name.partition("/")
                     _all_text = fetch_all_files_tarball(_owner, _repo, GITHUB_TOKEN)
+                    scan_findings = scan_repo(_all_text)
+                    scan_files_count = len(_all_text)
+                elif method == "zip":
+                    _all_text = fetch_all_files_zip(io.BytesIO(zip_data))
                     scan_findings = scan_repo(_all_text)
                     scan_files_count = len(_all_text)
                 else:
