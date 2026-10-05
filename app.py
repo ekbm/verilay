@@ -1920,7 +1920,7 @@ def analyse_step2(files, repo_name, scan_block=""):
     # like DOES sometimes came back blank) -- confirmed live via
     # call_claude_text's new truncation log, which then caught 2000
     # (~2200 real tokens), 3500 (~3900+), 5000 (~5470+), and (2026-09-15,
-    # self-monitor scanning Loginsight -- 18 critical + 23 warnings, well
+    # self-monitor scanning a large real-world repo with dozens of findings, well
     # past the "5 findings each" the prompt asks for) 10000 too -- ALL
     # still truncating on different real runs against real, messy repos.
     # Real output length scales with how many findings a repo actually has,
@@ -2048,7 +2048,7 @@ def analyse_step3(files, repo_name, osv_block=""):
     # like DOES sometimes came back blank) -- confirmed live via
     # call_claude_text's new truncation log, which then caught 2000
     # (~2200 real tokens), 3500 (~3900+), 5000 (~5470+), and (2026-09-15,
-    # self-monitor scanning Loginsight -- 18 critical + 23 warnings, well
+    # self-monitor scanning a large real-world repo with dozens of findings, well
     # past the "5 findings each" the prompt asks for) 10000 too -- ALL
     # still truncating on different real runs against real, messy repos.
     # Real output length scales with how many findings a repo actually has,
@@ -2921,11 +2921,11 @@ BLOG_POSTS = [
         "featured": False,
         "body": """
 <p>This week I tightened up one of the more important numbers Verilay shows you: how many of your app&rsquo;s dependencies actually put your users at risk. Here&rsquo;s the improvement, and the slightly unusual way I found it.</p>
-<p>I run Verilay on my own other apps as a matter of habit &mdash; it&rsquo;s the fastest way to catch something before a real user does. This time, on LogInsight, I also did something I don&rsquo;t normally bother with: I asked Lovable, the AI tool LogInsight is actually built with, to run its own independent check on the exact same code.</p>
+<p>I run Verilay on my own other apps as a matter of habit &mdash; it&rsquo;s the fastest way to catch something before a real user does. This time, on one of them, I also did something I don&rsquo;t normally bother with: I asked Lovable, the AI tool that app is actually built with, to run its own independent check on the exact same code.</p>
 <p>Two different tools, same repository, checking for the same thing. I wanted to see whether they&rsquo;d agree.</p>
 
 <h2>Where the two didn&rsquo;t line up</h2>
-<p>They mostly did &mdash; both found the same one library, <code>react-router</code>, as the one genuine issue that could actually touch a real visitor. Good sign.</p>
+<p>They mostly did &mdash; both picked out the same single library as the one that genuinely mattered for real visitors. Good sign.</p>
 <p>Where they diverged was in how loudly each one described everything else. Lovable was calm about it: most of the remaining flags were tools like <code>vite</code> and <code>vitest</code>, things that only run on my own computer while building the app, nowhere near anything a visitor could reach. Verilay&rsquo;s own count was treating all of it as equally urgent.</p>
 <p>That gap was worth closing properly rather than shrugging off, since the whole point of Verilay is that the number means something.</p>
 
@@ -2942,7 +2942,7 @@ BLOG_POSTS = [
 <tr><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Build-only tools</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Counted the same as shipped ones</td><td style="padding:6px 10px;border-bottom:0.5px solid #f0efec">Reported, but no longer inflate your score</td></tr>
 <tr><td style="padding:6px 10px">Cross-checked against an independent AI&rsquo;s own audit</td><td style="padding:6px 10px">Not yet</td><td style="padding:6px 10px">Yes &mdash; same conclusion, same real issue found</td></tr>
 </table>
-<p>On LogInsight specifically, the one real, user-facing issue was still flagged correctly the whole way through. What changed is that the dozens of build-only tools sitting around it no longer drown it out.</p>
+<p>On that app, the one finding that genuinely mattered stayed flagged correctly the whole way through. What changed is that the dozens of build-only tools sitting around it no longer drown it out.</p>
 <p>Full technical detail is in <a href="/changelog" style="color:#534AB7">the changelog entry for this update</a>.</p>
 
 <h2>The bit worth taking away</h2>
