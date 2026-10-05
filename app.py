@@ -4305,10 +4305,11 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 5, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">IT Review Pack, and ZIP uploads fixed and checked end to end</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">IT Review Pack, ZIP uploads fixed, and reliable report links</div>
     <div><span class="tag new">New</span><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> every report now has an IT Review Pack — a printable checklist for IT teams deciding whether to approve an app a colleague built with AI. It shows a suggested decision, the repeatable checks and the AI review side by side, what to fix first, what the review did not check, and a sign-off box. Risk reduced and reviewed, not certified safe.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> ZIP uploads were failing with an error before any results appeared. They work again.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> shared report links sometimes showed &ldquo;Report not found&rdquo;, and the apps-analysed count on the homepage could briefly show 0. A connection to Verilay&rsquo;s database was being dropped and not reopened. It now reconnects automatically, and report links load every time.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> ZIP scans now check every file for exposed keys, weak cryptography and vulnerable libraries — including <code>.env</code> and lockfiles — the same way GitHub scans do. Your uploaded code is read in memory only and never saved.</p>
   </div>
 
