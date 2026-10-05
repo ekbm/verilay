@@ -74,10 +74,22 @@ try:
 except ImportError:
     _HAS_SDK = False
 try:
-    from supabase import create_client as _supabase_create
+    import httpx as _httpx
+    from supabase import create_client as _supabase_create, ClientOptions as _SbOptions
     _SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     _SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-    _sb = _supabase_create(_SUPABASE_URL, _SUPABASE_KEY) if _SUPABASE_URL and _SUPABASE_KEY else None
+    # HTTP/1.1 on purpose. supabase-py's default is ONE shared HTTP/2
+    # connection per worker; when Supabase closes it (GOAWAY), the next query
+    # on it fails with "ConnectionTerminated" and nothing reconnects, so ~40%
+    # of report links 404'd and /stats showed 0 (seen live 2026-10-05).
+    # HTTP/1.1 pooling notices a closed connection and opens a fresh one.
+    _sb = _supabase_create(
+        _SUPABASE_URL, _SUPABASE_KEY,
+        options=_SbOptions(httpx_client=_httpx.Client(
+            http2=False, timeout=120, follow_redirects=True,
+            transport=_httpx.HTTPTransport(retries=1),
+        )),
+    ) if _SUPABASE_URL and _SUPABASE_KEY else None
     _HAS_SUPABASE = _sb is not None
 except Exception:
     _sb = None
@@ -312,12 +324,16 @@ def save_report_data(data, user_id=None):
 
 def get_report_data(report_id):
     if _HAS_SUPABASE:
-        try:
-            result = _sb.table("reports").select("data").eq("id", report_id).execute()
-            if result.data:
-                return result.data[0]["data"]
-        except Exception as e:
-            print(f"Supabase get failed: {e}")
+        # One retry: a dropped connection should cost a moment, not a 404 on
+        # someone's shared report link.
+        for _attempt in (1, 2):
+            try:
+                result = _sb.table("reports").select("data").eq("id", report_id).execute()
+                if result.data:
+                    return result.data[0]["data"]
+                break
+            except Exception as e:
+                print(f"Supabase get failed (attempt {_attempt}): {e}")
     # Fallback to memory
     entry = _reports.get(report_id)
     if entry and time.time() - entry["saved_at"] < REPORT_TTL:
