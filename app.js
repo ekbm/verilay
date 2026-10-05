@@ -288,6 +288,18 @@ function init() {
   var btnMd = document.getElementById('btn-export-md');
   if (btnMd) btnMd.addEventListener('click', exportMarkdown);
 
+  // IT Review Pack -- opens in a new tab. The tab is opened during the click
+  // (before any save) so popup blockers allow it, then pointed at the pack.
+  var btnIt = document.getElementById('btn-it-review');
+  if (btnIt) btnIt.addEventListener('click', function() {
+    if (savedReportId) { window.open('/report/' + savedReportId + '/it-review', '_blank'); return; }
+    var w = window.open('', '_blank');
+    saveReport().then(function() {
+      if (savedReportId && w) w.location.href = '/report/' + savedReportId + '/it-review';
+      else if (w) w.close();
+    });
+  });
+
   // Print / PDF
   var btnPrint = document.getElementById('btn-print');
   if (btnPrint) btnPrint.addEventListener('click', function() { window.print(); });
