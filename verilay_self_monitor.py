@@ -322,8 +322,8 @@ def admin_detail_html(rows):
         log, open_items = st.get("resolved_log") or [], list((st.get("open") or {}).values())
         order = {"critical": 0, "high": 1, "warning": 2, "moderate": 3, "low": 4}
         open_items.sort(key=lambda i: order.get((i.get("sev") or "").lower(), 9))
-        # The homepage badge's "N resolved" is the drop in TOTAL counts between two checks. This page names
-        # the specific issues that disappeared, and only since tracking began. When the two disagree, say why.
+        # The homepage badge counts only named, recorded fixes (public_resolved). When the TOTALS dropped but
+        # nothing named disappeared, say why instead of leaving a silent 0.
         pc, pw = r.get("prev_critical"), r.get("prev_warnings")
         delta = None
         if pc is not None and pw is not None and r.get("critical") is not None:
@@ -332,9 +332,10 @@ def admin_detail_html(rows):
         if delta and delta > 0 and not fixed:
             count_note = (f'<p class="note" style="margin:.4rem 0;background:#F1EFE8;border-radius:6px;padding:.4rem .6rem">'
                           f'The totals dropped by {delta} since the previous check, but none of the tracked issues '
-                          f'disappeared. Either tracking only began at this check (the first check after setup records '
-                          f'a baseline and cannot name earlier fixes), or the AI worded a finding differently. '
-                          f'AI-written findings can vary between runs, so a lower total is not always a real fix.</p>')
+                          f'disappeared, so the homepage badge shows nothing resolved. Either tracking only began at '
+                          f'this check (the first check after setup records a baseline and cannot name earlier '
+                          f'fixes), or the AI worded a finding differently. AI-written findings can vary between '
+                          f'runs, so a lower total is not always a real fix.</p>')
         head = (f'<strong>{name}</strong> &mdash; fixed last check: {len(fixed)} &middot; '
                 f'new: {len(new)} &middot; fixed since tracking: {len(log)} &middot; open: {len(open_items)}'
                 + (f' &middot; totals {"-" if delta > 0 else "+"}{abs(delta)}' if delta else ""))
@@ -457,6 +458,23 @@ def _format_checked_at(iso_str):
     return checked_at.strftime("%d %b %Y, %H:%M UTC")
 
 
+def public_resolved(row):
+    """How many issues the public badge may call 'resolved since the last check' for one app.
+
+    Only issues we actually recorded as gone count (finding_state.last_fixed), never a drop in
+    the TOTAL counts, which can come from the AI wording a finding differently between runs.
+    Secret-scan and dependency fixes are exact. AI-written findings are matched by title, so a
+    reworded finding appears as one 'fixed' plus one 'new' in the same check; those cancel out
+    (net fixed = fixed - new, never below zero). No tracking data yet means 0."""
+    st = row.get("finding_state") or {}
+    fixed = st.get("last_fixed") or []
+    new = st.get("last_new") or []
+    exact = sum(1 for i in fixed if i.get("src") != "AI analysis")
+    ai_fixed = len(fixed) - exact
+    ai_new = sum(1 for i in new if i.get("src") == "AI analysis")
+    return exact + max(0, ai_fixed - ai_new)
+
+
 def badge_html():
     """The real, live status pill. CRO review (2026-08-18) found the combined
     badge+table sitting above the H1 was delaying the page's core message and
@@ -494,14 +512,9 @@ def badge_html():
     names = ", ".join(r["app_name"] for r in checked)
     total_open = sum(r["critical"] + r["warnings"] for r in checked)
 
-    resolved = 0
-    for r in checked:
-        pc, pw = r.get("prev_critical"), r.get("prev_warnings")
-        if pc is None or pw is None:
-            continue
-        delta = (pc + pw) - (r["critical"] + r["warnings"])
-        if delta > 0:
-            resolved += delta
+    # Named, recorded fixes only (see public_resolved). Until fixes are recorded this stays 0 and the
+    # badge says nothing about resolved issues, by choice: an accurate claim beats a bigger number.
+    resolved = sum(public_resolved(r) for r in checked)
 
     if total_open == 0:
         detail = "0 issues found — all clear right now"

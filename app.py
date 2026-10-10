@@ -4369,6 +4369,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> deep scan reports are now labelled and listed separately from free reports in your account, and every report has a Quick scan link that opens the homepage with your repository already filled in.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> links to verilay.dev and to reports now show a proper preview when shared on LinkedIn, WhatsApp or Slack, and report pages are kept out of search engines. The Analyse button also sits higher on phones, and the Verilay logo is now the same on report, sign-in and payment pages.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> on phones, the sign-off section of the IT Review Pack no longer runs off the edge of the screen.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the &ldquo;issues resolved&rdquo; figure in the homepage monitoring line now counts only specific issues we recorded as fixed, not a drop in totals (which the AI wording a finding differently could cause). Until fixes are recorded it shows nothing.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> privacy-friendly page-view counts (no cookies) now cover more pages, so we can see which ones are useful.</p>
   </div>
 
