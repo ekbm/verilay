@@ -2872,6 +2872,69 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "app-chaos-what-happens-next",
+        "title": "Everyone Can Build an App Now. Here&rsquo;s the Honest Part About What Happens Next",
+        "date": "October 10, 2026",
+        "category": "Story",
+        "excerpt": "Building an app is easy now, and that may be the problem. Three things I expect to happen next, where I might be wrong, and what Verilay does and doesn&rsquo;t do about it.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": True,
+        "body": """
+<p>I&rsquo;m not a developer. And I&rsquo;m part of the problem I&rsquo;m about to describe.</p>
+<p>In a few months I&rsquo;ve built several products with AI tools. A new-home build tracker, a chatbot generator, a career copilot, a log analysis tool, and Verilay itself. None of them needed me to write code. Some of them work well. All of them were easy to start.</p>
+<p>That&rsquo;s the thing nobody says out loud: starting is no longer the hard part.</p>
+<p>Here&rsquo;s the honest part. I don&rsquo;t think &ldquo;easy to build&rdquo; is the good news it looks like.</p>
+
+<h2>The easy part got very easy</h2>
+<p>98% of 1,072 apps built on AI platforms had at least one security flaw, and 16% had a critical one, according to a <a href="https://www.symbioticsec.ai/blog/we-scanned-1-072-vibe-coded-apps-98-had-security-flaws" style="color:#534AB7">June 2026 scan by Symbiotic Security</a>. In companies, people building apps now outnumber professional developers four to one, according to a <a href="https://kanopysecurity.com/knowledge-center/reports/ai-agents-business-apps-security-report-2026/" style="color:#534AB7">survey of 200 security leaders</a>.</p>
+<p>Those aren&rsquo;t predictions. People went and counted.</p>
+<p>So more apps are being made, by more people, with less checking. That&rsquo;s the &ldquo;chaos&rdquo; in the title. I think it shows up in three ways. These are my guesses, not facts, and I&rsquo;d like to be told where they&rsquo;re wrong.</p>
+
+<h2>1. Most apps will find no one</h2>
+<p>When anyone can build in a weekend, building stops being the scarce thing. Attention is. Most new apps will get a handful of visitors and quietly fade.</p>
+<p>That&rsquo;s how every wave went before, from the early web to app stores. This one is just faster.</p>
+
+<h2>2. The same app gets built over and over</h2>
+<p>I tried something. I searched GitHub for open-source projects like six of my own products.</p>
+<ul>
+<li>For AI job search, there were dozens.</li>
+<li>For chatbot builders, dozens.</li>
+<li>For my new-home build tracker, only a few small student projects, nothing I&rsquo;d call real.</li>
+</ul>
+<p>Same idea, built again and again, mostly by people who never met each other. Some of that is healthy. People learn, and competition helps. But a lot of it is weeks of effort spent on something that could have been found in an afternoon.</p>
+
+<h2>3. Apps quietly decay</h2>
+<p>This is the one that worries me most.</p>
+<p>An app isn&rsquo;t finished when you ship it. The pieces it&rsquo;s built from get new security problems found in them, long after you stopped looking. I wrote about <a href="/blog/the-lockfile-was-lying" style="color:#534AB7">what happened when my own app&rsquo;s records quietly stopped being true</a>. Nothing broke. It worked perfectly the whole time.</p>
+<p>Now imagine thousands of apps, built in a weekend, never looked at again, still holding people&rsquo;s data.</p>
+
+<h2>Where trust comes in</h2>
+<p>I think when there are millions of apps, &ldquo;does it exist?&rdquo; stops being the interesting question. &ldquo;Can I rely on it?&rdquo; takes over.</p>
+<p>The big platforms already ask. Microsoft requires every Teams app to <a href="https://learn.microsoft.com/en-gb/microsoftTeams/overview-of-app-certification" style="color:#534AB7">complete a security and privacy attestation</a>. Google requires some apps that handle sensitive user data to go through <a href="https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification" style="color:#534AB7">extra verification, and sometimes a formal security assessment</a>, which can take weeks.</p>
+<p>A small builder with a good idea can get stuck at that gate, not because the idea is bad, but because nobody told them what the gate checks.</p>
+
+<h2>What I&rsquo;m trying to do about it</h2>
+<p>Verilay started as a way to answer one question for people like me: is this safe to share? It&rsquo;s still that. Here&rsquo;s what it does today, and what it doesn&rsquo;t.</p>
+<ul>
+<li><strong>The free scan</strong> reads your app and explains it in plain English: what it&rsquo;s made of, what looks risky, what to fix first. It now also shows the closest similar open-source project, so you can see what already exists. It only searches free, open-source projects on GitHub, not commercial apps, so &ldquo;no match&rdquo; never means &ldquo;nothing exists.&rdquo;</li>
+<li><strong>The deep scan</strong> reads more of your code and gives you a ready-to-paste fix for every vulnerable package, plus a longer list of similar projects.</li>
+<li><strong>Monitoring</strong> is the part I&rsquo;m thinking about next. I already re-check my own four apps every day, and the homepage shows it. If I did that for yours, you&rsquo;d get an email when something new turns up, naming exactly what changed.</li>
+</ul>
+<p>I should be clear about the limits. Verilay&rsquo;s findings are written by AI, so they can vary between runs. It isn&rsquo;t a penetration test, and it isn&rsquo;t a certificate. I don&rsquo;t fix your app for you, on purpose: the one time I tried automating that, it nearly broke everything. It tells you what it sees and what to check.</p>
+
+<h2>Here&rsquo;s where I&rsquo;m probably wrong</h2>
+<p>I don&rsquo;t know if people want monitoring. Maybe the thing that matters most is that duplicates get found earlier. Maybe the platforms&rsquo; gates get easier and none of this matters.</p>
+<p>So I&rsquo;m asking. If you&rsquo;ve built something with Lovable, Replit, Bolt or Cursor:</p>
+<ul>
+<li>Would you want someone to keep watching it?</li>
+<li>Would you want to know what already exists before you build?</li>
+<li>What did I get wrong?</li>
+</ul>
+<p>If you&rsquo;d want monitoring for your own apps, there&rsquo;s a short page where you can <a href="/monitoring" style="color:#534AB7">register interest</a>. Nothing is for sale, and I&rsquo;ll only email you about that.</p>
+""",
+    },
+    {
         "slug": "free-first-check-for-employee-built-ai-apps",
         "title": "Your Staff Are Building Apps With AI. Here&rsquo;s a Free First Check Before You Say Yes",
         "date": "October 5, 2026",
@@ -2879,7 +2942,7 @@ BLOG_POSTS = [
         "excerpt": "98% of AI-built apps have a security flaw, and staff are building them faster than IT can see. A light first-pass process for IT teams, and a free IT Review Pack in Verilay to help.",
         "medium_url": None,
         "read_time": "7 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>98% of apps built on AI platforms like Lovable and Bolt have at least one security flaw, and 16% have a critical one. (<a href="https://www.symbioticsec.ai/blog/we-scanned-1-072-vibe-coded-apps-98-had-security-flaws" style="color:#534AB7">Symbiotic Security, June 2026</a>)</p>
 <p>In most companies, the people building those apps now outnumber professional developers four to one. Yet fewer than a third of security leaders say they can see every app their staff have built. (<a href="https://kanopysecurity.com/knowledge-center/reports/ai-agents-business-apps-security-report-2026/" style="color:#534AB7">Kanopy Security, April 2026</a>)</p>
