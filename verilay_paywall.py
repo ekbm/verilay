@@ -730,9 +730,19 @@ def account():
                 owner_name, _, name = repo.partition("/")
                 scan_link = (
                     f'<a href="/deep/{_esc(owner_name)}/{_esc(name)}" target="_blank" '
-                    f'rel="noopener" style="font-size:12px;font-weight:600">Scan now &rarr;</a>'
+                    f'rel="noopener" style="font-size:12px;font-weight:600">Deep scan &rarr;</a>'
                     if owner_name and name else ""
                 )
+                # Free standard analysis of the same repo, for when a check
+                # shows problems and Moses wants to read more about them.
+                # Opens the homepage with the address filled in; he presses
+                # Analyse (same /?scan= pre-fill the Your reports rows use).
+                if _REPO_RE.match(repo):
+                    scan_link += (
+                        f'<br><a href="/?scan={_esc(repo)}" target="_blank" rel="noopener" '
+                        f'title="Run a fresh standard analysis of this app" '
+                        f'style="font-size:12px;font-weight:600">Quick scan &rarr;</a>'
+                    )
                 return (
                     f'<tr>'
                     f'<td style="{td}"><strong>{_esc(r.get("app_name") or "—")}</strong></td>'
