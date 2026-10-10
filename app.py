@@ -22,6 +22,7 @@ Single-request streaming architecture — no inter-request cache dependency
 """
 
 import os, sys, json, base64, zipfile, io, requests, time, secrets as _secrets, uuid as _uuid, threading
+import html as _htmlmod
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
@@ -4639,11 +4640,28 @@ Run a new analysis &rarr;</a>
     sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE"}
     sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A"}
 
+    repo_safe = _htmlmod.escape(str(data.get("repo") or "Report"))
     out = []
     out.append(f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Verilay — {data.get('repo','Report')}</title>
+<title>Verilay — {repo_safe}</title>
+<!-- Link-preview tags are deliberately generic: repo name only, never the grade
+     or finding counts. Reports are unlisted-by-link, and an app's weaknesses
+     should not be spelled out in a preview card or a search result. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="A plain-English security and quality report from Verilay.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilay">
+<meta property="og:title" content="Verilay report: {repo_safe}">
+<meta property="og:description" content="A plain-English security and quality report. See what was checked, what was found and what to fix first.">
+<meta property="og:image" content="https://verilay.dev/og-image.png?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Verilay report: {repo_safe}">
+<meta name="twitter:description" content="A plain-English security and quality report from Verilay.">
+<meta name="twitter:image" content="https://verilay.dev/og-image.png?v=1">
 <style>
 :root{{--shadow-sm:0 1px 2px rgba(26,26,46,.06),0 1px 1px rgba(26,26,46,.04);--shadow-md:0 6px 16px rgba(26,26,46,.08),0 2px 6px rgba(26,26,46,.05);--ease-out:cubic-bezier(.23,1,.32,1);--dur-fast:120ms;--dur-base:180ms}}
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -5522,6 +5540,23 @@ _FAVICON_B64 = (
 _FAVICON_BYTES = None
 
 
+# 1200x630 share image used by the Open Graph / Twitter tags on the homepage and
+# report pages (link previews on LinkedIn, WhatsApp, Slack, X). Read from the
+# file next to this one so the PNG isn't embedded in the source; if it is ever
+# missing the route 404s and previews simply fall back to text.
+@app.route("/og-image.png")
+def og_image():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "og-image.png")
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return ("", 404)
+    resp = Response(data, mimetype="image/png")
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
 @app.route("/apple-touch-icon.png")
 def apple_touch_icon():
     global _APPLE_TOUCH_ICON_BYTES
@@ -5588,6 +5623,21 @@ HTML = """<!DOCTYPE html>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/favicon.png">
 <meta name="theme-color" content="#534AB7">
+<meta name="description" content="Free, plain-English security and quality check for apps built with Lovable, Replit, Bolt, v0 and Cursor. Paste your GitHub link and get a graded report with what to fix first. No account, open source.">
+<link rel="canonical" href="https://verilay.dev/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verilay">
+<meta property="og:title" content="Verilay — is your AI-built app safe to launch?">
+<meta property="og:description" content="Free, plain-English security and quality check for apps built with Lovable, Replit, Bolt, v0 and Cursor. Paste your GitHub link and get a graded report with what to fix first. No account, open source.">
+<meta property="og:url" content="https://verilay.dev/">
+<meta property="og:image" content="https://verilay.dev/og-image.png?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Verilay: a free, plain-English check for AI-built apps">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Verilay — is your AI-built app safe to launch?">
+<meta name="twitter:description" content="Free, plain-English security and quality check for apps built with Lovable, Replit, Bolt, v0 and Cursor. Paste your GitHub link and get a graded report with what to fix first. No account, open source.">
+<meta name="twitter:image" content="https://verilay.dev/og-image.png?v=1">
 <!-- Privacy-friendly analytics by Plausible -->
 <script defer data-domain="verilay.dev" src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>
 <script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>
@@ -5818,22 +5868,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       Find out if your <span style="color:var(--pu)">AI-built app</span><br>
       is safe to launch
     </h1>
-    <p style="font-size:16px;color:var(--mut);max-width:580px;margin:0 auto 2rem;line-height:1.65">
+    <p style="font-size:16px;color:var(--mut);max-width:580px;margin:0 auto 1.5rem;line-height:1.65">
       You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
     </p>
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
-      {% if analysis_count %}
-      <span style="font-size:13px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:5px 16px;border-radius:20px;display:inline-block">
-        🔍 {{ analysis_count }} apps analysed so far
-      </span>
-      {% endif %}
-      __SELFMONITOR_BADGE__
-    </div>
-    <div style="display:flex;justify-content:center;margin-bottom:.9rem">
-      <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
-        <img src="https://peerpush.com/p/verilay/rating-badge.png" alt="Verilay rating on PeerPush" style="width:100%;max-width:340px">
-      </a>
-    </div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:16px"></i> Analyse my app — it's free
@@ -5842,11 +5879,27 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
         <i class="ti ti-player-play" style="font-size:16px"></i> See a sample report
       </button>
     </div>
-    <p style="font-size:14px;color:var(--mut);max-width:520px;margin:0 auto 2.5rem;line-height:1.6">
+    <p style="font-size:14px;color:var(--mut);max-width:520px;margin:0 auto 1.75rem;line-height:1.6">
       No account, nothing to install. Verilay reads your files only to build the report — and it's
       <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:var(--pu);text-decoration:underline">open source</a>,
       so you can see exactly what it does.
     </p>
+    <!-- Proof widgets sit BELOW the main button (moved 2026-10-10): they used to
+         stand between the headline and the button, which pushed the button
+         to the bottom edge of a phone screen. -->
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
+      {% if analysis_count %}
+      <span style="font-size:13px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:5px 16px;border-radius:20px;display:inline-block">
+        🔍 {{ analysis_count }} apps analysed so far
+      </span>
+      {% endif %}
+      __SELFMONITOR_BADGE__
+    </div>
+    <div style="display:flex;justify-content:center;margin-bottom:2rem">
+      <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
+        <img src="https://peerpush.com/p/verilay/rating-badge.png" alt="Verilay rating on PeerPush" style="width:100%;max-width:340px">
+      </a>
+    </div>
   </div>
 
   <!-- Problem → Solution strip -->
