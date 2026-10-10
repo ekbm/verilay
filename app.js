@@ -340,6 +340,14 @@ function init() {
   var backBtn = document.getElementById('btn-back-hero');
   if (backBtn) backBtn.addEventListener('click', showHero);
 
+  // Funnel tracking: clicks on a similar-project link (free or deep card).
+  document.addEventListener('click', function(ev) {
+    try {
+      var sp = ev.target && ev.target.closest ? ev.target.closest('a.sp-link') : null;
+      if (sp && typeof plausible === 'function') plausible('Similar Project Click', {props: {tier: sp.getAttribute('data-tier') || 'free'}});
+    } catch (err) {}
+  });
+
   // Funnel tracking: which links people click to reach the deep scan page.
   // Fire-and-forget; never allowed to interfere with the click itself.
   document.addEventListener('click', function(ev) {
@@ -568,6 +576,7 @@ async function runAnalysis() {
   window._step3Done = false;
   window._analysisComplete = false;
   window._pendingHalfLabel = null;
+  window._discoveryHtml = null;
   stopTrickle();
   stopP2Trickle();
   var p2banner = document.getElementById('p2-banner');
@@ -768,6 +777,15 @@ function handleStreamEvent(evt) {
         startTrickle(55, 75);
       }
       showLayerError('Layer analysis error: ' + evt.data);
+      break;
+    case 'discovery':
+      // Closest open-source match (server-rendered card). Kept on window so a later re-render of the
+      // report does not lose it; replaces the one-line deep-scan pointer in the slot.
+      if (evt.data && evt.data.html) {
+        window._discoveryHtml = evt.data.html;
+        var discSlot = document.getElementById('discovery-slot');
+        if (discSlot) discSlot.innerHTML = evt.data.html;
+      }
       break;
     case 'diagram':
       var diagramEl = document.getElementById('architecture-diagram-section');
@@ -1543,7 +1561,7 @@ function renderReport(data) {
   html += filesCoverageHTML(data);
 
   html += fileBreakdownHTML(data);
-  html += discoveryTeaserHTML(data);
+  html += '<div id="discovery-slot">' + (window._discoveryHtml || discoveryTeaserHTML(data)) + '</div>';
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';

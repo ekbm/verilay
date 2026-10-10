@@ -226,8 +226,8 @@ _WHAT_YOU_GET = """
     </tr>
     <tr style="border-bottom:0.5px solid #f0efec">
       <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Similar apps</td>
-      <td style="padding:8px 8px;font-size:13px;color:#4a4846">Not included</td>
-      <td style="padding:8px 0;font-size:13px;color:#4a4846">Up to 6 similar open-source projects (free GitHub repos only, not commercial apps)</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">The closest open-source match</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Up to 6 similar projects, with what each is best at (free GitHub repos only, not commercial apps)</td>
     </tr>
     <tr style="border-bottom:0.5px solid #f0efec">
       <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Checking a fix worked</td>

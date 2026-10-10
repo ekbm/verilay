@@ -223,10 +223,34 @@ def _ago(iso):
     return "updated over a year ago"
 
 
-def render_discovery_html(d):
-    """The deep report's 'Similar open-source projects' card. '' when there is nothing to say."""
+def free_view(result):
+    """What a FREE report is allowed to keep: the single closest match (no 'strongest at' line) and a count
+    of how many more the deep scan lists. Trimmed here, before anything is sent or saved, so the full
+    list is never present in a free report's data."""
+    if not result or result.get("status") not in ("ok", "none"):
+        return result
+    r = dict(result)
+    projects = list(result.get("projects") or [])
+    r["tier"] = "free"
+    r["more_count"] = max(0, len(projects) - 1)
+    r["projects"] = [dict(p, best_at="") for p in projects[:1]]
+    return r
+
+
+_HEAD = ('font-size:11px;font-weight:600;color:#888;letter-spacing:.06em;text-transform:uppercase;'
+         'margin:1.5rem 0 .65rem')
+_CARD = ('background:#fff;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;'
+         'border:0.5px solid #e5e5f0;color:#1a1a2e')
+
+
+def render_discovery_html(d, tier=None):
+    """The 'similar open-source projects' card. Self-contained inline styles, so it looks the same in the
+    live report and on the saved report page. '' when there is nothing to say."""
     if not d or d.get("status") not in ("ok", "none"):
         return ""
+    tier = tier or d.get("tier") or "deep"
+    free = tier == "free"
+    title = "Closest open-source match" if free else "Similar open-source projects"
     tip = ('<div style="background:#F1EFE8;border-radius:8px;padding:.6rem .8rem;margin-top:.85rem;font-size:13px;'
            'color:#444"><strong>Tip:</strong> ' + _esc(d.get("scope_note") or SCOPE_NOTE) +
            " Check a project's licence before reusing any of its code.</div>")
@@ -234,22 +258,32 @@ def render_discovery_html(d):
     if d.get("status") == "none" or not d.get("projects"):
         body = ('<div style="font-size:13px;color:#555">No close open-source match turned up.' + cat +
                 " That is useful to know, but it only covers free projects on GitHub.</div>")
-        return '<div class="st">Similar open-source projects</div><div class="card">' + body + tip + "</div>"
+        return (f'<div style="{_HEAD}">{_esc(title)}</div><div style="{_CARD}">' + body + tip + "</div>")
     rows = ""
     for p in d["projects"]:
         facts = " &middot; ".join(x for x in (
             _esc(_ago(p.get("pushed_at"))), _esc(p.get("license") or "no licence listed"), _esc(p.get("language") or "")) if x)
         rows += (f'<div style="border-top:0.5px solid #e5e5f0;padding:.7rem 0">'
-                 f'<a class="sp-link" href="{_esc(p["url"])}" target="_blank" rel="noopener" '
-                 f'style="font-weight:600;color:#534AB7;text-decoration:none">{_esc(p["name"])}</a>'
+                 f'<a class="sp-link" data-tier="{"free" if free else "deep"}" href="{_esc(p["url"])}" target="_blank" '
+                 f'rel="noopener" style="font-weight:600;color:#534AB7;text-decoration:none">{_esc(p["name"])}</a>'
                  f'<span style="font-size:12px;color:#888"> &nbsp;{facts}</span>'
                  f'<div style="font-size:13px;color:#555;margin-top:.2rem">{_esc(p.get("description"))}</div>'
                  + (f'<div style="font-size:13px;color:#444;margin-top:.25rem"><strong>Similar:</strong> {_esc(p["why"])}</div>' if p.get("why") else "")
-                 + (f'<div style="font-size:13px;color:#444"><strong>Strongest at:</strong> {_esc(p["best_at"])}</div>' if p.get("best_at") else "")
+                 + (f'<div style="font-size:13px;color:#444"><strong>Strongest at:</strong> {_esc(p["best_at"])}</div>' if (p.get("best_at") and not free) else "")
                  + "</div>")
-    intro = ('<div style="font-size:13px;color:#555;margin-bottom:.35rem">Projects that appear to do a similar job.' + cat +
+    more = ""
+    n = int(d.get("more_count") or 0)
+    if free and n > 0:
+        more = (f'<div style="font-size:13px;color:#555;margin-top:.1rem">{n} more similar project{"s" if n != 1 else ""} '
+                f'{"are" if n != 1 else "is"} listed in the <a href="/deep-scan" style="color:#534AB7;font-weight:600">'
+                'deep scan</a>.</div>')
+    elif free:
+        more = ('<div style="font-size:13px;color:#555;margin-top:.1rem">The <a href="/deep-scan" '
+                'style="color:#534AB7;font-weight:600">deep scan</a> searches wider and lists more.</div>')
+    intro = ('<div style="font-size:13px;color:#555;margin-bottom:.35rem">'
+             + ("A project that appears to do a similar job." if free else "Projects that appear to do a similar job.") + cat +
              " Worth a look before you build more of the same, or to see what you could learn from or reuse.</div>")
-    return '<div class="st">Similar open-source projects</div><div class="card">' + intro + rows + tip + "</div>"
+    return f'<div style="{_HEAD}">{_esc(title)}</div><div style="{_CARD}">' + intro + rows + more + tip + "</div>"
 
 
 def render_teaser_html():

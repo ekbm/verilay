@@ -2321,6 +2321,18 @@ def _sse_response(generator):
 
 
 # ── Main analysis route — streams results as JSON events ───────────────────────
+def _free_discovery_enabled():
+    """Closest-match discovery on FREE scans. VERILAY_DISCOVERY=0 turns off all discovery;
+    VERILAY_DISCOVERY_FREE=0 turns off just the free tier's."""
+    return (os.getenv("VERILAY_DISCOVERY", "1") != "0" and os.getenv("VERILAY_DISCOVERY_FREE", "1") != "0")
+
+
+def _discovery_event(result):
+    """The streamed 'discovery' event (server-rendered card), or None when there is nothing to show."""
+    card = discovery_mod.render_discovery_html(result, tier="free") if result else ""
+    return (json.dumps({"event": "discovery", "data": {"html": card}}) + "\n") if card else None
+
+
 @app.route("/analyse-stream", methods=["POST"])
 def analyse_stream():
     """Stream analysis results as newline-delimited JSON events."""
@@ -2498,6 +2510,22 @@ def analyse_stream():
                 return
 
             # ── Steps 2 + 3 in parallel ────────────────────────────────
+            # Free discovery: the closest open-source match, searched in the background while the layers
+            # are analysed, so it adds no waiting. GitHub apps only (ZIP/URL descriptions come from code the
+            # user did not publish). Any failure just means no card; the pointer line stays.
+            disc = {"done": False, "result": None, "sent": False}
+            disc_thread = None
+            if method == "github" and "github.com" in url.lower() and _free_discovery_enabled():
+                def _run_disc(_s1=s1, _repo=repo_name):
+                    try:
+                        disc["result"] = discovery_mod.free_view(discovery_mod.find_similar(
+                            call_claude_text, GITHUB_TOKEN, _s1.get("summary", ""), _s1.get("built_with", ""), _repo))
+                    except Exception as _de:
+                        print(f"[discovery] free search skipped: {_de}", flush=True)
+                    disc["done"] = True
+                disc_thread = threading.Thread(target=_run_disc, daemon=True)
+                disc_thread.start()
+
             yield json.dumps({"event":"status","data":"Analysing layers in parallel..."}) + "\n"
             import concurrent.futures
             s2 = {"layers":[]}
@@ -2551,10 +2579,22 @@ def analyse_stream():
                             s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
                             yield json.dumps({"event":"step3","data":s3}) + "\n"
                         f3 = None
+                    if disc["done"] and not disc["sent"]:
+                        disc["sent"] = True
+                        _ev = _discovery_event(disc["result"])
+                        if _ev:
+                            yield _ev
                     if f2 is None and f3 is None:
                         break
                     yield json.dumps({"event":"status","data":"Analysing your codebase — layers will appear shortly..."}) + "\n"
-                    _time.sleep(15)
+                    # Wake as soon as anything finishes (this was a flat 15-second sleep, so a finished layer
+                    # or the similar-project card could sit waiting). The 15-second keepalive above still
+                    # fires on quiet stretches.
+                    for _ in range(15):
+                        _time.sleep(1)
+                        if ((f2 is not None and f2.done()) or (f3 is not None and f3.done())
+                                or (disc["done"] and not disc["sent"])):
+                            break
                 # Deadline passed with one or both still outstanding -- same
                 # short grace window the old code always used, now scoped to
                 # only whichever future(s) haven't been yielded yet.
@@ -2574,9 +2614,20 @@ def analyse_stream():
                         s3_err = str(e)
                         yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
 
+            # The search has normally finished long before the layers; give it a short grace period.
+            if disc_thread is not None and not disc["sent"]:
+                disc_thread.join(timeout=20)
+                if disc["done"]:
+                    disc["sent"] = True
+                    _ev = _discovery_event(disc["result"])
+                    if _ev:
+                        yield _ev
+
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
+            if disc["result"] and disc["result"].get("status") in ("ok", "none"):
+                partial["discovery"] = disc["result"]
             partial["architecture_diagram"] = build_architecture_diagram(s1.get("stack", []), partial["layers"])
             partial["module_purpose_rows"] = build_module_purpose_rows_html(s1.get("stack", []), partial["layers"])
             yield json.dumps({"event":"diagram","data":{
@@ -4307,6 +4358,21 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 10, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Similar projects, a clearer deep scan report, and a smoother account page</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span><span class="tag fix">Fix</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> every free scan of a GitHub app now shows the closest similar open-source project, a quick way to see what already exists before you build more of the same. The deep scan lists up to six, with what each one is best at. These come from free, open-source projects on GitHub only, not commercial apps, so no match never means nothing similar exists.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> on a deep scan report the fixes now sit right after your score instead of at the bottom, each with a Copy button. Instead of one long list of advisories you get one fix per package, with a ready-to-paste prompt for your AI builder and a single prompt to update everything.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> when Verilay never saw any code for a layer (for example Auth or Config), that layer now says &ldquo;Not checked&rdquo; instead of &ldquo;Passing&rdquo;.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> a vulnerability in a build or test tool, which never ships to your users, can no longer push a report to critical. It still shows as a warning.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> the version Verilay tells you to update a package to now matches the version your app actually uses. Before, some suggestions pointed to an older version or a bigger upgrade than needed.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> deep scan reports are now labelled and listed separately from free reports in your account, and every report has a Quick scan link that opens the homepage with your repository already filled in.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> links to verilay.dev and to reports now show a proper preview when shared on LinkedIn, WhatsApp or Slack, and report pages are kept out of search engines. The Analyse button also sits higher on phones, and the Verilay logo is now the same on report, sign-in and payment pages.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> on phones, the sign-off section of the IT Review Pack no longer runs off the edge of the screen.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> privacy-friendly page-view counts (no cookies) now cover more pages, so we can see which ones are useful.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 5, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">IT Review Pack, ZIP uploads fixed, and reliable report links</div>
     <div><span class="tag new">New</span><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
@@ -4923,7 +4989,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if data.get("is_deep_scan"):
         out.append(discovery_mod.render_discovery_html(data.get("discovery")))
     elif data.get("input_method", "github") == "github" and not is_preview:
-        out.append(discovery_mod.render_teaser_html())
+        out.append(discovery_mod.render_discovery_html(data.get("discovery"), tier="free")
+                   or discovery_mod.render_teaser_html())
 
     # Second opinion
     if so.get("summary_prompt"):
