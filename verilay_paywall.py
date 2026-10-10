@@ -16,6 +16,8 @@ that matters goes through it.
 import json
 import os
 import re
+import time
+import urllib.parse
 
 from flask import (Blueprint, request, redirect, jsonify, session,
                    render_template_string, Response)
@@ -79,8 +81,8 @@ li{margin-bottom:.35rem}
 .card{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1.25rem;margin-bottom:1rem}
 .eyebrow{font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem}
 label{display:block;font-size:13px;font-weight:600;margin-bottom:.35rem}
-input[type=text],input[type=email]{width:100%;padding:10px 12px;font-size:15px;border:1px solid #e8e6e0;border-radius:8px;background:#fff;font-family:inherit}
-input:focus{outline:none;border-color:#534AB7}
+input[type=text],input[type=email],select,textarea{width:100%;padding:10px 12px;font-size:15px;border:1px solid #e8e6e0;border-radius:8px;background:#fff;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#534AB7}
 .btn{display:inline-block;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;padding:11px 22px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none}
 .btn:disabled{background:#c9c7c2;cursor:not-allowed}
 .btn-quiet{background:#fff;color:#4a4846;border:1px solid #e8e6e0}
@@ -300,6 +302,7 @@ def deep_scan_landing():
   <p class="note">Payment is handled by Stripe on their own page — Verilay never
   sees your card. Already bought one?
   <a href="/login">Sign in</a>.</p>
+  <p class="note">Want your app checked every week? <a href="/monitoring">Register interest in monitoring</a>.</p>
   <script>
   // Funnel event: someone submitted the form on their way to Stripe.
   (function() {{
@@ -638,6 +641,155 @@ def logout():
     return redirect("/")
 
 
+# ── Monitoring: expression of interest ─────────────────────────────────────────
+# Not a product yet. This page measures whether anyone wants weekly monitoring of their own app,
+# and how they'd want it delivered, before any of it is built. Answers go to the
+# `monitoring_interest` table (supabase_monitoring_interest.sql); if that table has not been
+# created yet the email still lands in the existing `waitlist` table with source "monitoring".
+_MON_CHOICES = {
+    "apps": {"1": "1 app", "2-3": "2 to 3 apps", "4-10": "4 to 10 apps", "10+": "More than 10 apps"},
+    "visibility": {"public": "Public repositories", "private": "Private repositories", "both": "Both"},
+    "delivery": {
+        "watch": "Just watch my public repository, nothing to set up",
+        "app": "A GitHub App I install with one click",
+        "action": "A GitHub Action that runs inside my own repository",
+        "unsure": "Not sure yet",
+    },
+    "price": {
+        "u5": "Under $5 a month", "5-10": "$5 to $10 a month", "10-15": "$10 to $15 a month",
+        "15-25": "$15 to $25 a month", "25+": "More than $25 a month", "unsure": "Not sure yet",
+    },
+}
+_MON_HITS = {}
+_MON_EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
+
+
+def _mon_rate_ok(ip, limit=5, window=3600):
+    """At most `limit` submissions per connection per hour; in memory, per worker."""
+    now = time.time()
+    if len(_MON_HITS) > 5000:
+        _MON_HITS.clear()
+    hits = [x for x in _MON_HITS.get(ip, []) if now - x < window]
+    ok = len(hits) < limit
+    if ok:
+        hits.append(now)
+    _MON_HITS[ip] = hits
+    return ok
+
+
+def _mon_ip():
+    return (request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "?")
+
+
+def _store_monitoring_interest(row):
+    sb = _sb()
+    if sb is None:
+        print("[monitoring] no database configured; interest not stored", flush=True)
+        return
+    try:
+        sb.table("monitoring_interest").insert(row).execute()
+        return
+    except Exception as e:
+        msg = str(e).lower()
+        if "duplicate" in msg or "unique" in msg:
+            # Same email again: keep their latest answers rather than adding a second row.
+            try:
+                sb.table("monitoring_interest").update(
+                    {k: v for k, v in row.items() if k != "email"}).eq("email", row["email"]).execute()
+            except Exception:
+                pass
+            return
+        print(f"[monitoring] interest table unavailable, saving the email to the waitlist instead: {e}", flush=True)
+    try:
+        sb.table("waitlist").insert({"email": row["email"], "analyses_count": 0, "source": "monitoring"}).execute()
+    except Exception as e2:
+        print(f"[monitoring] waitlist fallback failed (a duplicate is fine): {e2}", flush=True)
+
+
+def _mon_select(name, label):
+    opts = '<option value="">Choose one</option>' + "".join(
+        f'<option value="{k}">{_esc(v)}</option>' for k, v in _MON_CHOICES[name].items())
+    return f'<label for="{name}">{_esc(label)}</label><select id="{name}" name="{name}">{opts}</select>'
+
+
+@bp.route("/monitoring")
+def monitoring_interest_page():
+    thanks = request.args.get("thanks")
+    err = request.args.get("err", "")[:160]
+    banner = ""
+    if thanks:
+        banner = ('<div class="ok">Thank you, you are on the list. Monitoring is not available yet; '
+                  'we will email you once, when it is, and only about that.</div>')
+    if err:
+        banner += f'<div class="err">{_esc(err)}</div>'
+    body = f"""
+  <div class="eyebrow">Coming, maybe</div>
+  <h1>Monitoring: Verilay keeps watching your app</h1>
+  <p>Register interest. Nothing is for sale yet and there is nothing to pay. This page exists to find out
+  whether people want it, and how, before it is built.</p>
+  {banner}
+  <h2>What it would do</h2>
+  <ul>
+    <li>Re-check your app on a schedule and email you when something new turns up: a newly published
+    security problem in a package you use, an exposed key, or a change in your grade.</li>
+    <li>Tell you what changed since the last check, naming the specific issues, not just a number.</li>
+    <li>We already do this for our own four apps, and show it on the homepage.</li>
+  </ul>
+  <p class="note">It would not be a penetration test or a guarantee. AI-written findings can vary between
+  runs, so only named, recorded changes would be reported as fixed or new.</p>
+  <div class="card" id="form">
+    <form method="POST" action="/monitoring/interest" id="mon-form">
+      <label for="email">Your email</label>
+      <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required maxlength="254">
+      <p class="note" style="margin:.35rem 0 1rem">Used only to tell you about monitoring. No spam.</p>
+      <label for="repo">Your repository <span style="font-weight:400;color:#6b6966">(optional)</span></label>
+      <input type="text" id="repo" name="repo" placeholder="github.com/you/your-app" autocomplete="off"
+             autocapitalize="none" spellcheck="false" maxlength="120">
+      <div style="height:.9rem"></div>
+      {_mon_select("apps", "How many apps would you want watched?")}
+      <div style="height:.9rem"></div>
+      {_mon_select("visibility", "Are they public or private on GitHub?")}
+      <div style="height:.9rem"></div>
+      {_mon_select("delivery", "How would you want it to run?")}
+      <div style="height:.9rem"></div>
+      {_mon_select("price", "What would feel fair, per month (AUD)?")}
+      <div style="height:.9rem"></div>
+      <label for="notes">Anything else? <span style="font-weight:400;color:#6b6966">(optional)</span></label>
+      <textarea id="notes" name="notes" rows="3" maxlength="300"></textarea>
+      <div style="position:absolute;left:-9999px" aria-hidden="true">
+        <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <p style="margin-top:1rem"><button class="btn" type="submit">Register interest</button></p>
+    </form>
+  </div>
+  <p class="note">Questions? <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>. See the
+  <a href="/privacy">privacy policy</a>.</p>
+"""
+    script = ("<script>document.getElementById('mon-form').addEventListener('submit',function(){"
+              "try{if(window.plausible)plausible('Monitoring Interest Submit',{props:{delivery:"
+              "document.getElementById('delivery').value||'none',price:document.getElementById('price').value||'none'}})}"
+              "catch(e){}});</script>")
+    return _page("Monitoring", body + script)
+
+
+@bp.route("/monitoring/interest", methods=["POST"])
+def monitoring_interest_submit():
+    if request.form.get("website"):  # hidden field: only a bot fills it. Look like success, store nothing.
+        return redirect("/monitoring?thanks=1#form")
+    email = (request.form.get("email") or "").strip().lower()
+    if len(email) > 254 or not _MON_EMAIL.match(email):
+        return redirect("/monitoring?err=" + urllib.parse.quote("Please enter a valid email address.") + "#form")
+    if not _mon_rate_ok(_mon_ip()):
+        return redirect("/monitoring?err=" + urllib.parse.quote("Too many submissions from this connection. Please try again later.") + "#form")
+    repo = re.sub(r"[^A-Za-z0-9_.\-/:@]", "", request.form.get("repo") or "")[:120]
+    row = {"email": email, "repo": repo, "notes": (request.form.get("notes") or "").strip()[:300]}
+    for key, choices in _MON_CHOICES.items():
+        v = request.form.get(key, "")
+        row[key] = v if v in choices else ""
+    _store_monitoring_interest(row)
+    return redirect("/monitoring?thanks=1#form")
+
+
 # ── Account ────────────────────────────────────────────────────────────────────
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 
@@ -723,7 +875,36 @@ def account():
 
     admin_note = ""
     monitor_note = ""
+    interest_note = ""
     if is_admin:
+        # Who has registered interest in monitoring (admin only: these are people's emails).
+        try:
+            _ir = _sb().table("monitoring_interest").select("*").order("created_at", desc=True).limit(50).execute().data or []
+            _lab = lambda k, v: _esc(_MON_CHOICES.get(k, {}).get(v, v or "-"))
+            _rows_i = "".join(
+                f'<tr><td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(str(r.get("created_at", ""))[:10])}</td>'
+                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(r.get("email"))}</td>'
+                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("apps", r.get("apps"))}<br>{_lab("visibility", r.get("visibility"))}</td>'
+                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("delivery", r.get("delivery"))}</td>'
+                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("price", r.get("price"))}</td>'
+                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(r.get("repo"))} {_esc(r.get("notes"))}</td></tr>'
+                for r in _ir)
+            interest_note = (
+                f'<details class="acc"><summary>\U0001F4EC Monitoring interest ({len(_ir)})</summary><div class="acc-body">'
+                + ('<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse">'
+                   '<tr><th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">When</th>'
+                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Email</th>'
+                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Apps</th>'
+                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Wants</th>'
+                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Price</th>'
+                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Repo / notes</th></tr>'
+                   + _rows_i + '</table></div>' if _ir else '<p class="note" style="margin:0">No one has registered yet.</p>')
+                + '</div></details>')
+        except Exception as _ie:
+            interest_note = ('<details class="acc"><summary>\U0001F4EC Monitoring interest</summary><div class="acc-body">'
+                             '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
+                             'being saved as emails only (waitlist, source &ldquo;monitoring&rdquo;). Run '
+                             'supabase_monitoring_interest.sql in Supabase to keep the full answers.</p></div></details>')
         admin_note = (
             '<div class="card" style="background:#EEEDFE;border-color:#534AB7;margin-bottom:1rem">'
             '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
@@ -857,6 +1038,7 @@ def account():
   {running_note}
   {admin_note}
   {monitor_note}
+  {interest_note}
   <details class="acc"><summary>Deep scan reports ({len(deep_reports)})</summary>
     <div class="acc-body">{deep_reports_html}</div>
   </details>

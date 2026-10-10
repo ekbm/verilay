@@ -3918,6 +3918,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <ul>
     <li>The free analysis needs no account — we don't know who you are unless you buy a deep scan or sign in</li>
     <li>No cookies or tracking beyond Plausible Analytics (privacy-friendly, no personal data)</li>
+    <li>If you register interest in monitoring, we store your email and your answers and use them only to tell you about monitoring</li>
     <li>No payment card details — Stripe handles payment directly and Verilay never sees or stores your card number</li>
     <li>No access to your GitHub account beyond what you explicitly submit — we read public repos only via GitHub API, and never write to or modify any repository</li>
   </ul>
@@ -4599,6 +4600,7 @@ def sitemap():
         ("https://verilay.dev/", "weekly", "1.0"),
         ("https://verilay.dev/blog", "weekly", "0.8"),
         ("https://verilay.dev/about", "monthly", "0.5"),
+        ("https://verilay.dev/monitoring", "monthly", "0.6"),
     ]
     for p in BLOG_POSTS:
         if p.get("body") or p["slug"] == "evident-ai-c-to-b":
@@ -5652,7 +5654,7 @@ _PLAUSIBLE_SNIPPET = (
     '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
 )
 _ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer",
-                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success")
+                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring")
 
 
 @app.after_request
@@ -5722,10 +5724,15 @@ def index():
     except Exception as e:
         print(f"[self-monitor] widget failed (non-critical): {e}", flush=True)
         selfmon_badge = selfmon_table = ""
+    # Link under the monitoring line, shown only when that line is.
+    monitoring_cta = ('<div style="text-align:center;margin:-.2rem 0 .9rem;font-size:13px"><a href="/monitoring" '
+                      'style="color:var(--pu);font-weight:600;text-decoration:none">Want us to watch your app too? '
+                      'Register interest &rarr;</a></div>') if selfmon_badge else ""
     html = (HTML.replace("__JSVER__", JS_VERSION)
                 .replace("__ACCOUNTNAV__", nav_desktop)
                 .replace("__ACCOUNTNAV_MOBILE__", nav_mobile)
                 .replace("__SELFMONITOR_BADGE__", selfmon_badge)
+                .replace("__MONITORING_CTA__", monitoring_cta)
                 .replace("__SELFMONITOR_TABLE__", selfmon_table))
     return render_template_string(html, analysis_count=count if count > 0 else "")
 
@@ -6024,6 +6031,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       {% endif %}
       __SELFMONITOR_BADGE__
     </div>
+    __MONITORING_CTA__
     <div style="display:flex;justify-content:center;margin-bottom:2rem">
       <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
         <img src="https://peerpush.com/p/verilay/rating-badge.png" alt="Verilay rating on PeerPush" style="width:100%;max-width:340px">
