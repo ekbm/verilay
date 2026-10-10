@@ -340,6 +340,28 @@ function init() {
   var backBtn = document.getElementById('btn-back-hero');
   if (backBtn) backBtn.addEventListener('click', showHero);
 
+  // /?scan=owner/repo -- the "Quick scan" link on /account. Fills in the
+  // GitHub address and opens the form, but does NOT start the analysis: the
+  // user presses Analyse. (Auto-starting from a URL would let any web page
+  // trigger paid Claude analyses just by linking here.)
+  try {
+    var wantedRepo = new URLSearchParams(window.location.search).get('scan');
+    if (wantedRepo && /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(wantedRepo)) {
+      showForm();
+      currentMethod = 'github';
+      document.querySelectorAll('.mc').forEach(function(c) { c.classList.remove('sel'); });
+      var mcGh = document.getElementById('mc-github');
+      if (mcGh) mcGh.classList.add('sel');
+      document.querySelectorAll('.ip').forEach(function(pn) { pn.classList.remove('vis'); });
+      var pGh = document.getElementById('p-github');
+      if (pGh) pGh.classList.add('vis');
+      var ghIn = document.getElementById('gh-url');
+      if (ghIn) ghIn.value = 'https://github.com/' + wantedRepo;
+      var goBtn = document.getElementById('btn-analyse');
+      if (goBtn) goBtn.focus();
+    }
+  } catch (err) {}
+
   // Sample modal
   var btnDemo = document.getElementById('btn-hero-demo');
   if (btnDemo) btnDemo.addEventListener('click', function() {

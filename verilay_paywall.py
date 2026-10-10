@@ -15,6 +15,7 @@ that matters goes through it.
 
 import json
 import os
+import re
 
 from flask import (Blueprint, request, redirect, jsonify, session,
                    render_template_string, Response)
@@ -613,6 +614,9 @@ def logout():
 
 
 # ── Account ────────────────────────────────────────────────────────────────────
+_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
+
+
 @bp.route("/account")
 @accounts.login_required
 def account():
@@ -628,7 +632,7 @@ def account():
                    else '<span class="tag tag-off">Ended</span>')
             repo = _esc(r.get("repo", ""))
             when = _esc(str(r.get("expires_at", ""))[:10])
-            link = (f'<a href="/deep/{repo}" target="_blank" rel="noopener">Re-scan</a>' if active else "")
+            link = (f'<a href="/deep/{repo}" target="_blank" rel="noopener">Deep re-scan</a>' if active else "")
             items.append(
                 f'<div class="row"><span><strong>{repo}</strong><br>'
                 f'<span class="note">Re-scans included until {when}</span></span>'
@@ -653,13 +657,20 @@ def account():
             # bought" list above genuinely has nothing to show for a repo
             # scanned via the bypass. This is where an admin actually finds
             # their way back to re-scanning it.
-            admin_rescan = (f' &nbsp;<a href="/deep/{repo}" target="_blank" rel="noopener">Re-scan</a>'
+            admin_rescan = (f' &nbsp;<a href="/deep/{repo}" target="_blank" rel="noopener">Deep re-scan</a>'
                              if is_admin and repo else "")
+            # Fresh standard (free-analysis) scan of the same repo: opens the
+            # homepage with the address filled in; the user presses Analyse.
+            # Only for owner/name repos -- live-URL and ZIP reports have no
+            # such address to pre-fill.
+            quick_scan = (f' &nbsp;<a href="/?scan={repo}" target="_blank" rel="noopener" '
+                          f'title="Run a fresh standard analysis of this repo">Quick scan</a>'
+                          if _REPO_RE.match(rep["repo"] or "") else "")
             items.append(
                 f'<div class="row"><span><strong>{repo or "Untitled"}</strong>'
                 f'<br><span class="note">{_esc(rep["when"])}</span></span>'
                 f'<span>{_esc(rep["score"] or "—")} &nbsp;'
-                f'<a href="/report/{_esc(rep["id"])}" target="_blank" rel="noopener">Open</a>{admin_rescan}</span></div>'
+                f'<a href="/report/{_esc(rep["id"])}" target="_blank" rel="noopener">Open</a>{quick_scan}{admin_rescan}</span></div>'
             )
         reports_html = '<div class="card">' + "".join(items) + "</div>"
     else:
@@ -674,7 +685,7 @@ def account():
             '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
             '<strong>any</strong> repo directly from <a href="/deep-scan" style="color:#3C3489">'
             'Analyse</a> — no purchase needed, so it will not show in the "bought" list below. '
-            'Repos you have already scanned as admin get a Re-scan link under Your reports.</p></div>'
+            'Repos you have already scanned as admin get a Deep re-scan link (and a Quick scan link) under Your reports.</p></div>'
         )
 
         # Real critical/warning counts, unlike the public homepage badge —
@@ -746,9 +757,14 @@ def account():
                 + "".join(_cell(r) for r in mon_rows)
                 + '</table></div>'
             )
+            try:
+                mon_detail = self_monitor.admin_detail_html(mon_rows)
+            except Exception as exc:  # detail is a bonus -- never break /account
+                print(f"[account] monitor detail failed: {exc}", flush=True)
+                mon_detail = ""
             monitor_note = (
                 f'<details class="acc"><summary>📡 Monitored apps ({len(mon_rows)})</summary>'
-                f'<div class="acc-body">{mon_table}</div></details>'
+                f'<div class="acc-body">{mon_table}{mon_detail}</div></details>'
             )
 
     # A scan you started and then closed the tab on used to be genuinely lost
@@ -805,16 +821,11 @@ def account():
        this page opens in a new tab so a signed-in user can look at a report
        or kick off a scan without losing their place on /account. -->
 
-  <script>
-  // The homepage links here as /account#reports to jump straight to reports.
-  // A URL fragment never reaches the server, and a collapsed <details> can't
-  // be forced open by CSS alone -- this is the few lines of JS needed to
-  // keep that existing deep link working now that the section collapses.
-  if (location.hash === '#reports') {{
-    var d = document.getElementById('reports');
-    if (d) d.open = true;
-  }}
-  </script>
+  <!-- No script here on purpose (2026-10-10, Moses's request): the sections
+       all start collapsed so the user picks what to open. A previous script
+       force-opened "Your reports" for /account#reports, which is what the
+       header "Your account" link used to point at; that link is now plain
+       /account, so nothing opens by itself. -->
 """
     return _page("Your account", body, robots="noindex")
 

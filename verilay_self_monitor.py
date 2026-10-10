@@ -35,6 +35,7 @@ importing app.py directly, to avoid a circular import — same pattern as
 verilay_deepscan.py, and deliberately reuses its exact free-analysis
 functions rather than duplicating them.
 """
+import html as _html
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -42,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 import verilay_notify as notify
 
 CHECK_INTERVAL_HOURS = 24
+RESOLVED_LOG_MAX = 200  # newest fixed-issue entries kept per app
 MAX_FILES = 25  # same depth as a normal free scan — this is a teaser, not a deep scan
 SCHEDULER_TICK_SECONDS = 30 * 60  # frequent enough that both apps stay comfortably
                                    # inside CHECK_INTERVAL_HOURS regardless of traffic
@@ -174,6 +176,11 @@ def _run_scan(app_name, repo):
         }).eq("app_name", app_name).execute()
         print(f"[self-monitor] {app_name}: {score} ({crit} critical, {warn} warnings)", flush=True)
 
+        # Admin-only detail: WHICH issues are open / newly fixed. Best-effort and
+        # after the counts above are already saved, so it can never cost a check.
+        _track_findings(sb, app_name, _collect_findings(
+            scan_findings, osv_vulns, s2.get("layers", []) + s3.get("layers", [])))
+
         # Alert Moses ONLY when critical count went UP (including the first
         # ever successful check finding any) — never on a routine unchanged
         # or improved check. Best-effort: send_self_monitor_alert() never
@@ -203,6 +210,134 @@ def _run_scan(app_name, repo):
             ).eq("app_name", app_name).execute()
         except Exception:
             pass
+
+
+def _norm_title(title):
+    """Lower-cased words only, so trivial punctuation/casing changes in an
+    AI-written finding title don't make the same finding look 'fixed + new'."""
+    return " ".join("".join(c.lower() if c.isalnum() else " " for c in (title or "")).split())
+
+
+def _collect_findings(scan_findings, osv_vulns, layers):
+    """Everything currently open on one app, as {stable_key: item}. Items hold a
+    title and a location only -- never a secret's value (the scanner's preview
+    is deliberately not copied) and never code.
+
+    Secret-scan and dependency findings have stable identities. The AI layer
+    findings are keyed by their normalised title, which is the best available
+    but can drift if the model rewords one -- the admin page says so."""
+    items = {}
+    for f in scan_findings or []:
+        if f.severity not in ("critical", "warning"):
+            continue
+        items[f"secret|{f.rule_id}|{f.file}"] = {
+            "sev": f.severity, "title": f.name, "where": f.file, "src": "secret scan"}
+    for v in osv_vulns or []:
+        label = f"{v.package} {v.version_found}".strip()
+        items[f"dep|{v.ecosystem}|{v.package}|{v.id}"] = {
+            "sev": v.severity, "title": f"{label}: {v.summary or v.id}"[:160],
+            "where": v.id + (f" (fix: {v.fixed_version})" if v.fixed_version else ""),
+            "src": "dependency" + (" (dev only)" if v.is_dev else "")}
+    for layer in layers or []:
+        for f in layer.get("expert", {}).get("findings", []):
+            sev = (f.get("severity") or "").lower()
+            title = (f.get("title") or "").strip()
+            if sev not in ("critical", "warning") or not title:
+                continue
+            items[f"ai|{sev}|{_norm_title(title)}"] = {
+                "sev": sev, "title": title[:160], "where": (f.get("file") or "")[:120],
+                "src": "AI analysis"}
+    return items
+
+
+def _track_findings(sb, app_name, current):
+    """Compare this check's open issues with the previous check's and keep a
+    running log of what disappeared. Stored in self_monitoring.finding_state
+    (jsonb) -- see supabase_self_monitoring_findings.sql. Never raises: if the
+    column has not been added yet it logs once per check and moves on.
+
+    The first successful run only records a baseline (nothing to compare to),
+    so fixes that happened before tracking started can't be named."""
+    try:
+        res = sb.table("self_monitoring").select("finding_state").eq("app_name", app_name).execute()
+    except Exception as e:
+        print(f"[self-monitor] finding detail skipped for {app_name} "
+              f"(finding_state column missing?): {e}", flush=True)
+        return
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        prev = (res.data[0].get("finding_state") if res.data else None) or {}
+        prev_open = prev.get("open")
+        log = list(prev.get("resolved_log") or [])
+        if prev_open is None:  # baseline run
+            fixed, new = [], []
+            baseline_at = now
+        else:
+            fixed = [dict(it, resolved_at=now) for k, it in prev_open.items() if k not in current]
+            new = [it for k, it in current.items() if k not in prev_open]
+            baseline_at = prev.get("baseline_at") or now
+            log = (fixed + log)[:RESOLVED_LOG_MAX]
+        state = {"open": current, "last_fixed": fixed, "last_new": new,
+                 "resolved_log": log, "baseline_at": baseline_at, "updated_at": now}
+        sb.table("self_monitoring").update({"finding_state": state}).eq("app_name", app_name).execute()
+    except Exception as e:
+        print(f"[self-monitor] finding detail failed for {app_name} (non-critical): {e}", flush=True)
+
+
+def admin_detail_html(rows):
+    """Admin-only: per app, what was fixed, what is new and what is still open.
+    Only ever call from a route already gated to Moses (/account's is_admin
+    block) -- this names real open issues on his live apps."""
+    e = _html.escape
+    colour = {"critical": "#A32D2D", "high": "#A32D2D", "warning": "#B7791F",
+              "moderate": "#B7791F", "low": "#6b6966"}
+
+    def li(it, when=None):
+        sev = (it.get("sev") or "").lower()
+        tail = f' <span class="note">&middot; {e(it.get("where") or "")}</span>' if it.get("where") else ""
+        tail += f' <span class="note">&middot; {e(it.get("src") or "")}</span>'
+        if when:
+            tail += f' <span class="note">&middot; fixed {e(_format_checked_at(when) or "")}</span>'
+        return (f'<li style="margin:.25rem 0"><span style="font-weight:700;color:{colour.get(sev, "#1a1917")}">'
+                f'{e(sev.upper())}</span> {e(it.get("title") or "")}{tail}</li>')
+
+    def section(title, items, when=False, cap=60, open_=False):
+        if not items:
+            return f'<p class="note" style="margin:.4rem 0">{e(title)}: none</p>'
+        shown = "".join(li(i, i.get("resolved_at") if when else None) for i in items[:cap])
+        more = f'<li class="note">...and {len(items) - cap} more</li>' if len(items) > cap else ""
+        return (f'<details{" open" if open_ else ""} style="margin:.5rem 0"><summary style="cursor:pointer;'
+                f'font-weight:600;font-size:13px">{e(title)} ({len(items)})</summary>'
+                f'<ul style="margin:.4rem 0 .4rem 1.1rem;padding:0;font-size:13px">{shown}{more}</ul></details>')
+
+    blocks = []
+    for r in rows:
+        name = e(r.get("app_name") or r.get("repo") or "app")
+        st = r.get("finding_state")
+        if not st:
+            blocks.append(f'<p class="note" style="margin:.5rem 0"><strong>{name}</strong>: issue detail starts '
+                          f'at the next check (counts above are unaffected).</p>')
+            continue
+        fixed, new = st.get("last_fixed") or [], st.get("last_new") or []
+        log, open_items = st.get("resolved_log") or [], list((st.get("open") or {}).values())
+        order = {"critical": 0, "high": 1, "warning": 2, "moderate": 3, "low": 4}
+        open_items.sort(key=lambda i: order.get((i.get("sev") or "").lower(), 9))
+        head = (f'<strong>{name}</strong> &mdash; fixed last check: {len(fixed)} &middot; '
+                f'new: {len(new)} &middot; fixed since tracking: {len(log)} &middot; open: {len(open_items)}')
+        base = _format_checked_at(st.get("baseline_at")) or ""
+        blocks.append(
+            f'<details class="mon-detail" style="margin:.6rem 0;border:0.5px solid #e8e6e0;border-radius:8px;padding:.5rem .8rem">'
+            f'<summary style="cursor:pointer;font-size:14px">{head}</summary>'
+            + section("Fixed since the previous check", fixed, when=True, open_=bool(fixed))
+            + section("New since the previous check", new, open_=bool(new))
+            + section("Fixed history (newest first)", log, when=True)
+            + section("Still open", open_items)
+            + f'<p class="note" style="margin:.5rem 0 0">Tracking began {e(base)}; fixes before that cannot be named. '
+              f'AI-analysis items are matched by title, so a reworded finding can show as one fixed + one new.</p>'
+            + '</details>')
+    return ('<div style="margin-top:1rem"><div style="font-size:12px;font-weight:600;color:#6b6966;'
+            'text-transform:uppercase;letter-spacing:.03em;margin-bottom:.25rem">What changed</div>'
+            + "".join(blocks) + '</div>')
 
 
 def health_data():
