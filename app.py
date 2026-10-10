@@ -25,7 +25,7 @@ import os, sys, json, base64, zipfile, io, requests, time, secrets as _secrets, 
 import html as _htmlmod
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context
+from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context, redirect
 from dotenv import load_dotenv
 
 # Load .env BEFORE importing our own modules. The billing and accounts modules
@@ -2872,17 +2872,17 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
-        "slug": "app-chaos-what-happens-next",
-        "title": "Everyone Can Build an App Now. Here&rsquo;s the Honest Part About What Happens Next",
+        "slug": "vibe-coding-next-problem-apps-nobody-maintains",
+        "title": "Vibe Coding&rsquo;s Next Problem: Apps Nobody Maintains",
         "date": "October 10, 2026",
         "category": "Story",
-        "excerpt": "Building an app is easy now, and that may be the problem. Three things I expect to happen next, where I might be wrong, and what Verilay does and doesn&rsquo;t do about it.",
+        "excerpt": "Building an app with AI is easy now. That may be the problem: duplicates, abandoned apps and trust. Three things I expect next, and where I may be wrong.",
         "medium_url": None,
         "read_time": "5 min read",
         "featured": True,
         "body": """
 <p>I&rsquo;m not a developer. And I&rsquo;m part of the problem I&rsquo;m about to describe.</p>
-<p>In a few months I&rsquo;ve built several products with AI tools. A new-home build tracker, a chatbot generator, a career copilot, a log analysis tool, and Verilay itself. None of them needed me to write code. Some of them work well. All of them were easy to start.</p>
+<p>In a few months I&rsquo;ve built several products with AI tools, or what people now call vibe coding. A new-home build tracker, a chatbot generator, a career copilot, a log analysis tool, and Verilay itself. None of them needed me to write code. Some of them work well. All of them were easy to start.</p>
 <p>That&rsquo;s the thing nobody says out loud: starting is no longer the hard part.</p>
 <p>Here&rsquo;s the honest part. I don&rsquo;t think &ldquo;easy to build&rdquo; is the good news it looks like.</p>
 
@@ -3889,8 +3889,16 @@ def render_post(post):
 </html>"""
 
 
+# Old post addresses that were renamed. The old URL redirects permanently, so shared links keep working.
+BLOG_SLUG_ALIASES = {
+    "app-chaos-what-happens-next": "vibe-coding-next-problem-apps-nobody-maintains",
+}
+
+
 @app.route("/blog/<slug>")
 def blog_post(slug):
+    if slug in BLOG_SLUG_ALIASES:
+        return redirect("/blog/" + BLOG_SLUG_ALIASES[slug], code=301)
     post = next((p for p in BLOG_POSTS if p["slug"] == slug), None)
     if not post:
         return "Post not found", 404
