@@ -16,6 +16,7 @@ that matters goes through it.
 import json
 import os
 import re
+import threading
 import time
 import urllib.parse
 
@@ -25,6 +26,7 @@ from flask import (Blueprint, request, redirect, jsonify, session,
 import verilay_billing as billing
 import verilay_accounts as accounts
 import verilay_deepscan as deepscan
+import verilay_notify as notify
 
 bp = Blueprint("paywall", __name__)
 
@@ -682,13 +684,15 @@ def _mon_ip():
 
 
 def _store_monitoring_interest(row):
+    """Returns 'new' (a first sign-up), 'updated' (same email again), 'fallback' (saved as an email-only
+    waitlist entry because the interest table is missing) or 'none' (nothing stored)."""
     sb = _sb()
     if sb is None:
         print("[monitoring] no database configured; interest not stored", flush=True)
-        return
+        return "none"
     try:
         sb.table("monitoring_interest").insert(row).execute()
-        return
+        return "new"
     except Exception as e:
         msg = str(e).lower()
         if "duplicate" in msg or "unique" in msg:
@@ -698,12 +702,42 @@ def _store_monitoring_interest(row):
                     {k: v for k, v in row.items() if k != "email"}).eq("email", row["email"]).execute()
             except Exception:
                 pass
-            return
+            return "updated"
         print(f"[monitoring] interest table unavailable, saving the email to the waitlist instead: {e}", flush=True)
     try:
         sb.table("waitlist").insert({"email": row["email"], "analyses_count": 0, "source": "monitoring"}).execute()
+        return "fallback"
     except Exception as e2:
         print(f"[monitoring] waitlist fallback failed (a duplicate is fine): {e2}", flush=True)
+        return "none"
+
+
+_MON_NOTIFY_HITS = []
+
+
+def _mon_notify_ok(limit=20, window=3600):
+    """Global cap on alert EMAILS per worker per hour, so a flood of sign-ups from many connections
+    cannot flood Moses's inbox. The sign-ups themselves are still stored."""
+    now = time.time()
+    _MON_NOTIFY_HITS[:] = [x for x in _MON_NOTIFY_HITS if now - x < window]
+    if len(_MON_NOTIFY_HITS) >= limit:
+        return False
+    _MON_NOTIFY_HITS.append(now)
+    return True
+
+
+def _notify_async(row):
+    """Email Moses about a new sign-up without making the visitor wait on the mail server.
+    Returns the thread (tests join it); None when the hourly cap is reached."""
+    if not _mon_notify_ok():
+        print("[monitoring] alert email cap reached this hour; sign-up stored, no email sent", flush=True)
+        return None
+    labels = {"apps": "How many apps", "visibility": "Public or private", "delivery": "How it should run", "price": "Fair price per month (AUD)"}
+    answers = {labels[k]: _MON_CHOICES[k].get(row.get(k), "") for k in labels}
+    t = threading.Thread(target=notify.send_monitoring_interest_alert,
+                         args=(row["email"], row.get("repo", ""), answers, row.get("notes", "")), daemon=True)
+    t.start()
+    return t
 
 
 def _mon_select(name, label):
@@ -786,7 +820,8 @@ def monitoring_interest_submit():
     for key, choices in _MON_CHOICES.items():
         v = request.form.get(key, "")
         row[key] = v if v in choices else ""
-    _store_monitoring_interest(row)
+    if _store_monitoring_interest(row) in ("new", "fallback"):
+        _notify_async(row)
     return redirect("/monitoring?thanks=1#form")
 
 

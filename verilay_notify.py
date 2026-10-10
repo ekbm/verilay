@@ -32,6 +32,9 @@ ZEPTOMAIL_TOKEN = os.getenv("ZEPTOMAIL_TOKEN", "").strip()
 _ADMIN_EMAILS = [e.strip() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
 SELF_MONITOR_ALERT_EMAIL = _ADMIN_EMAILS[0] if _ADMIN_EMAILS else ""
 FROM_ADDRESS = "noreply@verilay.dev"
+# Where a new "register interest in monitoring" sign-up is announced. moses@verilay.dev is already the
+# public contact address on the site; MONITORING_INTEREST_NOTIFY_EMAIL overrides it without a deploy.
+MONITORING_INTEREST_NOTIFY_EMAIL = (os.getenv("MONITORING_INTEREST_NOTIFY_EMAIL", "moses@verilay.dev") or "").strip()
 
 
 def configured():
@@ -106,4 +109,39 @@ def send_self_monitor_alert(app_name, repo, score, critical, warnings, prev_crit
         return True
     except Exception as e:
         print(f"[notify] Self-monitor alert failed for {app_name}: {e}", flush=True)
+        return False
+
+
+def _one_line(s, limit=200):
+    """Header-safe: no line breaks, capped."""
+    return " ".join(str(s or "").split())[:limit]
+
+
+def send_monitoring_interest_alert(email, repo, answers, notes=""):
+    """Tell Moses someone registered interest in monitoring. Best-effort, returns True/False, never raises.
+    `answers` is an ordered {question: answer} dict of already-readable text."""
+    to = MONITORING_INTEREST_NOTIFY_EMAIL
+    if not configured() or not to:
+        print("[notify] ZEPTOMAIL_TOKEN or recipient not set, skipping monitoring-interest alert", flush=True)
+        return False
+    lines = [f"Someone registered interest in Verilay monitoring.", "", f"Email: {_one_line(email, 254)}"]
+    if repo:
+        lines.append(f"Repository: {_one_line(repo, 120)}")
+    for question, answer in (answers or {}).items():
+        lines.append(f"{_one_line(question, 80)}: {_one_line(answer, 120) or '(not answered)'}")
+    if notes:
+        lines += ["", "Notes:", str(notes)[:300]]
+    lines += ["", "All sign-ups: verilay.dev/account (Monitoring interest).", "", "— Verilay"]
+    msg = MIMEText("\n".join(lines))
+    msg["Subject"] = _one_line(f"New monitoring interest: {email}", 120)
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = to
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [to], msg.as_string())
+        print("[notify] Monitoring-interest alert sent", flush=True)
+        return True
+    except Exception as e:
+        print(f"[notify] Monitoring-interest alert failed: {e}", flush=True)
         return False
