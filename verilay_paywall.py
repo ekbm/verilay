@@ -665,9 +665,11 @@ def account():
 
     is_admin = user["email"].strip().lower() in billing.ADMIN_EMAILS
 
-    if reports:
+    deep_tag = ('<span class="tag" style="background:#EEEDFE;color:#3C3489">Deep scan</span>')
+
+    def _report_rows(rs):
         items = []
-        for rep in reports:
+        for rep in rs:
             repo = _esc(rep["repo"] or "")
             # Admin re-scan link on every report, not just purchased ones —
             # an admin's synthetic entitlement (see entitlement_for_request)
@@ -684,16 +686,33 @@ def account():
             quick_scan = (f' &nbsp;<a href="/?scan={repo}" target="_blank" rel="noopener" '
                           f'title="Run a fresh standard analysis of this repo">Quick scan</a>'
                           if _REPO_RE.match(rep["repo"] or "") else "")
+            tag = f' {deep_tag}' if rep.get("is_deep") else ""
             items.append(
-                f'<div class="row"><span><strong>{repo or "Untitled"}</strong>'
+                f'<div class="row"><span><strong>{repo or "Untitled"}</strong>{tag}'
                 f'<br><span class="note">{_esc(rep["when"])}</span></span>'
                 f'<span>{_esc(rep["score"] or "—")} &nbsp;'
                 f'<a href="/report/{_esc(rep["id"])}" target="_blank" rel="noopener">Open</a>{quick_scan}{admin_rescan}</span></div>'
             )
-        reports_html = '<div class="card">' + "".join(items) + "</div>"
-    else:
-        reports_html = ('<div class="card"><p style="margin:0">No reports saved to this '
-                        'account yet. Any analysis you run while signed in shows up here.</p></div>')
+        return items
+
+    def _group_html(rs, empty_msg):
+        if not rs:
+            return f'<div class="card"><p style="margin:0">{empty_msg}</p></div>'
+        return '<div class="card">' + "".join(_report_rows(rs)) + "</div>"
+
+    # Deep scans and free analyses are listed separately (2026-10-10, Moses's
+    # request): an admin deep scan writes no row to `purchases`, so this list
+    # was the only place a deep scan showed up -- indistinguishable from a
+    # free analysis.
+    deep_reports = [r for r in reports if r.get("is_deep")]
+    free_reports = [r for r in reports if not r.get("is_deep")]
+    deep_reports_html = _group_html(
+        deep_reports, "No deep scan reports yet. When you run a deep scan, its report shows up here.")
+    reports_html = _group_html(
+        free_reports,
+        "No free reports saved to this account yet. Any analysis you run while signed in shows up here."
+        if reports else
+        "No reports saved to this account yet. Any analysis you run while signed in shows up here.")
 
     admin_note = ""
     monitor_note = ""
@@ -703,7 +722,7 @@ def account():
             '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
             '<strong>any</strong> repo directly from <a href="/deep-scan" style="color:#3C3489">'
             'Analyse</a> — no purchase needed, so it will not show in the "bought" list below. '
-            'Repos you have already scanned as admin get a Deep re-scan link (and a Quick scan link) under Your reports.</p></div>'
+            'Repos you have already scanned as admin get a Deep re-scan link (and a Quick scan link) under your reports.</p></div>'
         )
 
         # Real critical/warning counts, unlike the public homepage badge —
@@ -831,7 +850,10 @@ def account():
   {running_note}
   {admin_note}
   {monitor_note}
-  <details class="acc" id="reports"><summary>Your reports ({len(reports)})</summary>
+  <details class="acc"><summary>Deep scan reports ({len(deep_reports)})</summary>
+    <div class="acc-body">{deep_reports_html}</div>
+  </details>
+  <details class="acc" id="reports"><summary>Free reports ({len(free_reports)})</summary>
     <div class="acc-body">{reports_html}</div>
   </details>
   <details class="acc"><summary>Deep scans purchased ({len(rows)})</summary>
@@ -851,7 +873,7 @@ def account():
 
   <!-- No script here on purpose (2026-10-10, Moses's request): the sections
        all start collapsed so the user picks what to open. A previous script
-       force-opened "Your reports" for /account#reports, which is what the
+       force-opened the reports section for /account#reports, which is what the
        header "Your account" link used to point at; that link is now plain
        /account, so nothing opens by itself. -->
 """
@@ -863,13 +885,23 @@ def _reports_for_user(user):
     sb = _sb()
     if sb is None:
         return []
+    # `is_deep` pulls just the one flag out of the stored report JSON so the
+    # list can tell deep scans from free analyses without loading every report.
+    # If that JSON-path select is ever rejected, fall back to the plain list
+    # (everything then shows as free) rather than losing the page.
+    def _fetch(cols):
+        return (sb.table("reports")
+                  .select(cols)
+                  .eq("user_id", user["id"])
+                  .order("created_at", desc=True)
+                  .limit(100)
+                  .execute())
     try:
-        res = (sb.table("reports")
-                 .select("id,repo,score,created_at")
-                 .eq("user_id", user["id"])
-                 .order("created_at", desc=True)
-                 .limit(100)
-                 .execute())
+        try:
+            res = _fetch("id,repo,score,created_at,is_deep:data->>is_deep_scan")
+        except Exception as e:
+            print(f"[paywall] Deep-scan flag unavailable, listing without it: {e}", flush=True)
+            res = _fetch("id,repo,score,created_at")
     except Exception as e:
         print(f"[paywall] Report list unavailable (has the migration run?): {e}", flush=True)
         return []
@@ -880,6 +912,7 @@ def _reports_for_user(user):
             "repo": r.get("repo", ""),
             "score": r.get("score", ""),
             "when": str(r.get("created_at", ""))[:16].replace("T", " "),
+            "is_deep": str(r.get("is_deep")).strip().lower() == "true",
         })
     return out
 

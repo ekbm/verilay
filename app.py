@@ -4707,7 +4707,11 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 <div class="wrap">""")
 
     # Summary card
+    deep_badge = ('<div style="display:inline-block;background:#EEEDFE;color:#3C3489;font-size:11px;'
+                  'font-weight:600;padding:3px 10px;border-radius:20px;margin-bottom:.5rem">Deep scan report</div>'
+                  if data.get("is_deep_scan") else "")
     out.append(f"""<div class="card">
+  {deep_badge}
   <div style="font-size:20px;font-weight:700;margin-bottom:.25rem;overflow-wrap:break-word;word-break:break-word">{data.get('repo','')}</div>
   <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
   <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
