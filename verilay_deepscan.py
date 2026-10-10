@@ -32,12 +32,14 @@ and that prompt text — not the surrounding Python — is the actual tuned,
 paid-tier IP. Fetched once per worker and cached; an edit in Supabase's
 Table Editor takes effect on the next deploy/restart, not live.
 """
+import os
 import threading
 import time
 import uuid
 from datetime import datetime, timezone
 
 import verilay_deepreport as deepreport
+import verilay_discovery as discovery
 
 MAX_DEEP_FILES = 150
 BATCH_SIZE = 25
@@ -333,6 +335,17 @@ def _run_job(job_id, user_id=None):
         _update_job(job_id, progress="Detecting your tech stack...")
         stack_result = _deps["analyse_step1"](files, list(all_files.keys()), repo, "github")
 
+        # Similar open-source projects (deep scan only). Never allowed to fail the
+        # job: find_similar() returns status "error" instead of raising. Set
+        # VERILAY_DISCOVERY=0 in Railway to switch it off without a deploy.
+        discovery_result = None
+        if os.getenv("VERILAY_DISCOVERY", "1") != "0":
+            _check_cancelled(job_id)
+            _update_job(job_id, progress="Looking for similar open-source projects...")
+            discovery_result = discovery.find_similar(
+                _deps["call_claude_text"], _deps["github_token"](),
+                stack_result.get("summary", ""), stack_result.get("built_with", ""), repo)
+
         _check_cancelled(job_id)
         _update_job(job_id, progress="Merging everything into one report...")
         scan_block = _deps["secret_to_prompt_block"](scan_findings, len(all_files))
@@ -350,6 +363,8 @@ def _run_job(job_id, user_id=None):
             files=files, files_total=len(all_files),
         )
         report["layers_not_checked"] = unchecked_layers
+        if discovery_result:
+            report["discovery"] = discovery_result
         # One deterministic fix per vulnerable package, built from the OSV data.
         osv_vuln_dicts = (report.get("osv_scan") or {}).get("vulnerabilities") or []
         report["dependency_fixes"] = deepreport.build_dependency_fixes(osv_vuln_dicts)

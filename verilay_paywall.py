@@ -222,7 +222,12 @@ _WHAT_YOU_GET = """
     <tr style="border-bottom:0.5px solid #f0efec">
       <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Fix guidance</td>
       <td style="padding:8px 8px;font-size:13px;color:#4a4846">Up to 8 prompts to investigate with your AI builder</td>
-      <td style="padding:8px 0;font-size:13px;color:#4a4846">Same prompts, grounded in the exact packages found</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">A ready-to-paste fix for every vulnerable package, plus one prompt to update them all</td>
+    </tr>
+    <tr style="border-bottom:0.5px solid #f0efec">
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Similar apps</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">Not included</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Up to 6 similar open-source projects (free GitHub repos only, not commercial apps)</td>
     </tr>
     <tr style="border-bottom:0.5px solid #f0efec">
       <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Checking a fix worked</td>

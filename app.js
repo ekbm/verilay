@@ -1242,6 +1242,15 @@ function architectureDiagramHTML(data) {
   return diagramCardHTML(data.summary, data.architecture_diagram, data.module_purpose_rows);
 }
 
+// One line on FREE reports of GitHub apps: similar-project discovery is a deep scan feature.
+function discoveryTeaserHTML(data) {
+  if (!data || data.preview_only || (data.input_method && data.input_method !== 'github')) return '';
+  return '<div style="font-size:13px;color:var(--mut);margin:.75rem 0;padding:.6rem .85rem;background:var(--sur);' +
+         'border:0.5px solid var(--bdr);border-radius:var(--r)">Want to find out what similar apps already exist? ' +
+         'The <a href="/deep-scan" style="color:var(--pu);font-weight:600">deep scan</a> includes a list of similar ' +
+         'open-source projects.</div>';
+}
+
 function filesCoverageHTML(data) {
   var analysed = data.files_analysed || [];
   var read = data.files_read || analysed.length;
@@ -1534,6 +1543,7 @@ function renderReport(data) {
   html += filesCoverageHTML(data);
 
   html += fileBreakdownHTML(data);
+  html += discoveryTeaserHTML(data);
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';

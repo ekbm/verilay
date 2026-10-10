@@ -57,6 +57,7 @@ import verilay_deepscan as deepscan
 import verilay_notify as notify
 import verilay_self_monitor as self_monitor
 import verilay_deepreport as deepreport
+import verilay_discovery as discovery_mod
 # The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
 # Kept in its own modules so the free tool below is unchanged by it. If these
 # imports fail the free app must still boot: nobody losing a free analysis
@@ -4916,6 +4917,13 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             )
 
     # (Recommended fixes now render near the top -- see render_fixes_html above.)
+
+    # Similar projects: the list on deep scans; one pointer line on free reports of
+    # GitHub apps. A deep report with no (or a failed) search simply shows nothing.
+    if data.get("is_deep_scan"):
+        out.append(discovery_mod.render_discovery_html(data.get("discovery")))
+    elif data.get("input_method", "github") == "github" and not is_preview:
+        out.append(discovery_mod.render_teaser_html())
 
     # Second opinion
     if so.get("summary_prompt"):
