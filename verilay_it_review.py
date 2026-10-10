@@ -311,10 +311,16 @@ td{{padding:.6rem .5rem;border-bottom:0.5px solid #eee;vertical-align:top}}
 ul.plain{{padding-left:1.2rem}}
 ul.plain li{{margin-bottom:.35rem}}
 .sign td{{border:none;padding:.5rem 0}}
-.line{{border-bottom:1px solid #999;display:inline-block;min-width:220px;height:1.1rem}}
+.line{{border-bottom:1px solid #999;display:inline-block;min-width:220px;max-width:100%;height:1.1rem}}
 .box{{display:inline-block;width:12px;height:12px;border:1px solid #555;margin:0 4px 0 12px;vertical-align:-1px}}
+.opt{{white-space:nowrap}}
 .foot{{font-size:11px;color:#888;text-align:center;margin:1.2rem 0}}
-@media(max-width:640px){{.ref{{display:none}}th.refh{{display:none}}.wrap{{padding:1rem}}}}
+@media(max-width:640px){{.ref{{display:none}}th.refh{{display:none}}.wrap{{padding:1rem}}
+  /* Sign-off: the write-in lines have fixed minimum widths (220/140/420px), which pushed the table
+     past a phone screen. On small screens each field stacks, with a full-width line under its label. */
+  .sign,.sign tbody,.sign tr,.sign td{{display:block;width:100%}}
+  .sign td{{padding:.45rem 0}}
+  .line{{display:block;min-width:0!important;width:100%;margin-top:.3rem}}}}
 @media print{{
   body{{background:#fff;font-size:12px}}
   .noprint{{display:none!important}}
@@ -396,7 +402,7 @@ ul.plain li{{margin-bottom:.35rem}}
 <div class="card">
   <table class="sign">
     <tr><td>Reviewed by: <span class="line"></span></td><td>Date: <span class="line" style="min-width:140px"></span></td></tr>
-    <tr><td colspan="2">Decision:<span class="box"></span>Approve<span class="box"></span>Approve with fixes<span class="box"></span>Don't approve</td></tr>
+    <tr><td colspan="2">Decision:<span class="opt"><span class="box"></span>Approve</span><span class="opt"><span class="box"></span>Approve with fixes</span><span class="opt"><span class="box"></span>Don't approve</span></td></tr>
     <tr><td colspan="2">Conditions or notes: <span class="line" style="min-width:420px"></span></td></tr>
   </table>
 </div>
