@@ -238,6 +238,11 @@ def render_it_review(data, report_id):
         risk, decision, colour = ("Unknown", "Not enough to decide",  "#4a4846")
         why = ("This report came from a live URL, which only shows what the site sends to a browser. "
                "Scan the source code (GitHub or ZIP) before making an approval decision.")
+    elif data.get("analysis_incomplete") and not ("fail" in all_statuses or n_crit):
+        names = ", ".join(escape(str(x)) for x in data.get("analysis_incomplete"))
+        risk, decision, colour = ("Unknown", "Not enough to decide", "#4a4846")
+        why = (f"Verilay could not finish checking: {names}. Run the analysis again "
+               "before making an approval decision.")
     elif "fail" in all_statuses or n_crit:
         risk, decision, colour = ("High", "Don't approve yet", "#A32D2D")
         why = ("Critical issues must be fixed and the app scanned again before approval."

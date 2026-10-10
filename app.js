@@ -20,6 +20,7 @@ async function autoSaveReport(data) {
   // Silently save in background and show share URL when ready
   try {
     var reportData = Object.assign({}, data);
+    if ((window._incompleteLayers || []).length) reportData.analysis_incomplete = window._incompleteLayers.slice();
     var resp = await fetch('/save-report', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -60,6 +61,7 @@ async function saveReport() {
     // Collect all current data
     var reportData = Object.assign({}, currentReport || {});
     reportData.layers = Object.values(currentLayers);
+    if ((window._incompleteLayers || []).length) reportData.analysis_incomplete = window._incompleteLayers.slice();
     if (window._step4Data) {
       reportData.top_fixes = window._step4Data.top_fixes || [];
       reportData.second_opinion = window._step4Data.second_opinion || {};
@@ -356,7 +358,7 @@ function init() {
       if (!a || typeof plausible !== 'function') return;
       var from = a.closest('#deep-scan-banner') ? 'banner'
                : a.closest('nav, header') ? 'nav'
-               : a.closest('#report, #report-content') ? 'report'
+               : a.closest('#report, #report-content, #report-sections') ? 'report'
                : 'other';
       plausible('Deep Scan CTA Click', {props: {from: from}});
     } catch (err) {}
@@ -577,6 +579,9 @@ async function runAnalysis() {
   window._analysisComplete = false;
   window._pendingHalfLabel = null;
   window._discoveryHtml = null;
+  window._discoverySum = null;
+  window._incompleteLayers = [];
+  window._layerErrorMsgs = [];
   stopTrickle();
   stopP2Trickle();
   var p2banner = document.getElementById('p2-banner');
@@ -761,7 +766,7 @@ function handleStreamEvent(evt) {
         updateStepsProgress(55);
         startTrickle(55, 75);
       }
-      showLayerError('Layer analysis error: ' + evt.data);
+      layerFailed(evt, ['Auth', 'Config', 'Database']);
       break;
     case 'step3_error':
       window._step3Done = true;
@@ -776,7 +781,7 @@ function handleStreamEvent(evt) {
         updateStepsProgress(55);
         startTrickle(55, 75);
       }
-      showLayerError('Layer analysis error: ' + evt.data);
+      layerFailed(evt, ['API', 'Frontend', 'Libraries']);
       break;
     case 'discovery':
       // Closest open-source match (server-rendered card). Kept on window so a later re-render of the
@@ -785,6 +790,12 @@ function handleStreamEvent(evt) {
         window._discoveryHtml = evt.data.html;
         var discSlot = document.getElementById('discovery-slot');
         if (discSlot) discSlot.innerHTML = evt.data.html;
+        var tmpd = document.createElement('div');
+        tmpd.innerHTML = evt.data.html;
+        var spl = tmpd.querySelector('a.sp-link');
+        window._discoverySum = spl ? 'Closest: ' + spl.textContent : 'No close open-source match';
+        var discSum = document.getElementById('sec-similar-sum');
+        if (discSum) discSum.textContent = window._discoverySum;
       }
       break;
     case 'diagram':
@@ -975,6 +986,8 @@ function resetForm(goToForm) {
   document.getElementById('rpt').classList.remove('vis');
   if (document.getElementById('report-content'))
     document.getElementById('report-content').innerHTML = '';
+  if (document.getElementById('report-sections'))
+    document.getElementById('report-sections').innerHTML = '';
   if (document.getElementById('p2-banner'))
     document.getElementById('p2-banner').style.display = 'none';
   if (document.getElementById('p2-loading'))
@@ -1146,15 +1159,25 @@ function scoreBannerHTML(score, hasLayers, isPreview) {
 
 function updateHealthDisplay() {
   var layers = Object.keys(currentLayers).map(function(k) { return currentLayers[k]; });
-  if (!layers.length) return;
-  var h = healthFromLayers(layers, currentReport);
+  var inc = window._incompleteLayers || [];
+  if (!layers.length && !inc.length) return;
+  var h = layers.length ? healthFromLayers(layers, currentReport) : {critical: 0, warnings: 0, passing: 0, score: null};
   if (currentReport) currentReport.health = h;
   var grid = document.getElementById('health-grid');
-  if (grid) grid.innerHTML = healthCardsHTML(h, true);
+  if (grid) {
+    grid.innerHTML = healthCardsHTML(h, true);
+    if (inc.length && grid.lastElementChild) {
+      // The grade card must not show a letter that was worked out from only some of the layers.
+      grid.lastElementChild.style.background = '#F1EFE8';
+      grid.lastElementChild.innerHTML = '<div style="font-size:18px;font-weight:600;color:#444441">n/a</div><div style="font-size:12px;color:#444441">incomplete</div>';
+    }
+  }
   var banner = document.getElementById('score-banner');
-  if (banner) banner.innerHTML = scoreBannerHTML(h.score, true);
+  if (banner) banner.innerHTML = inc.length ? '' : scoreBannerHTML(h.score, true);
   var vb = document.getElementById('verdict-banner');
-  if (vb) vb.innerHTML = verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null);
+  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc) : verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null);
+  var ls = document.getElementById('sec-layers-sum');
+  if (ls) ls.textContent = layersSummaryText(h, inc);
 }
 
 function fileBreakdownHTML(data) {
@@ -1467,6 +1490,67 @@ function verdictBannerHTML(score, prevScore) {
   return html;
 }
 
+// ── Results page: grouped, collapsible sections (2026-10-10) ────────────────
+function secHtml(id, title, meta, body, open) {
+  return '<details class="sec" id="' + id + '"' + (open ? ' open' : '') + '><summary>' + esc(title) +
+         '<span class="sec-meta" id="' + id + '-sum">' + esc(meta) + '</span></summary>' +
+         '<div class="sec-body">' + body + '</div></details>';
+}
+
+function layersSummaryText(h, incomplete) {
+  if (incomplete && incomplete.length) return 'Incomplete: ' + incomplete.join(', ') + ' not checked';
+  return (h.critical || 0) + ' critical · ' + (h.warnings || 0) + ' warnings · ' + (h.passing || 0) + ' passing';
+}
+
+function checksSummaryText(data) {
+  var parts = [];
+  var read = data.files_read || 0, total = data.files_total || read;
+  if (read) parts.push(read + (total && total !== read ? ' of ' + total : '') + ' files read');
+  var sc = data.secret_scan;
+  if (sc && typeof sc.files_scanned === 'number') {
+    var n = (sc.critical || 0) + (sc.warnings || 0);
+    parts.push(n ? n + ' possible exposed key' + (n !== 1 ? 's' : '') : 'no exposed keys');
+  }
+  var osv = data.osv_scan;
+  if (osv && osv.packages_checked) {
+    parts.push(osv.vulnerabilities_found
+      ? osv.vulnerabilities_found + ' vulnerable package' + (osv.vulnerabilities_found !== 1 ? 's' : '')
+      : osv.packages_checked + ' packages clean');
+  }
+  return parts.join(' · ');
+}
+
+function incompleteBannerHTML(names) {
+  return '<div class="prod-banner" style="background:#F1EFE8;color:#444441">' +
+    '<i class="ti ti-alert-triangle" style="font-size:26px"></i>' +
+    '<div style="flex:1"><div style="font-size:16px;font-weight:600;margin-bottom:2px">Analysis incomplete</div>' +
+    '<div style="font-size:13px;opacity:.85">Verilay could not finish checking: ' + esc(names.join(', ')) +
+    '. This is not a grade and does not mean those parts are fine. Run the analysis again.</div></div></div>';
+}
+
+// Open a group and bring it into view (used by the "Ask" button; optional input to focus).
+function openSection(id, focusId) {
+  var d = document.getElementById(id);
+  if (!d) return;
+  d.open = true;
+  d.scrollIntoView({behavior: 'smooth', block: 'start'});
+  if (focusId) setTimeout(function() { var el = document.getElementById(focusId); if (el && !el.disabled) el.focus(); }, 350);
+}
+
+function toggleAllSections(open) {
+  document.querySelectorAll('details.sec').forEach(function(d) { d.open = open; });
+}
+
+// A layer group (e.g. Auth/Config/Database) failed or timed out: say so plainly and never let the page
+// look like a clean pass on the strength of the layers that did arrive.
+function layerFailed(evt, names) {
+  window._incompleteLayers = (window._incompleteLayers || []).concat(names);
+  var msg = (evt && typeof evt.data === 'string' && evt.data.trim()) ? evt.data
+    : 'The ' + names.join(', ') + ' check could not be completed. Run the analysis again to see it.';
+  showLayerError(msg);
+  updateHealthDisplay();
+}
+
 function renderReport(data) {
   currentReport = data;
   // Load verifications from saved report data
@@ -1521,6 +1605,7 @@ function renderReport(data) {
   // different "ask something" affordances in one card confusing -- general
   // Ask Verilay still exists as its own separate page/nav link, just not
   // duplicated inside every report anymore.
+  var askStart = html.length;
   html += '<div style="margin:.75rem 0;padding:1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r)">';
   html += '<div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
   html += '<div style="font-size:13px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay a quick question below, using your real results &mdash; or open Claude for a longer conversation about your specific code.</div>';
@@ -1539,6 +1624,8 @@ function renderReport(data) {
   html += '<button onclick="askAIAboutReport()" style="font-size:13px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Open Claude with my findings &rarr;</button>';
   html += '<span style="font-size:12px;color:var(--put);opacity:.7;margin-left:8px">Free Claude.ai account &mdash; digs into your specific code</span>';
   html += '</div>';
+  var askHtml = html.slice(askStart);
+  html = html.slice(0, askStart);
 
   var pills = (data.stack||[]).map(function(s) {
     var c = catColors(s.category);
@@ -1556,12 +1643,16 @@ function renderReport(data) {
 
   html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview) + '</div>';
 
-  html += '<div id="architecture-diagram-section">' + architectureDiagramHTML(data) + '</div>';
+  html += '<div class="actrow">' +
+    '<button class="btn-sm" id="btn-ask-top" onclick="openSection(\'sec-ask\', \'report-ask-input\')"><i class="ti ti-message-circle" style="font-size:14px"></i> Ask Verilay about these results</button>' +
+    '<span class="actlinks"><a onclick="toggleAllSections(true)">Expand all</a><a onclick="toggleAllSections(false)">Collapse all</a></span></div>';
+  var topHtml = html;
+  html = '';
 
-  html += filesCoverageHTML(data);
+  var diagramHtml = '<div id="architecture-diagram-section">' + architectureDiagramHTML(data) + '</div>';
 
-  html += fileBreakdownHTML(data);
-  html += '<div id="discovery-slot">' + (window._discoveryHtml || discoveryTeaserHTML(data)) + '</div>';
+  var checksHtml = filesCoverageHTML(data) + fileBreakdownHTML(data);
+  var discoveryInner = window._discoveryHtml || discoveryTeaserHTML(data);
 
   html += '<div class="tabs" id="main-tabs">';
   html += '<button class="tab on" data-tab="layers">Layer map</button>';
@@ -1617,7 +1708,16 @@ function renderReport(data) {
   }).join('');
   html += '<div class="panel" id="p-stack"><div class="sg">' + scards + '</div></div>';
 
-  document.getElementById('report-content').innerHTML = html;
+  var layersHtml = '<div id="layer-errors">' + layerErrorsHTML() + '</div>' + html;
+  var incomplete = window._incompleteLayers || [];
+  var sections = secHtml('sec-layers', 'What we found, by layer', hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…', layersHtml, true);
+  if (checksHtml) sections += secHtml('sec-checks', 'Checks we ran', checksSummaryText(data), checksHtml, false);
+  if (discoveryInner) sections += secHtml('sec-similar', 'Similar open-source projects', window._discoverySum || 'See what already exists',
+                                          '<div id="discovery-slot">' + discoveryInner + '</div>', false);
+  sections += secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false);
+  sections += secHtml('sec-ask', 'Ask Verilay about your results', 'Plain-English answers', askHtml, false);
+  document.getElementById('report-content').innerHTML = topHtml;
+  document.getElementById('report-sections').innerHTML = sections;
   document.getElementById('rpt').classList.add('vis');
 
   // Wire New analysis buttons after report is rendered
@@ -1940,12 +2040,21 @@ async function runPart2() {
   }
 }
 
+// The notice lives in its own element inside the layers group: the old "Loading layers..." line it used
+// is hidden as soon as any other layer arrives, which made the message vanish.
+function layerErrorsHTML() {
+  return (window._layerErrorMsgs || []).map(function(m) {
+    return '<div style="display:flex;gap:8px;align-items:flex-start;background:var(--orl);color:var(--ort);border-radius:8px;padding:.6rem .8rem;margin:.4rem 0;font-size:13px">' +
+           '<i class="ti ti-alert-triangle" style="font-size:16px;flex-shrink:0"></i><span>' + esc(m) + '</span></div>';
+  }).join('');
+}
+
 function showLayerError(msg) {
+  window._layerErrorMsgs = (window._layerErrorMsgs || []).concat([String(msg)]);
+  var box = document.getElementById('layer-errors');
+  if (box) box.innerHTML = layerErrorsHTML();
   var loadingEl = document.getElementById('layers-loading');
-  if (loadingEl) {
-    loadingEl.innerHTML = '<i class="ti ti-alert-triangle" style="font-size:14px;color:var(--ort);flex-shrink:0"></i><span style="font-size:12px;color:var(--ort)">' + msg + '</span>';
-    loadingEl.style.display = 'flex';
-  }
+  if (loadingEl) loadingEl.style.display = 'none';
 }
 
 function appendLayers(newLayers) {
@@ -2660,3 +2769,11 @@ function askAboutReport() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Print / PDF: a collapsed group would print as just its title, so open them all for the print job.
+window.addEventListener('beforeprint', function() {
+  document.querySelectorAll('details.sec').forEach(function(d) { d.dataset.wasOpen = d.open ? '1' : '0'; d.open = true; });
+});
+window.addEventListener('afterprint', function() {
+  document.querySelectorAll('details.sec').forEach(function(d) { d.open = d.dataset.wasOpen === '1'; });
+});

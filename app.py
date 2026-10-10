@@ -563,6 +563,21 @@ def grade_from_counts(critical, warnings):
         return "B"
     return "A"
 
+_STEP2_LAYERS = ["Auth", "Config", "Database"]
+_STEP3_LAYERS = ["API", "Frontend", "Libraries"]
+
+
+def _layer_failure_text(exc, names):
+    """Plain-English message for a layer group that failed. A bare TimeoutError has an empty
+    message, which used to show as a blank 'Layer analysis error:'."""
+    import concurrent.futures as _cf
+    group = ", ".join(names[:-1]) + " and " + names[-1]
+    if isinstance(exc, (TimeoutError, _cf.TimeoutError)) or not str(exc).strip():
+        return (f"The {group} check took longer than expected and did not finish. "
+                "Run the analysis again to see it.")
+    return f"The {group} check could not be completed ({str(exc).strip()[:160]}). Run the analysis again to see it."
+
+
 def verdict_from_score(score):
     """Derive the launch-readiness verdict from the computed score, so it can never
     contradict the grade. Returns (label, color, reason). Mirrors the live app.js view."""
@@ -2556,13 +2571,14 @@ def analyse_stream():
                 # a BLOCKING 30s .result(timeout=30) with no yields at all,
                 # which is exactly the kind of silent gap that looks like a
                 # hang/timeout to the platform even before our own code errors.
-                deadline = _time.time() + 240
+                # 420s: a slow but healthy layer call can take over four minutes; the hosting limit is longer.
+                deadline = _time.time() + 420
                 while _time.time() < deadline and (f2 is not None or f3 is not None):
                     if f2 is not None and f2.done():
                         try:
                             s2 = f2.result()
                         except Exception as e:
-                            s2_err = str(e)
+                            s2_err = _layer_failure_text(e, _STEP2_LAYERS)
                         if s2_err:
                             yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
                         else:
@@ -2572,7 +2588,7 @@ def analyse_stream():
                         try:
                             s3 = f3.result()
                         except Exception as e:
-                            s3_err = str(e)
+                            s3_err = _layer_failure_text(e, _STEP3_LAYERS)
                         if s3_err:
                             yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
                         else:
@@ -2603,7 +2619,7 @@ def analyse_stream():
                         s2 = f2.result(timeout=10)
                         yield json.dumps({"event":"step2","data":s2}) + "\n"
                     except Exception as e:
-                        s2_err = str(e)
+                        s2_err = _layer_failure_text(e, _STEP2_LAYERS)
                         yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
                 if f3 is not None:
                     try:
@@ -2611,7 +2627,7 @@ def analyse_stream():
                         s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
                         yield json.dumps({"event":"step3","data":s3}) + "\n"
                     except Exception as e:
-                        s3_err = str(e)
+                        s3_err = _layer_failure_text(e, _STEP3_LAYERS)
                         yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
 
             # The search has normally finished long before the layers; give it a short grace period.
@@ -2626,6 +2642,9 @@ def analyse_stream():
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
+            _missing = (_STEP2_LAYERS if s2_err else []) + (_STEP3_LAYERS if s3_err else [])
+            if _missing:
+                partial["analysis_incomplete"] = _missing
             if disc["result"] and disc["result"].get("status") in ("ok", "none"):
                 partial["discovery"] = disc["result"]
             partial["architecture_diagram"] = build_architecture_diagram(s1.get("stack", []), partial["layers"])
@@ -4783,6 +4802,15 @@ Run a new analysis &rarr;</a>
             verdict_reason = verdict_reason.replace("the critical findings below", "the warnings below")
         score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
         score_display = h.get("score","?")
+    incomplete_names = [_htmlmod.escape(str(x)) for x in (data.get("analysis_incomplete") or [])]
+    if incomplete_names and not is_preview:
+        # Part of the analysis never finished: do not present a letter worked out from what did arrive.
+        verdict_label = "Incomplete analysis"
+        verdict_color = "#6b6966"
+        verdict_reason = ("Verilay could not finish checking: " + ", ".join(incomplete_names) +
+                          ". This is not a grade. Run the analysis again.")
+        score_display = "n/a"
+        score_color = "#999"
     sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE","not_checked":"#F1EFE8"}
     sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A","not_checked":"#5F5E5A"}
 
@@ -5953,6 +5981,20 @@ input:focus{border-color:var(--pu);box-shadow:0 0 0 3px var(--pul)}
 .fc{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
 .si{border-radius:8px;padding:.6rem .85rem;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
 .so-card{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
+/* Results page: collapsible groups (2026-10-10). One summary on top, detail on request. */
+details.sec{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);margin:.6rem 0;overflow:hidden}
+details.sec>summary{list-style:none;cursor:pointer;padding:.8rem 1rem;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;-webkit-tap-highlight-color:transparent}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:'+';margin-left:auto;font-size:20px;font-weight:400;color:var(--mut);flex-shrink:0}
+details.sec[open]>summary::after{content:'\\2212'}
+details.sec[open]>summary{border-bottom:0.5px solid var(--bdr)}
+details.sec>summary .sec-meta{font-size:12px;font-weight:400;color:var(--mut);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details.sec>summary:focus-visible{outline:2px solid var(--pu);outline-offset:-2px}
+details.sec>.sec-body{padding:.5rem 1rem 1rem}
+.actrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:.5rem 0 .25rem}
+.actrow .actlinks{margin-left:auto;font-size:12px}
+.actrow .actlinks a{color:var(--mut);cursor:pointer;text-decoration:underline;margin-left:10px}
+@media print{details.sec>summary::after{display:none}}
 .p2-banner{background:var(--pul);border:1.5px solid var(--pu);border-radius:var(--r);padding:1.1rem 1.25rem;margin-top:1.25rem;display:none}
 .bottom-cta{margin-top:1.5rem;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);text-align:center}
 @media(max-width:540px){.mg{grid-template-columns:1fr}.ll{grid-template-columns:1fr}.hg{grid-template-columns:repeat(2,1fr)}}
@@ -6608,11 +6650,13 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <button id="btn-copy-share" style="font-size:12px;padding:5px 12px;border-radius:20px;background:var(--gr);color:white;border:none;cursor:pointer;flex-shrink:0">Copy link</button>
       <button id="delete-report-btn" onclick="deleteReport()" style="display:none;font-size:12px;padding:5px 10px;border-radius:20px;background:transparent;color:var(--mut);border:0.5px solid var(--bdr);cursor:pointer;flex-shrink:0">Delete report</button>
     </div>
+    <details style="font-size:12px;color:var(--grt)"><summary style="cursor:pointer;opacity:.85">Privacy, and a README badge</summary>
     <div style="font-size:12px;color:var(--grt);opacity:.8">&#x1F512; Report stored securely. Your findings are private and never shared publicly. Delete anytime with the Delete Report button.</div>
     <div id="badge-section" style="display:none;margin-top:4px">
       <div style="font-size:12px;color:var(--grt);margin-bottom:4px;font-weight:500">Add this badge to your GitHub README:</div>
       <input id="badge-code" type="text" readonly style="width:100%;border:0.5px solid var(--grt);border-radius:6px;padding:5px 8px;font-size:12px;font-family:var(--mono);background:white;color:var(--mut)">
     </div>
+    </details>
   </div>
 
   <div id="report-content"></div>
@@ -6628,6 +6672,34 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <div id="steps23-bar" style="height:100%;border-radius:20px;background:var(--pu);width:15%;transition:width 0.6s ease"></div>
     </div>
   </div>
+
+  <div class="p2-banner" id="p2-banner">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for Part 2?</div>
+        <div style="font-size:13px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
+        <div style="font-size:12px;color:var(--put);opacity:.85;line-height:1.5;margin-bottom:.85rem">Two ways to fix what's found: Part 2's prompts are free to copy into your own AI, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
+          <button id="btn-skip" style="padding:7px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:13px;cursor:pointer">Skip for now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="p2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
+    <div class="spin" style="width:28px;height:28px;border-width:2.5px;margin-bottom:.75rem"></div>
+    <div style="font-size:14px;color:var(--mut);margin-bottom:.65rem" id="p2-msg">Writing your fix list — this finishes automatically, no action needed.</div>
+    <div style="max-width:260px;margin:0 auto;background:var(--bdr);border-radius:20px;height:5px;overflow:hidden">
+      <div id="p2-bar" style="height:100%;border-radius:20px;background:var(--pu);width:5%;transition:width 0.6s ease"></div>
+    </div>
+  </div>
+
+  <div id="p2-results"></div>
+
+  <!-- Collapsible groups (layers, checks, similar projects, diagram, ask) are rendered here by renderReport -->
+  <div id="report-sections"></div>
 
   <!-- Layers injected here by appendLayers -->
   <div id="layers-container"></div>
@@ -6664,31 +6736,6 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     </div>
     <div id="feedback-thanks" style="display:none;font-size:14px;color:var(--mut)">Thanks for the feedback! 🙏</div>
   </div>
-
-  <div class="p2-banner" id="p2-banner">
-    <div style="display:flex;align-items:flex-start;gap:12px">
-      <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
-      <div style="flex:1">
-        <div style="font-size:15px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for Part 2?</div>
-        <div style="font-size:13px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
-        <div style="font-size:12px;color:var(--put);opacity:.85;line-height:1.5;margin-bottom:.85rem">Two ways to fix what's found: Part 2's prompts are free to copy into your own AI, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
-          <button id="btn-skip" style="padding:7px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:13px;cursor:pointer">Skip for now</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="p2-loading" style="display:none;text-align:center;padding:1.5rem;margin-top:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">
-    <div class="spin" style="width:28px;height:28px;border-width:2.5px;margin-bottom:.75rem"></div>
-    <div style="font-size:14px;color:var(--mut);margin-bottom:.65rem" id="p2-msg">Writing your fix list — this finishes automatically, no action needed.</div>
-    <div style="max-width:260px;margin:0 auto;background:var(--bdr);border-radius:20px;height:5px;overflow:hidden">
-      <div id="p2-bar" style="height:100%;border-radius:20px;background:var(--pu);width:5%;transition:width 0.6s ease"></div>
-    </div>
-  </div>
-
-  <div id="p2-results"></div>
 
   <div class="bottom-cta">
     <div style="font-size:14px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
