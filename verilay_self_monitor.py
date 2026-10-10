@@ -322,12 +322,27 @@ def admin_detail_html(rows):
         log, open_items = st.get("resolved_log") or [], list((st.get("open") or {}).values())
         order = {"critical": 0, "high": 1, "warning": 2, "moderate": 3, "low": 4}
         open_items.sort(key=lambda i: order.get((i.get("sev") or "").lower(), 9))
+        # The homepage badge's "N resolved" is the drop in TOTAL counts between two checks. This page names
+        # the specific issues that disappeared, and only since tracking began. When the two disagree, say why.
+        pc, pw = r.get("prev_critical"), r.get("prev_warnings")
+        delta = None
+        if pc is not None and pw is not None and r.get("critical") is not None:
+            delta = (pc + pw) - ((r.get("critical") or 0) + (r.get("warnings") or 0))
+        count_note = ""
+        if delta and delta > 0 and not fixed:
+            count_note = (f'<p class="note" style="margin:.4rem 0;background:#F1EFE8;border-radius:6px;padding:.4rem .6rem">'
+                          f'The totals dropped by {delta} since the previous check, but none of the tracked issues '
+                          f'disappeared. Either tracking only began at this check (the first check after setup records '
+                          f'a baseline and cannot name earlier fixes), or the AI worded a finding differently. '
+                          f'AI-written findings can vary between runs, so a lower total is not always a real fix.</p>')
         head = (f'<strong>{name}</strong> &mdash; fixed last check: {len(fixed)} &middot; '
-                f'new: {len(new)} &middot; fixed since tracking: {len(log)} &middot; open: {len(open_items)}')
+                f'new: {len(new)} &middot; fixed since tracking: {len(log)} &middot; open: {len(open_items)}'
+                + (f' &middot; totals {"-" if delta > 0 else "+"}{abs(delta)}' if delta else ""))
         base = _format_checked_at(st.get("baseline_at")) or ""
         blocks.append(
             f'<details class="mon-detail" style="margin:.6rem 0;border:0.5px solid #e8e6e0;border-radius:8px;padding:.5rem .8rem">'
             f'<summary style="cursor:pointer;font-size:14px">{head}</summary>'
+            + count_note
             + section("Fixed since the previous check", fixed, when=True, open_=bool(fixed))
             + section("New since the previous check", new, open_=bool(new))
             + section("Fixed history (newest first)", log, when=True)
