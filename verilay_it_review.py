@@ -162,6 +162,8 @@ def _ai_rows(data):
                 note = "; ".join(escape(str(f.get("title", "")))[:120] for f in issues[:3])
                 if len(issues) > 3:
                     note += f"; +{len(issues) - 3} more"
+            elif (layer.get("status") or "").lower() == "not_checked":
+                note = "Not checked: the AI saw no code for this layer in the files it read"
             else:
                 note = "No issues found in the files the AI read"
         statuses.append(status)

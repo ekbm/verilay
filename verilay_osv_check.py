@@ -275,15 +275,49 @@ def _severity_of(vuln: dict) -> str:
     return "unknown"
 
 
-def _fixed_version(vuln: dict, ecosystem: str) -> Optional[str]:
+def _vkey(v: str):
+    """Numeric sort key for a version string ("4.17.21" -> (4, 17, 21)).
+    Good enough to order real-world release numbers; pre-release suffixes are
+    ignored, which at worst treats 2.0.0-beta as 2.0.0."""
+    core = (v or "").split("-")[0].split("+")[0]
+    return tuple(int(x) for x in re.findall(r"\d+", core)[:4])
+
+
+def _fixed_version(vuln: dict, ecosystem: str, installed: Optional[str] = None) -> Optional[str]:
+    """The version that fixes THIS advisory for the version the app actually uses.
+
+    OSV lists every affected range, often one per major line (e.g. fixed in
+    2.80.0 for the 2.x line AND 4.59.0 for the 4.x line). This used to return
+    the first "fixed" event it met, so an app on rollup 4.24.0 was told to
+    update to 2.80.0 -- a downgrade -- and others were sent to needless
+    major-version jumps. Now: pick the introduced->fixed pair that contains the
+    installed version; failing that, the nearest fixed version above it; and
+    never a version at or below what is already installed. Commit-hash (GIT)
+    ranges are ignored -- "update to 3f9a2c" is not advice a person can use."""
+    pairs = []
     for affected in vuln.get("affected") or []:
         if (affected.get("package") or {}).get("ecosystem") != ecosystem:
             continue
         for rng in affected.get("ranges") or []:
+            if rng.get("type") not in ("SEMVER", "ECOSYSTEM"):
+                continue
+            introduced = None
             for event in rng.get("events") or []:
-                if "fixed" in event:
-                    return event["fixed"]
-    return None
+                if "introduced" in event:
+                    introduced = event["introduced"]
+                elif "fixed" in event:
+                    pairs.append((introduced or "0", event["fixed"]))
+                    introduced = None
+    if not pairs:
+        return None
+    if not installed:
+        return pairs[0][1]
+    cur = _vkey(installed)
+    containing = [fx for intro, fx in pairs if _vkey(intro) <= cur < _vkey(fx)]
+    if containing:
+        return min(containing, key=_vkey)
+    above = [fx for _, fx in pairs if _vkey(fx) > cur]
+    return min(above, key=_vkey) if above else None
 
 
 def _dedupe_advisory_ids(vuln_ids: List[str], details: Dict[str, dict]) -> List[str]:
@@ -342,7 +376,7 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
             if not vuln:
                 continue
             severity = _severity_of(vuln)
-            fixed = _fixed_version(vuln, ecosystem)
+            fixed = _fixed_version(vuln, ecosystem, version)
             action = (
                 f"Update {name} to {fixed} or later."
                 if fixed else

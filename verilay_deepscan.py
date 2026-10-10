@@ -37,6 +37,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+import verilay_deepreport as deepreport
+
 MAX_DEEP_FILES = 150
 BATCH_SIZE = 25
 LAYER_NAMES_STEP2 = ["Auth", "Config", "Database"]
@@ -267,12 +269,14 @@ def _build_findings_summary(report):
         if name == "Libraries":
             vulns = osv.get("vulnerabilities") or []
             if vulns:
-                pkg_list = "; ".join(
-                    f"{v.get('package','')}@{v.get('version_found','')} ({v.get('id','')})"
-                    + (f" -> fix: {v['fixed_version']}" if v.get("fixed_version") else "")
-                    for v in vulns
-                )
-                lines.append(f"- Libraries [{status}]: {pkg_list}")
+                # Package updates are written deterministically from the OSV data
+                # (verilay_deepreport.build_dependency_fixes), one per package. The
+                # AI used to get the whole list here, hit the 3,000-character cap,
+                # and write "run npm audit" for a list the report already held.
+                lines.append(
+                    f"- Libraries [{status}]: {len(vulns)} known dependency vulnerabilities. Verilay lists these "
+                    "and writes the package-update fixes itself, so do NOT write fixes for dependencies, "
+                    "packages, versions, advisories or 'npm audit'. Write fixes for the other layers only.")
             else:
                 lines.append(f"- Libraries [{status}]: no known dependency vulnerabilities.")
             continue
@@ -336,6 +340,7 @@ def _run_job(job_id, user_id=None):
         osv_block = _deps["osv_to_prompt_block"](osv_vulns, osv_checked)
         merged_layers = _synthesise(repo, raw_results, scan_block + crypto_block, osv_block)
         _fix_library_severities(merged_layers, osv_vulns)
+        unchecked_layers = deepreport.mark_unchecked_layers(merged_layers, len(files))
 
         report = _assemble_report(
             repo=repo, stack_result=stack_result, merged_layers=merged_layers,
@@ -344,6 +349,10 @@ def _run_job(job_id, user_id=None):
             osv_vulns=osv_vulns, osv_checked=osv_checked,
             files=files, files_total=len(all_files),
         )
+        report["layers_not_checked"] = unchecked_layers
+        # One deterministic fix per vulnerable package, built from the OSV data.
+        osv_vuln_dicts = (report.get("osv_scan") or {}).get("vulnerabilities") or []
+        report["dependency_fixes"] = deepreport.build_dependency_fixes(osv_vuln_dicts)
         report["architecture_diagram"] = _deps["build_architecture_diagram"](
             report.get("stack", []), report.get("layers", [])
         )
@@ -373,7 +382,7 @@ def _run_job(job_id, user_id=None):
             findings_summary = findings_summary[:3000] + "..."
         try:
             step4 = _deps["analyse_step4"](repo, report.get("built_with", ""), findings_summary)
-            report["top_fixes"] = step4.get("top_fixes", [])
+            report["top_fixes"] = deepreport.drop_dependency_fixes(step4.get("top_fixes", []), osv_vuln_dicts)
             report["second_opinion"] = step4.get("second_opinion", {})
         except Exception as e:
             print(f"[deepscan] advice prompts failed, report still valid without them: {e}", flush=True)
@@ -519,14 +528,32 @@ def _fix_library_severities(merged_layers, osv_vulns):
         if bucket == "critical" or worst_per_package.get(name) != "critical":
             worst_per_package[name] = bucket
 
+    by_pkg = {}
+    for v in osv_vulns:
+        by_pkg.setdefault(v.package.lower(), []).append(v)
+    dev_only_pkgs = {p for p, vs in by_pkg.items() if all(x.is_dev for x in vs)}
+
     for layer in merged_layers.get("layers", []):
         if layer.get("name") != "Libraries":
             continue
         layer_worst = None
+        capped = False
         for i, f in enumerate(layer.get("expert", {}).get("findings", [])):
             text = (f.get("title", "") + " " + f.get("detail", "")).lower()
             matched = next((pkg for pkg in worst_per_package if pkg in text), None)
             if not matched:
+                # 2026-10-10: a finding about a dev/build-only package must never
+                # stay "critical". The loop above only corrects findings about
+                # RUNTIME packages, so the AI's own "critical" on a test tool
+                # (labelled "(DEV-ONLY)" in the very same finding) survived,
+                # counted as the report's one critical and set the grade to C.
+                if (f.get("severity") or "").lower() == "critical" and (
+                        "(dev-only)" in text or any(pkg in text for pkg in dev_only_pkgs)):
+                    f["severity"] = "warning"
+                    learner_findings = layer.get("learner", {}).get("findings_plain", [])
+                    if i < len(learner_findings):
+                        learner_findings[i]["severity"] = "warning"
+                    capped = True
                 continue
             correct_sev = worst_per_package[matched]
             f["severity"] = correct_sev
@@ -537,6 +564,10 @@ def _fix_library_severities(merged_layers, osv_vulns):
                 layer_worst = correct_sev
         if layer_worst:
             layer["status"] = layer_worst
+        elif capped:
+            sevs = [(x.get("severity") or "").lower() for x in layer.get("expert", {}).get("findings", [])]
+            layer["status"] = ("critical" if "critical" in sevs else
+                               "warning" if "warning" in sevs else layer.get("status"))
     return merged_layers
 
 

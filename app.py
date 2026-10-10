@@ -56,6 +56,7 @@ from verilay_osv_check import (
 import verilay_deepscan as deepscan
 import verilay_notify as notify
 import verilay_self_monitor as self_monitor
+import verilay_deepreport as deepreport
 # The paid path — pricing page, Stripe checkout, webhook, sign-in, account.
 # Kept in its own modules so the free tool below is unchanged by it. If these
 # imports fail the free app must still boot: nobody losing a free analysis
@@ -4635,10 +4636,14 @@ Run a new analysis &rarr;</a>
         score_color = "#999"
     else:
         verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
+        # With zero critical findings (e.g. after a dev-only "critical" is capped),
+        # "address the critical findings" would be wrong; the grade comes from warnings.
+        if not h.get("critical") and h.get("score") in ("C", "D"):
+            verdict_reason = verdict_reason.replace("the critical findings below", "the warnings below")
         score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
         score_display = h.get("score","?")
-    sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE"}
-    sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A"}
+    sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE","not_checked":"#F1EFE8"}
+    sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A","not_checked":"#5F5E5A"}
 
     repo_safe = _htmlmod.escape(str(data.get("repo") or "Report"))
     out = []
@@ -4727,6 +4732,27 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
   <div class="sb"><div class="sn" style="color:#EF9F27">{h.get('warnings',0)}</div><div class="sl">Warnings</div></div>
   <div class="sb"><div class="sn" style="color:#1D9E75">{h.get('passing',0)}</div><div class="sl">Passing</div></div>
 </div>""")
+
+    # "Fix these first" -- moved from the very bottom of the page (2026-10-10). On a
+    # deep scan it sat ~84% of the way down, collapsed, after a 41-item list.
+    # Deep reports saved before 2026-10-10 carry no per-package fixes (the AI wrote
+    # dependency fixes then). Build them from the stored OSV data so old reports
+    # get the same section; the stored report itself is not modified.
+    _fix_data = data
+    if data.get("is_deep_scan") and not data.get("dependency_fixes"):
+        _vd = (data.get("osv_scan") or {}).get("vulnerabilities") or []
+        if _vd:
+            _fix_data = dict(data)
+            _fix_data["dependency_fixes"] = deepreport.build_dependency_fixes(_vd)
+            _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(data.get("top_fixes"), _vd)
+    out.append(deepreport.render_fixes_html(_fix_data))
+    _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
+    if _nc:
+        out.append('<div class="card" style="background:#F1EFE8;border-color:#D3D1C7"><div style="font-size:13px;'
+                   'color:#444"><strong>Not checked in this scan:</strong> '
+                   + ", ".join(_htmlmod.escape(str(n)) for n in _nc)
+                   + '. Verilay did not see any code for these layers, so nothing there should be read as a pass.'
+                   '</div></div>')
 
     # Stack
     if stack:
@@ -4876,7 +4902,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             status = layer.get("status","passing")
             ex = layer.get("expert",{})
             lrn = layer.get("learner",{})
-            sc = {"critical":"#E24B4A","warning":"#EF9F27","passing":"#1D9E75"}.get(status,"#999")
+            sc = {"critical":"#E24B4A","warning":"#EF9F27","passing":"#1D9E75","not_checked":"#888"}.get(status,"#999")
             findings_html = ""
             for f2 in ex.get("findings",[]):
                 sev = f2.get("severity","passing")
@@ -4886,22 +4912,11 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             out.append(
                 f'<details class="layer"><summary style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem">'
                 f'<span style="font-weight:600;font-size:14px">{layer.get("name","")}</span>'
-                f'<span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{status}</span>'
+                f'<span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{str(status).replace("_"," ")}</span>'
                 f'</summary>{analogy}<div style="font-size:13px;color:#555;margin-bottom:.5rem">{ex.get("summary","")}</div>{findings_html}{concept}</details>'
             )
 
-    # Fixes — same reasoning: collapsed by default, one at a time, instead
-    # of every fix (including its full advice prompt) dumped open at once.
-    if fixes:
-        out.append('<div class="st">Recommended Fixes</div>')
-        for fix in fixes:
-            prompt = f'<div style="font-size:12px;color:#888;margin-top:.35rem">Fix prompt:</div><div class="pb">{fix.get("lovable_prompt","")}</div>' if fix.get("lovable_prompt") else ""
-            out.append(
-                f'<details class="fix"><summary style="cursor:pointer;font-weight:600">{fix.get("priority","")}. {fix.get("title","")}</summary>'
-                f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{fix.get("why_it_matters","")}</div>'
-                f'<div style="font-size:13px;color:#444"><strong>How:</strong> {fix.get("how_to_fix","")}</div>'
-                f'<div style="font-size:12px;color:#888">Effort: {fix.get("estimated_effort","")}</div>{prompt}</details>'
-            )
+    # (Recommended fixes now render near the top -- see render_fixes_html above.)
 
     # Second opinion
     if so.get("summary_prompt"):
