@@ -1033,6 +1033,18 @@ def deep_job_progress(job_id):
 """
         return _page("Deep scan cancelled", body, robots="noindex")
 
+    if job["status"] == "interrupted":
+        body = f"""
+  <div class="eyebrow">Deep scan interrupted</div>
+  <h1>{_esc(job["repo"])}</h1>
+  <div class="card">
+    <p style="margin:0">{_esc(job.get("error") or deepscan.INTERRUPTED_MESSAGE)}</p>
+  </div>
+  <p style="margin-top:1rem"><a class="btn" href="/deep/{_esc(job["repo"])}">Start it again</a></p>
+  <p class="note"><a href="/account">Your account</a></p>
+"""
+        return _page("Deep scan interrupted", body, robots="noindex")
+
     already_running_banner = ""
     if request.args.get("already_running"):
         already_running_banner = (
@@ -1068,6 +1080,10 @@ def deep_job_progress(job_id):
       if (d.status === 'cancelled') {{
         document.getElementById('progress-text').textContent = 'Cancelling — this stops at the next checkpoint, may take a moment.';
         setTimeout(function() {{ window.location.reload(); }}, 4000);
+        return;
+      }}
+      if (d.status === 'interrupted') {{
+        window.location.reload();
         return;
       }}
       if (d.status === 'error') {{

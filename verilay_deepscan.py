@@ -103,11 +103,12 @@ def get_job(job_id):
         try:
             res = sb.table("deepscan_jobs").select("*").eq("id", job_id).execute()
             if res.data:
-                return res.data[0]
+                return _expire_if_stale(res.data[0])
         except Exception as e:
             print(f"[deepscan] Supabase job read failed, checking memory: {e}", flush=True)
     with _JOBS_LOCK:
-        return dict(_JOBS[job_id]) if job_id in _JOBS else None
+        job = dict(_JOBS[job_id]) if job_id in _JOBS else None
+    return _expire_if_stale(job) if job else None
 
 
 def active_job_for_repo(repo):
@@ -124,14 +125,17 @@ def active_job_for_repo(repo):
                      .in_("status", ["queued", "running"])
                      .order("created_at", desc=True).limit(1).execute())
             if res.data:
-                return res.data[0]
+                row = _expire_if_stale(res.data[0])
+                if row.get("status") in ("queued", "running"):
+                    return row
         except Exception as e:
             print(f"[deepscan] Supabase active-job lookup failed, checking memory: {e}", flush=True)
     with _JOBS_LOCK:
         candidates = [dict(j) for j in _JOBS.values()
                       if j.get("repo") == repo and j.get("status") in ("queued", "running")]
-        if candidates:
-            return max(candidates, key=lambda j: j.get("created_at", ""))
+    candidates = [j for j in (_expire_if_stale(j) for j in candidates) if j.get("status") in ("queued", "running")]
+    if candidates:
+        return max(candidates, key=lambda j: j.get("created_at", ""))
     return None
 
 
@@ -149,14 +153,16 @@ def active_jobs_for_user(user_id):
             res = (sb.table("deepscan_jobs").select("*").eq("user_id", user_id)
                      .in_("status", ["queued", "running"])
                      .order("created_at", desc=True).execute())
-            return res.data or []
+            rows = [_expire_if_stale(r) for r in (res.data or [])]
+            return [r for r in rows if r.get("status") in ("queued", "running")]
         except Exception as e:
             print(f"[deepscan] Supabase active-jobs-for-user lookup failed, checking memory: {e}", flush=True)
     with _JOBS_LOCK:
         jobs = [dict(j) for j in _JOBS.values()
                 if j.get("user_id") == user_id and j.get("status") in ("queued", "running")]
-        jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
-        return jobs
+    jobs = [j for j in (_expire_if_stale(j) for j in jobs) if j.get("status") in ("queued", "running")]
+    jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
+    return jobs
 
 
 def _update_job(job_id, **fields):
@@ -170,6 +176,82 @@ def _update_job(job_id, **fields):
     with _JOBS_LOCK:
         if job_id in _JOBS:
             _JOBS[job_id].update(fields)
+            _JOBS[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
+# ── Interrupted jobs (2026-10-10) ───────────────────────────────────────────
+# A scan runs in a background thread of the web process, so a redeploy or crash kills it
+# mid-run and the job row used to stay "running" forever -- which also made "Start deep scan"
+# for that repo redirect to the dead job. Now a live job writes a heartbeat every
+# HEARTBEAT_SECONDS (the table's trigger bumps updated_at on every update), and any queued or
+# running job with no sign of life for STALE_AFTER_SECONDS is marked "interrupted" the next time
+# anything reads it. Without an updated_at to go on, only created_at is available, so the limit
+# is much longer.
+HEARTBEAT_SECONDS = 30
+STALE_AFTER_SECONDS = 180
+STALE_NO_HEARTBEAT_SECONDS = 1500
+INTERRUPTED_MESSAGE = ("This scan was interrupted, most likely because Verilay was updated while it was "
+                       "running. No report was saved and nothing was counted against your scans.")
+
+
+def _parse_ts(v):
+    try:
+        d = datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_stale(job, now=None):
+    if not job or job.get("status") not in ("queued", "running"):
+        return False
+    now = now or datetime.now(timezone.utc)
+    last, limit = _parse_ts(job.get("updated_at")), STALE_AFTER_SECONDS
+    if last is None:
+        last, limit = _parse_ts(job.get("created_at")), STALE_NO_HEARTBEAT_SECONDS
+    if last is None:
+        return False  # cannot tell: never guess a job is dead
+    return (now - last).total_seconds() > limit
+
+
+def _expire_if_stale(job):
+    """If `job` is dead, record that (only if it is still queued/running) and return it as 'interrupted'.
+    A thread that is in fact still alive overwrites this with 'done' when it finishes."""
+    if not _is_stale(job):
+        return job
+    jid = job.get("id")
+    fields = {"status": "interrupted", "progress": "Interrupted", "error": INTERRUPTED_MESSAGE}
+    sb = _sb()
+    if sb is not None:
+        try:
+            sb.table("deepscan_jobs").update(fields).eq("id", jid).in_("status", ["queued", "running"]).execute()
+        except Exception as e:
+            print(f"[deepscan] could not record interrupted job {jid}: {e}", flush=True)
+    with _JOBS_LOCK:
+        if jid in _JOBS and _JOBS[jid].get("status") in ("queued", "running"):
+            _JOBS[jid].update(fields)
+    print(f"[deepscan] job {jid} marked interrupted (no activity for over {STALE_AFTER_SECONDS}s)", flush=True)
+    return dict(job, **fields)
+
+
+def _beat(job_id):
+    """One heartbeat. Only touches a job that is still 'running', so it can never resurrect a job that
+    finished, was cancelled or was marked interrupted."""
+    sb = _sb()
+    if sb is not None:
+        try:
+            sb.table("deepscan_jobs").update({"status": "running"}).eq("id", job_id).eq("status", "running").execute()
+        except Exception:
+            pass
+    with _JOBS_LOCK:
+        j = _JOBS.get(job_id)
+        if j and j.get("status") == "running":
+            j["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
+def _heartbeat_loop(job_id, stop):
+    while not stop.wait(HEARTBEAT_SECONDS):
+        _beat(job_id)
 
 
 class _JobCancelled(Exception):
@@ -299,6 +381,8 @@ def _run_job(job_id, user_id=None):
     if not job:
         return
     repo = job["repo"]
+    stop_beat = threading.Event()
+    threading.Thread(target=_heartbeat_loop, args=(job_id, stop_beat), daemon=True).start()
     try:
         _update_job(job_id, status="running", progress="Fetching your repository...")
         owner, _, name = repo.partition("/")
@@ -443,6 +527,8 @@ def _run_job(job_id, user_id=None):
     except Exception as e:
         print(f"[deepscan] job {job_id} failed: {e}", flush=True)
         _update_job(job_id, status="error", error=str(e))
+    finally:
+        stop_beat.set()
 
 
 def _synthesise(repo_name, raw_results, scan_block, osv_block):
