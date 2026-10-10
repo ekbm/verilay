@@ -340,6 +340,20 @@ function init() {
   var backBtn = document.getElementById('btn-back-hero');
   if (backBtn) backBtn.addEventListener('click', showHero);
 
+  // Funnel tracking: which links people click to reach the deep scan page.
+  // Fire-and-forget; never allowed to interfere with the click itself.
+  document.addEventListener('click', function(ev) {
+    try {
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="/deep-scan"]') : null;
+      if (!a || typeof plausible !== 'function') return;
+      var from = a.closest('#deep-scan-banner') ? 'banner'
+               : a.closest('nav, header') ? 'nav'
+               : a.closest('#report, #report-content') ? 'report'
+               : 'other';
+      plausible('Deep Scan CTA Click', {props: {from: from}});
+    } catch (err) {}
+  });
+
   // /?scan=owner/repo -- the "Quick scan" link on /account. Fills in the
   // GitHub address and opens the form, but does NOT start the analysis: the
   // user presses Analyse. (Auto-starting from a URL would let any web page
@@ -593,6 +607,7 @@ async function runAnalysis() {
   document.getElementById('ld').classList.add('vis');
   startMsgs();
   try {
+    try { if (typeof plausible === 'function') plausible('Analysis Start', {props: {method: currentMethod}}); } catch (e) {}
     var resp = await fetch('/analyse-stream', { method: 'POST', body: fd });
     if (!resp.ok) { throw new Error('Server error ' + resp.status); }
     var reader = resp.body.getReader();

@@ -293,6 +293,15 @@ def deep_scan_landing():
   <p class="note">Payment is handled by Stripe on their own page — Verilay never
   sees your card. Already bought one?
   <a href="/login">Sign in</a>.</p>
+  <script>
+  // Funnel event: someone submitted the form on their way to Stripe.
+  (function() {{
+    var f = document.querySelector('form[action="/checkout"]');
+    if (f) f.addEventListener('submit', function() {{
+      try {{ if (window.plausible) plausible('Checkout Start'); }} catch (e) {{}}
+    }});
+  }})();
+  </script>
   <p class="note">Not a penetration test. See the
   <a href="/terms">terms</a> and the <a href="/ai-disclaimer">AI disclaimer</a> for
   what this is and is not.</p>
@@ -381,6 +390,15 @@ def checkout_success():
     </form>
   </div>
   <p class="note">A receipt has been emailed to you by Stripe.</p>
+  <script>
+  // Conversion event, once per browser session (a refresh must not count twice).
+  try {{
+    if (window.plausible && !sessionStorage.getItem('vl_purchase_tracked')) {{
+      sessionStorage.setItem('vl_purchase_tracked', '1');
+      plausible('Purchase');
+    }}
+  }} catch (e) {{}}
+  </script>
 """
     return _page("Payment received", body, robots="noindex")
 

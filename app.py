@@ -5544,6 +5544,41 @@ _FAVICON_BYTES = None
 # report pages (link previews on LinkedIn, WhatsApp, Slack, X). Read from the
 # file next to this one so the PNG isn't embedded in the source; if it is ever
 # missing the route 404s and previews simply fall back to text.
+# ── Analytics on the pages that were not being counted ───────────────────────
+# Plausible (cookie-free, already named in the privacy policy) was only on the
+# homepage, so visits to /deep-scan, the blog, About etc. were invisible and the
+# deep-scan funnel could not be measured. This adds the same snippet to those
+# pages in one place. Deliberately NOT added to /report/<id>, /account, /deep/*
+# or /deep-job/* -- their URLs contain report or job ids, which act as the key
+# to private content and should not be sent to a third-party analytics service.
+_PLAUSIBLE_SNIPPET = (
+    '<!-- Privacy-friendly analytics by Plausible -->\n'
+    '<script defer data-domain="verilay.dev" '
+    'src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>\n'
+    '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
+)
+_ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer",
+                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success")
+
+
+@app.after_request
+def _add_analytics(resp):
+    try:
+        if (request.method != "GET" or resp.status_code != 200
+                or resp.mimetype != "text/html" or resp.direct_passthrough):
+            return resp
+        p = request.path.rstrip("/") or "/"
+        if not any(p == a or p.startswith(a + "/") for a in _ANALYTICS_PATHS):
+            return resp
+        body = resp.get_data(as_text=True)
+        if "plausible.io/js" in body or "</head>" not in body:
+            return resp
+        resp.set_data(body.replace("</head>", _PLAUSIBLE_SNIPPET + "</head>", 1))
+    except Exception:
+        pass  # analytics must never be able to break a page
+    return resp
+
+
 @app.route("/og-image.png")
 def og_image():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "og-image.png")
