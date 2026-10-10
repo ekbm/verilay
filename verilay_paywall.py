@@ -50,11 +50,13 @@ def _sb():
 # Matches the existing /privacy, /terms and /about pages rather than inventing a
 # second visual language.
 _NAV_LOGO = (
-    '<svg width="24" height="24" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" '
-    'style="flex-shrink:0;vertical-align:middle"><rect width="44" height="44" rx="10" fill="#534AB7"/>'
-    '<path d="M15.4 15.6 L22 29.5 L28.6 15.6" fill="none" stroke="#ffffff" stroke-width="3.2" '
-    'stroke-linecap="round" stroke-linejoin="round"/><path d="M13.4 15.6 L30.6 15.6" fill="none" '
-    'stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/></svg>'
+    '<svg width="24" height="24" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" '
+    'style="flex-shrink:0;vertical-align:middle"><rect width="400" height="400" rx="88" fill="#534AB7"/>'
+    '<circle cx="200" cy="200" r="112" fill="#ffffff" fill-opacity="0.12"/>'
+    '<circle cx="200" cy="200" r="86" fill="#ffffff" fill-opacity="0.12"/>'
+    '<path d="M140 142 L200 268 L260 142" fill="none" stroke="#ffffff" stroke-width="28" '
+    'stroke-linecap="round" stroke-linejoin="round"/><path d="M122 142 L278 142" fill="none" '
+    'stroke="#ffffff" stroke-width="28" stroke-linecap="round"/></svg>'
 )
 
 _SHELL = """<!DOCTYPE html>

@@ -4703,8 +4703,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 <body>
 <div class="header">
   <div style="display:flex;align-items:center;gap:10px">
-    <svg width="28" height="28" viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#fff" fill-opacity=".2"/>
-    <polyline points="148,108 200,208 252,108" fill="none" stroke="#fff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg width="28" height="28" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="400" rx="88" fill="#fff" fill-opacity=".2"/><circle cx="200" cy="200" r="112" fill="#fff" fill-opacity=".12"/><circle cx="200" cy="200" r="86" fill="#fff" fill-opacity=".12"/><path d="M140 142 L200 268 L260 142" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><path d="M122 142 L278 142" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round"/></svg>
     <span style="font-size:18px;font-weight:600">Verilay Report</span>
   </div>
   <a href="https://verilay.dev">Analyse your own app &rarr;</a>
