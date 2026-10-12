@@ -3152,6 +3152,60 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "anyone-with-the-link-safe-verilay-report-security",
+        "title": "Is &ldquo;Anyone With the Link&rdquo; Safe? What I Fixed",
+        "date": "October 12, 2026",
+        "category": "Build",
+        "excerpt": "Anyone with a Verilay report link could read it. I found they could also change it. What I fixed, what I didn&rsquo;t, and three questions for your own app.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": True,
+        "body": """
+<p>Verilay reports are shared by link. Run a scan, get a link, send it to whoever needs to see it. I like that. No account, no password, nothing to remember.</p>
+<p>But I found out what that link quietly means. Anyone who has it can open the report. That part is on purpose. For a long time, though, anyone who had the link could also <em>change</em> the report. Nobody told me. I found it by going through my own report pages the way I&rsquo;d go through someone else&rsquo;s app.</p>
+<p>It&rsquo;s fixed now. Here&rsquo;s what was wrong, what I changed, and what this does not fix.</p>
+
+<h2>Reading something and changing it are different permissions</h2>
+<p>You know the difference in a shared document. &ldquo;Anyone with the link can view&rdquo; is one setting. &ldquo;Anyone with the link can edit&rdquo; is another. I&rsquo;d built the second one without realising, for pages that were only ever meant to be the first.</p>
+<p>A report link is long and random, so it&rsquo;s hard to guess. That&rsquo;s good. But hard to guess is not the same as allowed. If knowing the link is all it takes to change a report, then everyone you send it to can change it. So can everyone they forward it to, and anyone who spots it in a screenshot.</p>
+
+<h2>What I found</h2>
+<ul>
+<li><strong>Delete didn&rsquo;t delete.</strong> The delete button asked the server to remove a report. The server answered &ldquo;OK&rdquo; and left the report online. One line of code the delete step needed had never been added, so it failed quietly, and the server said OK anyway. That had been the case since early June.</li>
+<li><strong>Anyone with the link could change a report.</strong> They could overwrite it with something else, or attach a different fix list to it. The &ldquo;mark as verified&rdquo; and delete actions had no check either. They were only protected by the fact that they were broken.</li>
+<li><strong>Text from your code could become part of the page.</strong> A report is built partly from what an AI reads in your code. If any of that text contained web-page code, and the page dropped it in as-is, a browser opening the shared report could run it. In my own test, I planted 15 pieces of that kind in a report. The old page let 14 of them through as live page code. None get through now.</li>
+<li><strong>Two smaller leaks.</strong> The README badge showed the grade for any repo name you typed, including private code someone had scanned by uploading a ZIP. And if you left your email in the feedback box, it was stored with the report, where anyone holding that report&rsquo;s link could read it.</li>
+</ul>
+
+<h2>What I changed</h2>
+<ul>
+<li><strong>Each new report gets a private key.</strong> It&rsquo;s created when you run the scan and given only to the browser that ran it. Verilay keeps just a fingerprint of the key, so I can&rsquo;t read it back either. Changing a report, marking a finding verified, or deleting it needs that key. Deep scan reports are also tied to your account, so you can manage them when you&rsquo;re signed in.</li>
+<li><strong>Everything on a report page is treated as plain text, not page code.</strong> The diagram is rebuilt from a short list of shapes I know are safe.</li>
+<li><strong>Delete is checked.</strong> If a report is still there, you&rsquo;re told, instead of getting an OK. A deleted report is gone from its page, the printable IT pack, the download, and its grade no longer shows on the badge.</li>
+<li><strong>Feedback emails and comments are no longer part of the public report data.</strong> They&rsquo;re also length-limited.</li>
+<li><strong>Reports now say when they were scanned</strong>, to the minute, in UTC. I noticed an older deep scan report that didn&rsquo;t say when it was run. A security result without a date is half a result.</li>
+</ul>
+
+<h2>What this doesn&rsquo;t fix</h2>
+<ul>
+<li><strong>The link still opens the report for anyone who has it.</strong> Reports aren&rsquo;t listed anywhere and search engines are told to ignore them, but a link is not a login. Don&rsquo;t send a link to a report about code you wouldn&rsquo;t show that person.</li>
+<li><strong>Reports made before this change are now read-only.</strong> They have no key, so nobody can change or delete them from the site, including you. If you want one removed, email <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> with the link and I&rsquo;ll do it.</li>
+<li><strong>The key lives in your browser.</strong> If you clear your site data or switch browsers, you can&rsquo;t delete that report yourself any more. Email me and I&rsquo;ll do it.</li>
+<li><strong>I haven&rsquo;t had a report of anyone using these.</strong> I also can&rsquo;t prove nobody did. That&rsquo;s why I fixed them instead of arguing about them.</li>
+</ul>
+
+<h2>Three questions for your own AI-built app</h2>
+<p>Verilay&rsquo;s AI review looks at login and access in general, but it doesn&rsquo;t yet check these specific things automatically. I&rsquo;m working on that. Until then, you can ask your AI builder:</p>
+<ol>
+<li><strong>&ldquo;For every action that changes or deletes something, what proves the person asking is allowed to?&rdquo;</strong> Knowing an ID or a link isn&rsquo;t proof.</li>
+<li><strong>&ldquo;Where does text that didn&rsquo;t come from me end up on a page, and is it treated as plain text?&rdquo;</strong> That includes what visitors type, what other systems send, and what an AI writes.</li>
+<li><strong>&ldquo;After I delete something, can I still reach it by its link, an API or a search?&rdquo;</strong> Try it yourself. Delete something, then open the old address.</li>
+</ol>
+<p>That last one took me far too long to try on my own tool. It&rsquo;s the same lesson as <a href="/blog/part-of-my-tool-that-trusted-a-strangers-page" style="color:#534AB7">the hole I found in the second fetch</a>: the part that looks handled is the part I stop checking.</p>
+<p>Everything in this post is also in the <a href="/changelog" style="color:#534AB7">changelog</a>, in shorter form. Verilay&rsquo;s code is public at <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:#534AB7">github.com/ekbm/verilay</a>. If there&rsquo;s another door I haven&rsquo;t found, I&rsquo;d rather you told me.</p>
+""",
+    },
+    {
         "slug": "vibe-coding-next-problem-apps-nobody-maintains",
         "title": "Vibe Coding&rsquo;s Next Problem: Apps Nobody Maintains",
         "date": "October 10, 2026",
@@ -3159,7 +3213,7 @@ BLOG_POSTS = [
         "excerpt": "Building an app with AI is easy now. That may be the problem: duplicates, abandoned apps and trust. Three things I expect next, and where I may be wrong.",
         "medium_url": None,
         "read_time": "5 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>I&rsquo;m not a developer. And I&rsquo;m part of the problem I&rsquo;m about to describe.</p>
 <p>In a few months I&rsquo;ve built several products with AI tools, or what people now call vibe coding. A new-home build tracker, a chatbot generator, a career copilot, a log analysis tool, and Verilay itself. None of them needed me to write code. Some of them work well. All of them were easy to start.</p>
@@ -4707,6 +4761,19 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 12, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Only you can change or delete your reports, scan dates, and an easier-to-read results page</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> Delete report now really deletes. Before, it said OK and the report stayed online. A deleted report is now gone from its page, the IT Review Pack and the download, and its grade no longer shows on the README badge. If a delete does not work, you are told. <a href="/blog/anyone-with-the-link-safe-verilay-report-security" style="color:#534AB7">Read the full story</a>.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> a report can now only be changed, marked verified or deleted from the browser that ran the scan (it holds a private key), or, for a deep scan, by you when signed in. Before, anyone with the report link could change it. Reports made before today have no key, so they are now read-only. To have one removed, email moses@verilay.dev with its link.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> text taken from the analysed code is now always shown as plain text on shared report pages, and the architecture diagram is rebuilt from a short list of safe shapes. Before, text containing page code could run when a shared report was opened.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the README badge now shows a grade only for GitHub scans, never for private ZIP uploads. Feedback emails and comments are no longer included in a report&rsquo;s public data, and are length-limited.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> every report now says when it was scanned, to the minute and in UTC (&ldquo;Scanned 12 Oct 2026, 10:33 UTC&rdquo;), in the top card, the footer, the IT Review Pack and the download. Older reports get the date they were saved.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the results page is easier to read. Your score, verdict and the fix list come first, and the layers, the checks that were run, similar projects, the architecture diagram and the Ask Verilay box sit in sections you can open and close. Print or Save as PDF opens them all.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> if part of the analysis ran out of time, the page used to show a grade and &ldquo;Production ready&rdquo; based on the layers that did finish. It now says &ldquo;Analysis incomplete&rdquo;, names what was not checked, and gives no grade. Verilay also waits up to seven minutes for a slow analysis, up from four.</p>
   </div>
 
   <div class="entry">
