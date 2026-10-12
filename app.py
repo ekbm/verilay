@@ -25,6 +25,7 @@ import os, sys, json, base64, zipfile, io, requests, time, secrets as _secrets, 
 import html as _htmlmod
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
+import hashlib as _hashlib, hmac as _hmac
 import datetime as _dt  # _dt.datetime.utcnow() is used by delete_report and verify_finding; it was never imported, so both crashed
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context, redirect
 from dotenv import load_dotenv
@@ -257,7 +258,99 @@ def _account_nav():
     return desktop, mobile
 
 
+# ── Report write protection (Stage 2, 2026-10-12) ─────────────────────────────
+# A report id is in the share link, so it is fine for READING but must not be enough to
+# CHANGE or DELETE a report. Each new report gets a random "manage token". Only its hash is
+# stored (data["_mgmt"]); the token itself goes once to the browser that created the report,
+# which sends it back in an X-Report-Token header. A signed-in owner (deep scans) can also
+# write without a token. Reports created before this change have neither, so they are
+# read-only: nobody can alter or delete them through the website.
+
+def _hash_manage_token(token):
+    return _hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+
+def save_report_with_token(data, user_id=None):
+    """Save a report; returns (report_id, manage_token). The token is shown only to the
+    browser that started the analysis."""
+    token = _secrets.token_urlsafe(24)
+    data["_mgmt"] = _hash_manage_token(token)
+    return _save_report_row(data, user_id), token
+
+
 def save_report_data(data, user_id=None):
+    """Same as before: returns just the report id (the deep-scan engine calls this and
+    expects a string). Its owner is the signed-in account, so the token is not needed."""
+    return save_report_with_token(data, user_id)[0]
+
+
+def _report_auth_info(report_id):
+    """(stored data, owner user id) for a live report, or (None, None) when it does not
+    exist or has been deleted."""
+    data, owner = None, None
+    if _HAS_SUPABASE:
+        for _attempt in (1, 2):
+            try:
+                try:
+                    res = _sb.table("reports").select("data,user_id").eq("id", report_id).execute()
+                except Exception:
+                    # The user_id column is added separately and may not exist yet.
+                    res = _sb.table("reports").select("data").eq("id", report_id).execute()
+                if res.data:
+                    data = res.data[0].get("data")
+                    owner = res.data[0].get("user_id")
+                break
+            except Exception as e:
+                print(f"Report auth lookup failed (attempt {_attempt}): {e}", flush=True)
+    else:
+        entry = _reports.get(report_id)
+        if entry and time.time() - entry["saved_at"] < REPORT_TTL:
+            data = entry["data"]
+    if not isinstance(data, dict) or _is_deleted_report(data):
+        return None, None
+    return data, owner
+
+
+def _can_write_report(report_id):
+    """True when this request may change or delete the report: it presents the report's
+    manage token, or it is signed in as the account that owns the report."""
+    if not report_id or not isinstance(report_id, str) or len(report_id) < 8:
+        return False
+    data, owner = _report_auth_info(report_id)
+    if data is None:
+        return False
+    token = request.headers.get("X-Report-Token", "")[:200]
+    stored = data.get("_mgmt")
+    if token and isinstance(stored, str) and stored and _hmac.compare_digest(_hash_manage_token(token), stored):
+        return True
+    uid = _current_uid()
+    return bool(uid and owner and str(uid) == str(owner))
+
+
+_NOT_ALLOWED = ("This report can only be changed from the browser that created it, or by its signed-in owner. "
+                "Run a new analysis to get one you can manage.")
+
+
+def _scan_time_label(report_id, data):
+    """When the scan ran, as text. Prefers the row's created_at (a UTC timestamp set by the
+    database, so every report has one and its time zone is known); falls back to the text
+    stored inside the report."""
+    if _HAS_SUPABASE and report_id:
+        try:
+            res = _sb.table("reports").select("created_at").eq("id", report_id).execute()
+            ts = res.data[0].get("created_at") if res.data else None
+            if ts:
+                dt = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(_dt.timezone.utc)
+                return dt.strftime("%d %b %Y, %H:%M UTC")
+        except Exception:
+            pass
+    g = data.get("generated_at") if isinstance(data, dict) else ""
+    return str(g or "")
+
+
+def _save_report_row(data, user_id=None):
     """`user_id`: explicit override for callers with no Flask session of
     their own — the deep-scan engine calls this from a background thread,
     which has no request context, so the usual _current_uid() session
@@ -2652,12 +2745,12 @@ def analyse_stream():
                 # A key hardcoded into index.html is exactly what a URL scan can prove.
                 # Carry it into the preview — the grade is withheld, the fact is not.
                 preview["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
-                report_id = save_report_data(preview)
+                report_id, manage_token = save_report_with_token(preview)
                 try:
                     increment_analysis_count(score=None, method=method)
                 except Exception as _inc_err:
                     print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
-                yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
+                yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token}}) + "\n"
                 yield json.dumps({"event":"layers_complete","data":{}}) + "\n"
                 return
 
@@ -2819,12 +2912,12 @@ def analyse_stream():
             partial["health"]["score"] = grade_from_counts(_crit, _warn)
             partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             partial["crypto_scan"] = crypto_to_report_dict(crypto_findings, scan_files_count)
-            report_id = save_report_data(partial)
+            report_id, manage_token = save_report_with_token(partial)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
-            yield json.dumps({"event":"saved","data":{"report_id":report_id}}) + "\n"
+            yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token}}) + "\n"
 
             # ── Done with layers ────────────────────────────────────────
             yield json.dumps({"event":"layers_complete","data":{}}) + "\n"
@@ -2852,6 +2945,11 @@ def run_step4():
         if len(findings) > 3000:
             findings = findings[:3000] + '...'
         result = analyse_step4(repo_name, built_with, findings)
+        if report_id and not _can_write_report(report_id):
+            # The fix list is still returned to the person who asked for it, but it is only
+            # stored on a report this browser (or signed-in account) created.
+            print(f"Part 2 not stored: no write access to {report_id}", flush=True)
+            report_id = ""
 
         # Update saved report with Part 2 data
         print(f"Part 2 update: report_id={report_id}, has_supabase={_HAS_SUPABASE}", flush=True)
@@ -2892,6 +2990,9 @@ def report_data(report_id):
     data = get_report_data(report_id)
     if not data:
         return jsonify({"error": "Report not found or expired"}), 404
+    # Internal and private fields never leave the server: the token hash, and the
+    # email/comment a visitor typed into the feedback box.
+    data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful")}
     return jsonify(data)
 
 
@@ -2907,6 +3008,8 @@ def verify_finding():
 
         if not report_id or not finding_key:
             return jsonify({"ok": False, "error": "Missing report_id or finding_key"})
+        if not _can_write_report(report_id):
+            return jsonify({"ok": False, "error": _NOT_ALLOWED}), 403
 
         if _HAS_SUPABASE:
             try:
@@ -2945,6 +3048,8 @@ def delete_report(report_id):
     try:
         if not report_id or len(report_id) < 8:
             return jsonify({"ok": False, "error": "Invalid report ID"})
+        if not _can_write_report(report_id):
+            return jsonify({"ok": False, "error": _NOT_ALLOWED}), 403
         if _HAS_SUPABASE:
             try:
                 _sb.table("reports").update({
@@ -3001,13 +3106,20 @@ def feedback():
     try:
         data = request.get_json()
         helpful = data.get("helpful")
-        comment = data.get("comment", "")
-        email = (data.get("email") or "").strip()
-        report_id = data.get("report_id", "")
+        if isinstance(helpful, str):
+            helpful = helpful[:20]
+        elif not isinstance(helpful, (bool, int, float, type(None))):
+            helpful = None
+        comment = str(data.get("comment") or "")[:2000]
+        email = str(data.get("email") or "").strip()[:254]
+        report_id = str(data.get("report_id") or "")[:64]
         print(f"Feedback: helpful={helpful} report={report_id} email={email} comment={comment[:100]}", flush=True)
         if _HAS_SUPABASE and report_id:
             try:
-                merged = dict(get_report_data(report_id) or {})
+                existing = get_report_data(report_id)
+                if not isinstance(existing, dict):
+                    return jsonify({"ok": True})  # missing or deleted: nothing to attach it to
+                merged = dict(existing)
                 merged["feedback_helpful"] = helpful
                 if comment:
                     merged["feedback_comment"] = comment
@@ -4884,14 +4996,25 @@ def save_report_route():
     try:
         data = request.get_json()
         existing_id = data.pop("report_id", None)
-        if existing_id and _HAS_SUPABASE:
-            try:
-                _sb.table("reports").update({"data": data}).eq("id", existing_id).execute()
+        data.pop("_mgmt", None)  # never accept a client-supplied token hash
+        if existing_id:
+            # Replacing a saved report needs the manage token (or the owning account).
+            if not _can_write_report(str(existing_id)):
+                return jsonify({"error": _NOT_ALLOWED}), 403
+            stored, _owner = _report_auth_info(str(existing_id))
+            if stored and stored.get("_mgmt"):
+                data["_mgmt"] = stored["_mgmt"]  # keep the report's own token
+            if _HAS_SUPABASE:
+                try:
+                    _sb.table("reports").update({"data": data}).eq("id", existing_id).execute()
+                    return jsonify({"report_id": existing_id})
+                except Exception:
+                    pass
+            elif existing_id in _reports:
+                _reports[existing_id]["data"] = data
                 return jsonify({"report_id": existing_id})
-            except:
-                pass
-        report_id = save_report_data(data)
-        return jsonify({"report_id": report_id})
+        report_id, manage_token = save_report_with_token(data)
+        return jsonify({"report_id": report_id, "manage_token": manage_token})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -4934,6 +5057,7 @@ Run a new analysis &rarr;</a>
     # escaped copy, so a report field can never become markup or script.
     raw_data = data
     data = _escape_tree(raw_data)
+    scan_when = _htmlmod.escape(_scan_time_label(report_id, raw_data))
 
     h = data.get("health", {})
     pr = data.get("prod_ready", {})
@@ -5038,9 +5162,12 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     deep_badge = ('<div style="display:inline-block;background:#EEEDFE;color:#3C3489;font-size:11px;'
                   'font-weight:600;padding:3px 10px;border-radius:20px;margin-bottom:.5rem">Deep scan report</div>'
                   if data.get("is_deep_scan") else "")
+    scan_line = (f'<div style="font-size:13px;color:#444;margin-bottom:.4rem">Scanned {scan_when}</div>'
+                 if scan_when else "")
     out.append(f"""<div class="card">
   {deep_badge}
   <div style="font-size:20px;font-weight:700;margin-bottom:.25rem;overflow-wrap:break-word;word-break:break-word">{data.get('repo','')}</div>
+  {scan_line}
   <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
   <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
   <div style="font-size:13px;color:#555">{verdict_reason}</div>
@@ -5257,7 +5384,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
 
     out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br><strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
-    out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {data.get("generated_at","")} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
+    out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
     return "".join(out)
 
@@ -5268,6 +5395,8 @@ def it_review(report_id):
     data = get_report_data(report_id)
     if not data:
         return "Report not found", 404
+    data = dict(data)
+    data["generated_at"] = _scan_time_label(report_id, data)
     return render_it_review(data, report_id)
 
 
@@ -5275,6 +5404,8 @@ def it_review(report_id):
 def export_markdown(report_id):
     entry_data = get_report_data(report_id)
     if not entry_data: return "Report not found", 404
+    entry_data = dict(entry_data)
+    entry_data["generated_at"] = _scan_time_label(report_id, entry_data)
     md = build_markdown(entry_data)
     return Response(md, mimetype="text/markdown",
         headers={"Content-Disposition": f"attachment; filename=verilay-{report_id}.md"})

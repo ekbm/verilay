@@ -16,6 +16,28 @@ var activeMode = 'expert';
 
 var savedReportId = null;
 
+// Manage token: proves this browser created a report. The server sends it once, when the report is
+// saved, and only a hash of it is kept there. It is needed to verify a finding, store the fix list or
+// delete the report. Kept in localStorage (so it survives a reload) and in memory (if storage is blocked).
+function storeReportToken(id, tok) {
+  if (!id || !tok) return;
+  window._reportTokens = window._reportTokens || {};
+  window._reportTokens[id] = tok;
+  try { localStorage.setItem('verilay_tok_' + id, tok); } catch (e) {}
+}
+function reportToken(id) {
+  if (!id) return '';
+  var m = (window._reportTokens || {})[id];
+  if (m) return m;
+  try { return localStorage.getItem('verilay_tok_' + id) || ''; } catch (e) { return ''; }
+}
+function reportHeaders(id, extra) {
+  var h = Object.assign({}, extra || {});
+  var tok = reportToken(id);
+  if (tok) h['X-Report-Token'] = tok;
+  return h;
+}
+
 async function autoSaveReport(data) {
   // Silently save in background and show share URL when ready
   try {
@@ -29,6 +51,7 @@ async function autoSaveReport(data) {
     var result = await resp.json();
     if (result.report_id) {
       savedReportId = result.report_id;
+      storeReportToken(result.report_id, result.manage_token);
       var shareUrl = window.location.origin + '/report/' + result.report_id;
       // Update status label
       var statusEl = document.getElementById('report-status');
@@ -76,6 +99,7 @@ async function saveReport() {
     var data = await resp.json();
     if (data.report_id) {
       savedReportId = data.report_id;
+      storeReportToken(data.report_id, data.manage_token);
       var shareUrl = window.location.origin + '/report/' + data.report_id;
       document.getElementById('share-url').value = shareUrl;
       document.getElementById('share-banner').style.display = 'flex';
@@ -819,6 +843,7 @@ function handleStreamEvent(evt) {
     case 'saved':
       updateStepsProgress(97);
       savedReportId = evt.data.report_id;
+      storeReportToken(evt.data.report_id, evt.data.manage_token);
       currentVerifications = {};  // Reset verifications for new report
       // The report-grounded Ask Verilay box (in the "Have questions" card)
       // renders disabled from step1 onward, since savedReportId doesn't
@@ -2016,7 +2041,7 @@ async function runPart2() {
     });
     var resp = await fetch('/analyse-step4', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
       body: JSON.stringify({
         repo_name:  currentReport ? currentReport.repo : '',
         built_with: currentReport ? (currentReport.built_with||'') : '',
@@ -2336,7 +2361,7 @@ async function submitVerification(findingKey, verdict) {
   try {
     var resp = await fetch('/verify-finding', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
       body: JSON.stringify({
         report_id: savedReportId,
         finding_key: findingKey,
@@ -2345,6 +2370,10 @@ async function submitVerification(findingKey, verdict) {
       })
     });
     var data = await resp.json();
+    if (!data.ok) {
+      alert(data.error || 'Could not save this check. Please try again.');
+      return;
+    }
     if (data.ok) {
       currentVerifications = data.verifications || currentVerifications;
       currentVerifications[findingKey] = {
@@ -2553,20 +2582,30 @@ function dismissWaitlist() {
 async function deleteReport() {
   if (!savedReportId) return;
   if (!confirm('Delete this report? The findings will be removed. This cannot be undone.')) return;
+  var deletedId = savedReportId;
   try {
-    var resp = await fetch('/delete-report/' + savedReportId, { method: 'POST' });
+    var resp = await fetch('/delete-report/' + deletedId, { method: 'POST', headers: reportHeaders(deletedId) });
     var data = await resp.json();
     if (data.ok) {
-      // Clear the report from view
-      document.getElementById('report').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--mut)">Report deleted.</div>';
+      // Clear the report from view. (This used to look for an element called "report", which the
+      // page does not have, so it threw after the server had already deleted the report.)
+      ['report-sections', 'p2-results', 'layers-container'].forEach(function(i) { var e = document.getElementById(i); if (e) e.innerHTML = ''; });
+      ['p2-banner', 'p2-loading', 'steps23-loading', 'share-banner'].forEach(function(i) { var e = document.getElementById(i); if (e) e.style.display = 'none'; });
+      var rc = document.getElementById('report-content');
+      if (rc) rc.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--mut)">Report deleted.</div>';
       savedReportId = null;
+      try { localStorage.removeItem('verilay_tok_' + deletedId); } catch (e) {}
+      if (window._reportTokens) delete window._reportTokens[deletedId];
       // Remove from local history
       var history = getHistory();
-      var filtered = history.filter(function(h) { return h.id !== savedReportId; });
+      var filtered = history.filter(function(h) { return h.id !== deletedId && h._savedId !== deletedId; });
       localStorage.setItem('verilay_history', JSON.stringify(filtered));
+    } else {
+      alert(data.error || 'Could not delete the report. Please try again.');
     }
   } catch(e) {
     console.error('Delete error:', e);
+    alert('Could not delete the report. Please check your connection and try again.');
   }
 }
 
