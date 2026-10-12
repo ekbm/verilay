@@ -1414,19 +1414,26 @@ function osvFindingsHTML(data) {
 
   var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';
   var noun = osv.packages_checked === 1 ? 'dependency' : 'dependencies';
+  // What was actually covered, in plain words (worked out on the server). "All" is only said when the
+  // whole package list was read; older reports carry no coverage and make no claim of completeness.
+  var cov = osv.coverage || {};
+  var pk = osv.packages_checked + (osv.packages_checked === 1 ? ' package' : ' packages');
+  var covSum = cov.summary || pk;
+  var covNote = cov.note ? '<div style="color:#92400E;font-size:12px;line-height:1.5;margin-top:6px">' + esc(cov.note) + '</div>' : '';
 
   if (!osv.vulnerabilities_found) {
-    h += '<div><strong style="color:var(--gr)">✓ All ' + osv.packages_checked + ' ' + noun + ' checked — none vulnerable</strong></div>';
+    h += '<div><strong style="color:var(--gr)">✓ ' + esc(cov.scope === 'full' ? 'All ' + pk + ' checked' : covSum + ' checked') + ' — none vulnerable</strong></div>';
     h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
-    h += 'Every dependency in your project was checked against OSV.dev, a public database of known security vulnerabilities. None have a documented issue right now — worth re-checking occasionally, since new vulnerabilities get discovered in existing libraries over time.';
-    h += '</div></div>';
+    h += (cov.scope === 'full' ? 'Every package in your project was checked' : 'These packages were checked') + ' against OSV.dev, a public database of known security vulnerabilities. None have a documented issue right now — worth re-checking occasionally, since new vulnerabilities get discovered in existing libraries over time.';
+    h += '</div>' + covNote + '</div>';
     return h;
   }
 
   var vword = osv.vulnerabilities_found === 1 ? 'dependency has' : 'dependencies have';
   var col = osv.critical > 0 ? 'var(--rd,#E24B4A)' : 'var(--or,#EF9F27)';
   h += '<div><strong style="color:' + col + '">' + osv.vulnerabilities_found + ' ' + vword + ' known vulnerabilities</strong>';
-  h += '<span style="color:var(--mut)"> &nbsp;·&nbsp; checked ' + osv.packages_checked + ' ' + noun + ' against OSV.dev</span></div>';
+  h += '<span style="color:var(--mut)"> &nbsp;·&nbsp; checked ' + esc(covSum) + ' against OSV.dev</span></div>';
+  h += covNote;
   h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:6px">';
   h += osv.critical + ' serious, ' + osv.warnings + ' less severe. These are real, named, publicly documented issues in the exact library versions your app uses — the same kind of check tools like Snyk and GitHub\'s own security alerts run.';
   h += '</div>';
@@ -1540,7 +1547,7 @@ function checksSummaryText(data) {
   if (osv && osv.packages_checked) {
     parts.push(osv.vulnerabilities_found
       ? osv.vulnerabilities_found + ' vulnerable package' + (osv.vulnerabilities_found !== 1 ? 's' : '')
-      : osv.packages_checked + ' packages clean');
+      : osv.packages_checked + ((osv.coverage && (osv.coverage.scope === 'direct' || osv.coverage.scope === 'listed')) ? ' direct packages clean' : (osv.coverage && osv.coverage.scope === 'partial') ? ' packages clean (part of the project)' : ' packages clean'));
   }
   return parts.join(' · ');
 }
@@ -2021,7 +2028,7 @@ async function runPart2() {
         var osv = currentReport ? currentReport.osv_scan : null;
         if (osv && osv.vulnerabilities_found) {
           findings += '- Libraries ['+layer.status+']: '+osv.vulnerabilities_found+' dependencies have known vulnerabilities ('+
-            osv.critical+' serious, '+osv.warnings+' less severe), checked '+osv.packages_checked+' total against OSV.dev. '+
+            osv.critical+' serious, '+osv.warnings+' less severe), checked '+((osv.coverage && osv.coverage.summary) ? osv.coverage.summary : osv.packages_checked+' packages')+' against OSV.dev. '+
             'Exact package names and fixed versions are not shown above — do not invent them.\n';
         } else {
           findings += '- Libraries ['+layer.status+']: no known dependency vulnerabilities.\n';

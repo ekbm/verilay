@@ -105,9 +105,12 @@ def _rule_rows(data):
     osv = data.get("osv_scan") or {}
     osv_checked = bool(osv) and _n(osv.get("packages_checked")) > 0
     osv_status = _status_from_counts(_n(osv.get("critical")), _n(osv.get("warnings")), osv_checked)
+    cov = osv.get("coverage") or {}
     if osv_checked:
+        # What was covered, in plain words ("N packages you installed directly" when no full list was read).
+        covered = cov.get("summary") or f'{_n(osv.get("packages_checked"))} packages checked'
         osv_result = (f'{_n(osv.get("vulnerabilities_found"))} known vulnerabilities '
-                      f'({_n(osv.get("critical"))} serious) in {_n(osv.get("packages_checked"))} packages checked')
+                      f'({_n(osv.get("critical"))} serious) in {covered}')
     else:
         osv_result = "No dependency list found, or not run for this report"
     rows.append(("Known-vulnerable libraries",
@@ -281,6 +284,12 @@ def render_it_review(data, report_id):
     else:
         fix_block = '<p class="sub">Nothing flagged by these checks.</p>'
 
+    _scope = (data.get("osv_scan") or {}).get("coverage") or {}
+    pkg_gap = ""
+    if _scope.get("scope") in ("direct", "listed", "partial", "none"):
+        pkg_gap = ('<li><strong>The packages your packages depend on.</strong> '
+                   + escape(str(_scope.get("note") or "No full package list was found.")) + '</li>')
+
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -384,6 +393,7 @@ ul.plain li{{margin-bottom:.35rem}}
     <li><strong>Settings made outside the code</strong>, such as database access rules or login options set in a Supabase, Firebase or hosting dashboard.</li>
     <li><strong>Where company data goes:</strong> which outside services, AI providers and countries receive it.</li>
     <li><strong>Sign-in requirements:</strong> whether it supports company single sign-on (SSO) or enforces two-factor login.</li>
+    {pkg_gap}
     <li><strong>Software licences</strong> of the libraries used.</li>
     <li><strong>Business logic:</strong> whether the app does the right thing for your processes.</li>
     <li><strong>AI-specific risks</strong> if the app itself calls an AI model, such as prompt injection.</li>

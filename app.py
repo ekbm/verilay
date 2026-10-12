@@ -54,6 +54,7 @@ from verilay_osv_check import (
     to_teaser_dict as osv_to_teaser_dict,
     to_report_dict as osv_to_report_dict,
     to_prompt_block as osv_to_prompt_block,
+    coverage_summary as osv_coverage_summary,
 )
 import verilay_deepscan as deepscan
 import verilay_notify as notify
@@ -2334,34 +2335,44 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
             break  # Claude wrote something specific — leave it alone
 
         crit, warn = osv_severity_counts(osv_vulns)
-        noun = "dependency" if osv_checked == 1 else "dependencies"
+        # Say exactly what was covered: "all" only when the whole package list (lockfile) was read.
+        cs = osv_coverage_summary(getattr(osv_vulns, "coverage", None), osv_checked)
+        full = cs["scope"] == "full"
+        pk = f"{osv_checked} package" + ("" if osv_checked == 1 else "s")
+        scope_note = f" {cs['note']}" if cs["note"] else ""
 
         if not osv_vulns:
             summary = (
-                f"Checked all {osv_checked} {noun} against the public OSV.dev "
-                "vulnerability database — none have known vulnerabilities."
+                (f"Checked all {pk} against the public OSV.dev vulnerability database — none have known vulnerabilities."
+                 if full else
+                 f"Checked {cs['summary']} against the public OSV.dev vulnerability database — none of them has a known vulnerability.")
+                + scope_note
             )
             layer["expert"]["summary"] = summary
             layer["expert"]["findings"] = [{
                 "severity": "passing",
-                "title": f"All {osv_checked} {noun} checked, none vulnerable",
+                "title": f"All {pk} checked, none vulnerable" if full else f"{pk} checked, none vulnerable",
                 "detail": summary, "file": "", "why_it_matters": "",
             }]
             layer["learner"]["findings_plain"] = [{
                 "severity": "passing",
-                "plain_title": f"All {osv_checked} {noun} checked — all clear",
+                "plain_title": f"All {pk} checked — all clear" if full else f"{pk} checked — all clear",
                 "plain_detail": (
-                    f"Verilay checked every one of your app's {osv_checked} code libraries against a "
-                    "public database of known security problems. None of them have a known issue."
+                    (f"Verilay checked all {pk} your app uses, including the ones your packages depend on, against a "
+                     "public database of known security problems. None of them has a known issue."
+                     if full else
+                     f"Verilay checked {cs['summary']} against a public database of known security problems. "
+                     "None of them has a known issue.")
+                    + scope_note
                 ),
                 "real_world_impact": "", "action": "",
             }]
         else:
             sev = "critical" if crit > 0 else "warning"
-            vuln_noun = "dependency has" if len(osv_vulns) == 1 else "dependencies have"
+            vuln_noun = "package has" if len(osv_vulns) == 1 else "packages have"
             summary = (
-                f"Checked {osv_checked} {noun} against OSV.dev — found {len(osv_vulns)} with known "
-                f"vulnerabilities ({crit} serious, {warn} less severe)."
+                f"Checked {cs['summary']} against OSV.dev — found {len(osv_vulns)} with known "
+                f"vulnerabilities ({crit} serious, {warn} less severe)." + scope_note
             )
             layer["status"] = sev
             layer["expert"]["summary"] = summary
@@ -2375,9 +2386,9 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
                 "severity": sev,
                 "plain_title": f"{len(osv_vulns)} of your code libraries have known security problems",
                 "plain_detail": (
-                    f"Verilay checked all {osv_checked} of your app's code libraries against a public "
+                    f"Verilay checked {cs['summary']} against a public "
                     f"database of known security problems and found {len(osv_vulns)} with a documented "
-                    "issue."
+                    "issue." + scope_note
                 ),
                 "real_world_impact": "A known, published weakness in one of your libraries could be used against your app.",
                 "action": "Ask your AI builder to check for outdated dependencies and update them to their patched versions.",
@@ -3202,7 +3213,7 @@ BLOG_POSTS = [
 <li><strong>&ldquo;After I delete something, can I still reach it by its link, an API or a search?&rdquo;</strong> Try it yourself. Delete something, then open the old address.</li>
 </ol>
 <p>That last one took me far too long to try on my own tool. It&rsquo;s the same lesson as <a href="/blog/part-of-my-tool-that-trusted-a-strangers-page" style="color:#534AB7">the hole I found in the second fetch</a>: the part that looks handled is the part I stop checking.</p>
-<p>Everything in this post is also in the <a href="/changelog" style="color:#534AB7">changelog</a>, in shorter form. Verilay&rsquo;s code is public at <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:#534AB7">github.com/ekbm/verilay</a>. If there&rsquo;s another door I haven&rsquo;t found, I&rsquo;d rather you told me.</p>
+<p>The <a href="/changelog" style="color:#534AB7">changelog</a> has the short version. Verilay&rsquo;s code is public at <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:#534AB7">github.com/ekbm/verilay</a>. If there&rsquo;s another door I haven&rsquo;t found, I&rsquo;d rather you told me.</p>
 """,
     },
     {
@@ -4765,15 +4776,11 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 12, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Only you can change or delete your reports, scan dates, and an easier-to-read results page</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Safer reports, clearer results, and scan dates</div>
     <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span><span class="tag new">New</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> Delete report now really deletes. Before, it said OK and the report stayed online. A deleted report is now gone from its page, the IT Review Pack and the download, and its grade no longer shows on the README badge. If a delete does not work, you are told. <a href="/blog/anyone-with-the-link-safe-verilay-report-security" style="color:#534AB7">Read the full story</a>.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> a report can now only be changed, marked verified or deleted from the browser that ran the scan (it holds a private key), or, for a deep scan, by you when signed in. Before, anyone with the report link could change it. Reports made before today have no key, so they are now read-only. To have one removed, email moses@verilay.dev with its link.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> hardened how text taken from the analysed code is shown on shared report pages. It is now always treated as plain text, and the architecture diagram is rebuilt from a short list of safe shapes.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the README badge now shows a grade only for GitHub scans, never for private ZIP uploads. Feedback emails and comments are no longer included in a report&rsquo;s public data, and are length-limited.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> every report now says when it was scanned, to the minute and in UTC (&ldquo;Scanned 12 Oct 2026, 10:33 UTC&rdquo;), in the top card, the footer, the IT Review Pack and the download. Older reports get the date they were saved.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the results page is easier to read. Your score, verdict and the fix list come first, and the layers, the checks that were run, similar projects, the architecture diagram and the Ask Verilay box sit in sections you can open and close. Print or Save as PDF opens them all.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> if part of the analysis ran out of time, the page used to show a grade and &ldquo;Production ready&rdquo; based on the layers that did finish. It now says &ldquo;Analysis incomplete&rdquo;, names what was not checked, and gives no grade. Verilay also waits up to seven minutes for a slow analysis, up from four.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> Delete report now really deletes. If part of an analysis runs out of time, you now see &ldquo;Analysis incomplete&rdquo; instead of a grade.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> a report can only be changed or deleted from the browser that ran the scan, or by you when signed in. Older reports are now read-only; to have one removed, email moses@verilay.dev. Reports now say which packages were checked, and the results page is easier to read, with sections that open and close. <a href="/blog/anyone-with-the-link-safe-verilay-report-security" style="color:#534AB7">More on the report changes</a>.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> every report shows when it was scanned (UTC).</p>
   </div>
 
   <div class="entry">
@@ -5374,11 +5381,20 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         vulns = osv.get("vulnerabilities")  # present only on full-detail (paid) reports
         found = osv.get("vulnerabilities_found", len(vulns) if vulns is not None else 0)
         noun = "dependency" if osv["packages_checked"] == 1 else "dependencies"
+        # What was covered, in plain words. "All" only when the whole package list was read; reports
+        # saved before this existed carry no coverage and make no claim of completeness.
+        _cov = osv.get("coverage") or {}
+        _pk = f'{osv["packages_checked"]} package' + ("" if osv["packages_checked"] == 1 else "s")
+        _cov_sum = _cov.get("summary") or _pk
+        _cov_note = _cov.get("note") or ""
+        _cov_note_html = (f'<div style="font-size:12px;color:#92400E;margin-top:.35rem">{_cov_note}</div>'
+                          if _cov_note else "")
+        _clean_head = f"All {_pk} checked" if _cov.get("scope") == "full" else f"{_cov_sum} checked"
         if not found:
             out.append(
-                f'<div class="card"><strong style="color:#1D9E75">✓ All {osv["packages_checked"]} {noun} '
-                f'checked — none vulnerable</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
-                'Checked against OSV.dev, a public database of known security vulnerabilities.</div></div>'
+                f'<div class="card"><strong style="color:#1D9E75">✓ {_clean_head} — none vulnerable</strong>'
+                f'<div style="font-size:13px;color:#666;margin-top:.35rem">'
+                f'Checked against OSV.dev, a public database of known security vulnerabilities.</div>{_cov_note_html}</div>'
             )
         elif vulns is not None:
             items = "".join(
@@ -5397,7 +5413,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             out.append(
                 f'<div class="card"><strong style="color:#EF9F27">{found} {"dependency has" if found==1 else "dependencies have"} '
                 f'known vulnerabilities</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
-                f'Checked {osv["packages_checked"]} {noun} against OSV.dev.</div>'
+                f'Checked {_cov_sum} against OSV.dev.</div>{_cov_note_html}'
                 '<div style="font-size:13px;color:#666;margin-top:.5rem">Two ways to fix this: ask your AI '
                 'builder to investigate using the free advice prompt below, or skip the investigation — the '
                 '<a href="/deep-scan" style="color:#534AB7">deep scan</a> hands you the exact package names, '

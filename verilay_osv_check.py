@@ -215,6 +215,135 @@ def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], Tuple[s
     return merged
 
 
+
+# ── What part of the package list was actually read (2026-10-13) ─────────────
+# "N packages checked" used to read as "everything was checked". It is only true when a
+# full lockfile (the complete list, including the packages your packages depend on) was
+# read. Without one, only the packages named in package.json / requirements.txt are seen.
+# This records which case applies so every report can say so in plain words.
+
+class FindingList(list):
+    """A plain list of Vulnerability objects that also remembers what the check covered
+    (see dependency_coverage). Everything that already passes the findings list around
+    can read `.coverage`, so no function signature had to change."""
+    coverage = None
+
+
+def _dir_covers(lock_dir: str, manifest_dir: str) -> bool:
+    """A lockfile covers a package.json in the same folder or in any folder below it
+    (one root lockfile serves a whole monorepo)."""
+    return lock_dir == "" or manifest_dir == lock_dir or manifest_dir.startswith(lock_dir + "/")
+
+
+def _pypi_unpinned_count(content: str) -> int:
+    """requirements.txt lines that name a package without an exact (==) version.
+    They are skipped on purpose (see _pypi_requirements_deps), so say how many."""
+    n = 0
+    for line in content.splitlines():
+        line = line.split("#", 1)[0].split(";", 1)[0].strip()
+        if not line or line.startswith("-"):
+            continue
+        m = _PY_LINE.match(line)
+        if m and m.group(1) and not (m.group(2) == "==" and m.group(3)):
+            n += 1
+    return n
+
+
+def dependency_coverage(files: Dict[str, str]) -> dict:
+    """How much of the app's package list the check could read. Never raises.
+
+    scope: "full" (a complete lockfile for everything), "partial" (some folders only, or a
+    mix), "direct" (only package.json: the packages named directly), "listed" (only a
+    requirements.txt, exact-version lines only), "none" (nothing to check), or "unknown"."""
+    try:
+        locks: Dict[str, Dict[str, str]] = {}
+        mans: Dict[str, Dict[str, str]] = {}
+        unreadable = unpinned = 0
+        for path, content in files.items():
+            if not isinstance(content, str):
+                continue
+            folder, _, fname = path.rpartition("/")
+            for suffix, parser, eco, is_lock in _MANIFEST_PARSERS:
+                if fname != suffix:
+                    continue
+                got = parser(content)
+                if is_lock:
+                    if got:
+                        locks.setdefault(eco, {})[folder] = fname
+                    else:
+                        unreadable += 1   # present but empty or cut off: say so, do not pretend
+                else:
+                    if got:
+                        mans.setdefault(eco, {})[folder] = fname
+                    if eco == "PyPI":
+                        unpinned += _pypi_unpinned_count(content)
+        ecos = []
+        for eco in sorted(set(locks) | set(mans)):
+            lk, mn = locks.get(eco, {}), mans.get(eco, {})
+            if lk:
+                gaps = [m for m in mn if not any(_dir_covers(l, m) for l in lk)]
+                scope, source = ("partial" if gaps else "full"), ", ".join(sorted(set(lk.values())))
+            elif eco == "PyPI":
+                scope, source = "listed", "requirements.txt"
+            else:
+                scope, source = "direct", "package.json"
+            ecos.append({"ecosystem": eco, "scope": scope, "source": source})
+        scopes = {e["scope"] for e in ecos}
+        if not scopes:
+            overall = "none"
+        elif scopes == {"full"}:
+            overall = "full"
+        elif scopes == {"listed"}:
+            overall = "listed"
+        elif scopes <= {"direct", "listed"}:
+            overall = "direct"
+        else:
+            overall = "partial"
+        return {"scope": overall, "ecosystems": ecos, "unpinned_skipped": unpinned, "unreadable_lockfiles": unreadable}
+    except Exception:
+        return {"scope": "unknown", "ecosystems": [], "unpinned_skipped": 0, "unreadable_lockfiles": 0}
+
+
+def coverage_summary(coverage: Optional[dict], packages_checked: int) -> dict:
+    """Plain-English wording for a coverage record: {scope, summary, note}. One place, so the
+    live page, the saved report, the IT pack and the AI prompts can never disagree. Reports
+    saved before this existed have no coverage: they get a neutral "N packages" with no claim
+    of completeness."""
+    n = int(packages_checked or 0)
+    pk = f"{n} package" + ("" if n == 1 else "s")
+    scope = (coverage or {}).get("scope") or "unknown"
+    extra = " A package list file was found but could not be read." if (coverage or {}).get("unreadable_lockfiles") else ""
+    if scope == "full":
+        return {"scope": scope, "summary": f"{pk}, including the ones your packages depend on", "note": ""}
+    if scope == "direct":
+        return {"scope": scope, "summary": f"{pk} you installed directly",
+                "note": "The packages these depend on were not checked, because no full package list was found in the files Verilay read." + extra}
+    if scope == "listed":
+        k = int((coverage or {}).get("unpinned_skipped") or 0)
+        skipped = f" ({k} without an exact version {'was' if k == 1 else 'were'} skipped)" if k else ""
+        return {"scope": scope, "summary": f"{pk} listed in requirements.txt",
+                "note": f"Only entries with an exact version number were checked{skipped}. The packages these depend on were not checked." + extra}
+    if scope == "partial":
+        return {"scope": scope, "summary": f"{pk} (part of the project only)",
+                "note": "Only some of the package lists were complete, so for part of the project only the packages named directly were checked, not the ones they depend on." + extra}
+    if scope == "none":
+        return {"scope": scope, "summary": "0 packages", "note": "No package list with packages in it was found, so nothing was checked." + extra}
+    return {"scope": "unknown", "summary": pk, "note": ""}
+
+
+def _coverage_of(vulns, packages_checked: int) -> dict:
+    return coverage_summary(getattr(vulns, "coverage", None), packages_checked)
+
+
+def _scope_sentence(vulns, packages_checked: int) -> str:
+    """Tells the AI exactly what was covered, so its write-up cannot say 'all your dependencies'."""
+    cs = _coverage_of(vulns, packages_checked)
+    if cs["scope"] in ("full", "unknown"):
+        return ""
+    return (f" SCOPE: only {cs['summary']} were checked. {cs['note']} Say this plainly in the Libraries write-up. "
+            "Never describe it as all of the app's dependencies or every library.")
+
+
 # ── OSV.dev queries ─────────────────────────────────────────────────────────
 
 def _query_batch(deps: Dict[Tuple[str, str], Tuple[str, bool]]) -> Dict[Tuple[str, str], List[str]]:
@@ -358,12 +487,17 @@ def _dedupe_advisory_ids(vuln_ids: List[str], details: Dict[str, dict]) -> List[
 def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]:
     """Main entry point. Returns (vulnerabilities, packages_checked)."""
     deps = extract_dependencies(files)
+    cov = dependency_coverage(files)
     if not deps:
-        return [], 0
+        empty = FindingList()
+        empty.coverage = cov
+        return empty, 0
 
     matches = _query_batch(deps)
     if not matches:
-        return [], len(deps)
+        clean = FindingList()
+        clean.coverage = cov
+        return clean, len(deps)
 
     all_ids = sorted({vid for ids in matches.values() for vid in ids})
     details = _fetch_details(all_ids)
@@ -408,7 +542,9 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
             ))
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity, 4), f.package))
-    return findings, len(deps)
+    result = FindingList(findings)
+    result.coverage = cov
+    return result, len(deps)
 
 
 # ── Handing findings to Claude / the UI — same shape as the secret scanner ──
@@ -425,7 +561,8 @@ def to_prompt_block(vulns: List[Vulnerability], packages_checked: int) -> str:
         return (
             f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev): {packages_checked} {noun} checked "
             "against the public OSV.dev vulnerability database. None have known vulnerabilities. This "
-            "is authoritative — do not invent dependency findings.\n\n"
+            "is authoritative — do not invent dependency findings."
+            + _scope_sentence(vulns, packages_checked) + "\n\n"
         )
     lines = [
         f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev) — {packages_checked} {noun} checked against "
@@ -434,7 +571,7 @@ def to_prompt_block(vulns: List[Vulnerability], packages_checked: int) -> str:
         "additional dependency findings beyond this list. Entries marked (DEV-ONLY) are build/tooling "
         "dependencies that never ship to a real user — mention them as lower-priority housekeeping, "
         "not urgent user-facing risk, and do not let them inflate how alarming the overall write-up "
-        "sounds.\n"
+        "sounds." + _scope_sentence(vulns, packages_checked) + "\n"
     ]
     for v in vulns:
         fix = f", fix: upgrade to {v.fixed_version}" if v.fixed_version else ", no fix published yet"
@@ -503,7 +640,8 @@ def to_teaser_block(vulns: List[Vulnerability], packages_checked: int) -> str:
             f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev): {packages_checked} {noun} checked "
             "against the public OSV.dev vulnerability database. None have known vulnerabilities "
             "that affect your users (any dev/build-tool-only findings don't count here). "
-            "State this plainly as a positive in the Libraries layer.\n\n"
+            "State this plainly as a positive in the Libraries layer."
+            + _scope_sentence(vulns, packages_checked) + "\n\n"
         )
     crit, warn = severity_counts(vulns)
     return (
@@ -514,7 +652,7 @@ def to_teaser_block(vulns: List[Vulnerability], packages_checked: int) -> str:
         "Report ONLY the count and severity split in the Libraries findings. Do NOT name specific "
         "package names, version numbers, or CVE/GHSA ids — you were not given them, so do not "
         "invent them. End the finding by telling the user a deep scan reveals exactly which "
-        "packages need updating and how to fix them.\n\n"
+        "packages need updating and how to fix them." + _scope_sentence(vulns, packages_checked) + "\n\n"
     )
 
 
@@ -529,6 +667,7 @@ def to_teaser_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
         "vulnerabilities_found": len(_countable(vulns)),
         "critical": crit,
         "warnings": warn,
+        "coverage": _coverage_of(vulns, packages_checked),
     }
 
 
@@ -541,6 +680,7 @@ def to_report_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
     excludes dev-only and moves high out of the critical bucket)."""
     return {
         "packages_checked": packages_checked,
+        "coverage": _coverage_of(vulns, packages_checked),
         "critical": sum(1 for v in vulns if v.severity == "critical"),
         "high": sum(1 for v in vulns if v.severity == "high"),
         "vulnerabilities": [
