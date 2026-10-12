@@ -25,6 +25,7 @@ import os, sys, json, base64, zipfile, io, requests, time, secrets as _secrets, 
 import html as _htmlmod
 sys.stdout.reconfigure(line_buffering=True)
 from datetime import datetime
+import datetime as _dt  # _dt.datetime.utcnow() is used by delete_report and verify_finding; it was never imported, so both crashed
 from flask import Flask, render_template_string, request, jsonify, Response, stream_with_context, redirect
 from dotenv import load_dotenv
 
@@ -325,6 +326,12 @@ def save_report_data(data, user_id=None):
     for k in expired: del _reports[k]
     return report_id
 
+def _is_deleted_report(data):
+    """A deleted report is kept as a stub ({"deleted": True, ...}) so stats stay
+    accurate. It must never be served or rendered as if it were a real report."""
+    return isinstance(data, dict) and bool(data.get("deleted"))
+
+
 def get_report_data(report_id):
     if _HAS_SUPABASE:
         # One retry: a dropped connection should cost a moment, not a 404 on
@@ -333,15 +340,142 @@ def get_report_data(report_id):
             try:
                 result = _sb.table("reports").select("data").eq("id", report_id).execute()
                 if result.data:
-                    return result.data[0]["data"]
+                    _d = result.data[0]["data"]
+                    return None if _is_deleted_report(_d) else _d
                 break
             except Exception as e:
                 print(f"Supabase get failed (attempt {_attempt}): {e}")
     # Fallback to memory
     entry = _reports.get(report_id)
     if entry and time.time() - entry["saved_at"] < REPORT_TTL:
-        return entry["data"]
+        return None if _is_deleted_report(entry["data"]) else entry["data"]
     return None
+
+
+def _escape_tree(value):
+    """Return a copy of report data with every string HTML-escaped.
+
+    The shared report page builds HTML by dropping report fields straight into
+    f-strings. Report fields come from an AI model reading someone else's repo
+    (and, until report writes are locked down, from anyone holding the link),
+    so none of them can be trusted as markup. Escape once, here, on the way in.
+    Dict keys are left alone so lookups keep working. Non-strings pass through."""
+    if isinstance(value, str):
+        return _htmlmod.escape(value)
+    if isinstance(value, dict):
+        return {k: _escape_tree(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_escape_tree(v) for v in value]
+    return value
+
+
+import re as _re
+import xml.etree.ElementTree as _ET
+from html.parser import HTMLParser as _HTMLParser
+
+_SVG_NS = "http://www.w3.org/2000/svg"
+_ET.register_namespace("", _SVG_NS)
+# Exactly the tags and attributes build_architecture_diagram() draws, and nothing else.
+_SVG_ALLOWED = {
+    "svg":  {"viewBox", "style", "xmlns"},
+    "line": {"x1", "y1", "x2", "y2", "stroke", "stroke-width", "stroke-dasharray"},
+    "rect": {"x", "y", "width", "height", "rx", "fill", "stroke", "stroke-width", "stroke-dasharray"},
+    "text": {"x", "y", "fill", "font-size", "font-weight", "text-anchor"},
+}
+_SAFE_PLAIN = _re.compile(r"^[A-Za-z0-9#%.,\s_-]*$")
+_SAFE_STYLE = _re.compile(r"^[A-Za-z0-9:;#%.,\s'\"()_-]*$")
+
+
+def _safe_style(value):
+    v = value or ""
+    low = v.lower()
+    if not _SAFE_STYLE.match(v) or any(bad in low for bad in ("url(", "expression", "import", "javascript", "behavior")):
+        return None
+    return v
+
+
+def _svg_node(el):
+    tag = el.tag.split("}")[-1]
+    allowed = _SVG_ALLOWED.get(tag)
+    if allowed is None:
+        return None
+    out = _ET.Element(f"{{{_SVG_NS}}}{tag}")
+    for k, v in el.attrib.items():
+        k = k.split("}")[-1]
+        if k not in allowed or k == "xmlns":
+            continue
+        if k == "style":
+            v = _safe_style(v)
+        elif not _SAFE_PLAIN.match(v or ""):
+            v = None
+        if v is not None:
+            out.set(k, v)
+    if tag == "text":
+        out.text = el.text or ""   # element text is escaped when serialised
+        return out
+    for child in el:
+        n = _svg_node(child)
+        if n is not None:
+            out.append(n)
+    return out
+
+
+def _sanitize_diagram_svg(svg):
+    """Rebuild a stored architecture diagram from an allow-list of the SVG
+    Verilay itself produces. Anything else (script, foreignObject, event
+    handlers, links, unknown tags or attributes) is dropped. Returns "" when
+    the stored value is not a diagram this function understands."""
+    if not svg or not isinstance(svg, str):
+        return ""
+    try:
+        root = _ET.fromstring(svg)
+        if root.tag.split("}")[-1] != "svg":
+            return ""
+        node = _svg_node(root)
+        if node is None:
+            return ""
+        return _ET.tostring(node, encoding="unicode")
+    except Exception:
+        return ""
+
+
+class _RowsSanitizer(_HTMLParser):
+    """Rebuilds the "What each part does" rows from only <div> and <span> with a
+    safe inline style. Every other tag is dropped; text is always escaped."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out, self.stack = [], []
+    def handle_starttag(self, tag, attrs):
+        if tag in ("div", "span"):
+            style = next((v for k, v in attrs if k == "style"), None)
+            style = _safe_style(style) if style is not None else None
+            self.out.append(f'<{tag} style="{_htmlmod.escape(style, quote=True)}">' if style else f"<{tag}>")
+            self.stack.append(tag)
+    def handle_endtag(self, tag):
+        if tag in ("div", "span") and tag in self.stack:
+            while self.stack:
+                t = self.stack.pop()
+                self.out.append(f"</{t}>")
+                if t == tag:
+                    break
+    def handle_data(self, data):
+        self.out.append(_htmlmod.escape(data))
+    def close_all(self):
+        while self.stack:
+            self.out.append(f"</{self.stack.pop()}>")
+
+
+def _sanitize_module_rows(html_text):
+    if not html_text or not isinstance(html_text, str):
+        return ""
+    try:
+        p = _RowsSanitizer()
+        p.feed(html_text)
+        p.close()
+        p.close_all()
+        return "".join(p.out)
+    except Exception:
+        return ""
 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 _rate_limit = {}
@@ -1684,9 +1818,12 @@ def build_module_purpose_rows_html(stack, layers):
         if name not in present:
             continue
         layer = layers_by_name.get(name, {})
+        # app_label and the description come from an AI model reading someone
+        # else's repo, and this markup is embedded verbatim on both the live view
+        # and the shared report page, so escape them here.
         app_label = (layer.get("app_label") or "").strip()
-        headline = app_label or name
-        desc = _module_description(layer, name)
+        headline = _htmlmod.escape(app_label or name)
+        desc = _htmlmod.escape(_module_description(layer, name) or "")
         desc_html = f'<div style="font-size:13px;color:#666;margin-top:2px;line-height:1.5">{desc}</div>' if desc else ""
         rows.append(
             '<div style="padding:.55rem 0;border-top:0.5px solid #e5e5f0">'
@@ -2796,20 +2933,32 @@ def verify_finding():
 
 @app.route("/delete-report/<report_id>", methods=["POST"])
 def delete_report(report_id):
-    """Delete a report — strips sensitive data but keeps stats."""
+    """Delete a report — strips sensitive data but keeps stats.
+
+    Anonymise rather than delete the row so the analysis count stays accurate,
+    but also clear the repo name and score: both are readable by anyone (the
+    README badge reads `score` by `repo`), so leaving them would keep
+    advertising the grade of a report the owner deleted.
+    Only report success when the delete really happened: this route used to
+    answer {"ok": true} even after crashing, so the page said "Report deleted"
+    while the report stayed up."""
     try:
         if not report_id or len(report_id) < 8:
             return jsonify({"ok": False, "error": "Invalid report ID"})
         if _HAS_SUPABASE:
             try:
-                # Anonymise rather than delete — keeps stats accurate
                 _sb.table("reports").update({
-                    "data": {"deleted": True, "deleted_at": _dt.datetime.utcnow().isoformat()}
+                    "data": {"deleted": True, "deleted_at": _dt.datetime.utcnow().isoformat()},
+                    "repo": "",
+                    "score": "",
                 }).eq("id", report_id).execute()
+                _reports.pop(report_id, None)
                 print(f"✓ Report anonymised: {report_id}", flush=True)
                 return jsonify({"ok": True})
             except Exception as e:
                 print(f"Delete error: {e}", flush=True)
+                return jsonify({"ok": False, "error": "Could not delete the report. Please try again."}), 500
+        _reports.pop(report_id, None)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
@@ -4780,6 +4929,12 @@ Run a new analysis &rarr;</a>
 <p style="color:#aaa;font-size:12px;margin-top:1rem">Redirecting in 5 seconds...</p>
 </body></html>""", 404
 
+    # `raw_data` goes to the modules that escape for themselves (deep report,
+    # discovery). Everything this function drops into HTML directly uses the
+    # escaped copy, so a report field can never become markup or script.
+    raw_data = data
+    data = _escape_tree(raw_data)
+
     h = data.get("health", {})
     pr = data.get("prod_ready", {})
     stack = data.get("stack", [])
@@ -4802,7 +4957,7 @@ Run a new analysis &rarr;</a>
             verdict_reason = verdict_reason.replace("the critical findings below", "the warnings below")
         score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
         score_display = h.get("score","?")
-    incomplete_names = [_htmlmod.escape(str(x)) for x in (data.get("analysis_incomplete") or [])]
+    incomplete_names = [str(x) for x in (data.get("analysis_incomplete") or [])]  # data is already escaped
     if incomplete_names and not is_preview:
         # Part of the analysis never finished: do not present a letter worked out from what did arrive.
         verdict_label = "Incomplete analysis"
@@ -4814,7 +4969,7 @@ Run a new analysis &rarr;</a>
     sev_bg = {"critical":"#FCEBEB","warning":"#FEF3C7","passing":"#EAF3DE","not_checked":"#F1EFE8"}
     sev_tc = {"critical":"#A32D2D","warning":"#92400E","passing":"#27500A","not_checked":"#5F5E5A"}
 
-    repo_safe = _htmlmod.escape(str(data.get("repo") or "Report"))
+    repo_safe = str(data.get("repo") or "Report")  # data is already escaped
     out = []
     out.append(f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
@@ -4906,19 +5061,19 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # Deep reports saved before 2026-10-10 carry no per-package fixes (the AI wrote
     # dependency fixes then). Build them from the stored OSV data so old reports
     # get the same section; the stored report itself is not modified.
-    _fix_data = data
-    if data.get("is_deep_scan") and not data.get("dependency_fixes"):
-        _vd = (data.get("osv_scan") or {}).get("vulnerabilities") or []
+    _fix_data = raw_data  # deepreport escapes for itself; give it the unescaped data
+    if raw_data.get("is_deep_scan") and not raw_data.get("dependency_fixes"):
+        _vd = (raw_data.get("osv_scan") or {}).get("vulnerabilities") or []
         if _vd:
-            _fix_data = dict(data)
+            _fix_data = dict(raw_data)
             _fix_data["dependency_fixes"] = deepreport.build_dependency_fixes(_vd)
-            _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(data.get("top_fixes"), _vd)
+            _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(raw_data.get("top_fixes"), _vd)
     out.append(deepreport.render_fixes_html(_fix_data))
     _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
     if _nc:
         out.append('<div class="card" style="background:#F1EFE8;border-color:#D3D1C7"><div style="font-size:13px;'
                    'color:#444"><strong>Not checked in this scan:</strong> '
-                   + ", ".join(_htmlmod.escape(str(n)) for n in _nc)
+                   + ", ".join(str(n) for n in _nc)  # data is already escaped
                    + '. Verilay did not see any code for these layers, so nothing there should be read as a pass.'
                    '</div></div>')
 
@@ -4933,7 +5088,11 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # Claude call, not subject to the same truncation risk as the per-box
     # labels below it) so the diagram still reads as specific to this app
     # even on a run where box labels come out generic.
-    diagram = data.get("architecture_diagram")
+    # The diagram and module rows are stored as ready-made markup, which a saved
+    # report could have been overwritten with. Keep them exactly as stored, but
+    # rebuild them through an allow-list of only the tags Verilay itself draws.
+    diagram = _sanitize_diagram_svg(raw_data.get("architecture_diagram"))
+    module_rows = _sanitize_module_rows(raw_data.get("module_purpose_rows", ""))
     if diagram:
         purpose = data.get("summary", "")
         purpose_line = f'<div style="font-size:13px;color:#666;margin-bottom:.75rem">{purpose}</div>' if purpose else ""
@@ -4942,7 +5101,6 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         # list is the supplementary detail that's collapsed. No JS on this
         # page, so <details> is the toggle mechanism here (the live view
         # in app.js uses its own JS button for the same merged layout).
-        module_rows = data.get("module_purpose_rows", "")
         module_block = (
             '<details style="margin-top:.75rem;padding-top:.6rem;border-top:0.5px solid #e5e5f0">'
             '<summary style="cursor:pointer;font-size:13px;font-weight:600;color:#534AB7">What each part does</summary>'
@@ -5089,9 +5247,9 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # Similar projects: the list on deep scans; one pointer line on free reports of
     # GitHub apps. A deep report with no (or a failed) search simply shows nothing.
     if data.get("is_deep_scan"):
-        out.append(discovery_mod.render_discovery_html(data.get("discovery")))
+        out.append(discovery_mod.render_discovery_html(raw_data.get("discovery")))  # escapes for itself
     elif data.get("input_method", "github") == "github" and not is_preview:
-        out.append(discovery_mod.render_discovery_html(data.get("discovery"), tier="free")
+        out.append(discovery_mod.render_discovery_html(raw_data.get("discovery"), tier="free")
                    or discovery_mod.render_teaser_html())
 
     # Second opinion
@@ -5127,7 +5285,10 @@ def badge(repo):
     score = "?"
     if _HAS_SUPABASE:
         try:
-            result = _sb.table("reports").select("score").eq("repo", repo).order("created_at", desc=True).limit(1).execute()
+            # Anyone can request a badge for any repo name, so only report a grade
+            # for GitHub scans. ZIP and URL scans are often private code; their
+            # grade stays reachable only through the report's own share link.
+            result = _sb.table("reports").select("score").eq("repo", repo).eq("input_method", "github").order("created_at", desc=True).limit(1).execute()
             if result.data:
                 score = result.data[0].get("score", "?") or "?"
         except:
@@ -5135,7 +5296,7 @@ def badge(repo):
     else:
         latest = None
         for entry in _reports.values():
-            if entry["data"].get("repo","") == repo:
+            if entry["data"].get("repo","") == repo and entry["data"].get("input_method", "github") == "github":
                 if latest is None or entry["saved_at"] > latest["saved_at"]:
                     latest = entry
         score = latest["data"].get("health",{}).get("score","?") if latest else "?"
