@@ -134,6 +134,20 @@ def _rule_rows(data):
                  "ASVS 4.0.3 V6.2 Algorithms · Top 10 2021 A02"))
     statuses.append(cs_status)
 
+    az = data.get("authz_scan") or {}
+    az_checked = bool(az.get("applicable"))
+    # Only the clear-cut ("serious") findings decide the status; "to check" items are listed, never failing.
+    az_status = _status_from_counts(_n(az.get("critical")), 0, az_checked)
+    if az_checked:
+        az_result = f'{_n(az.get("critical"))} serious, {_n(az.get("review"))} to check'
+    else:
+        az_result = "Not applicable (no Supabase database or function files found), or not run for this report"
+    rows.append(("Who can do what",
+                 "Database access rules and login checks on backend functions (Supabase apps)",
+                 az_result, az_status,
+                 "ASVS 4.0.3 V4 Access Control · Top 10 2021 A01"))
+    statuses.append(az_status)
+
     html = "".join(
         f'<tr><td><strong>{escape(name)}</strong><div class="sub">{escape(what)}</div></td>'
         f'<td>{escape(result)}</td><td>{_badge(status)}</td>'
@@ -199,6 +213,16 @@ def _fix_items(data):
         where = f'{f.get("file", "")}' + (f':{f.get("line")}' if f.get("line") else "")
         items.append(("warning", f.get("name") or f.get("title") or "Weak cryptography",
                       where, f.get("action", "")))
+    az = data.get("authz_scan") or {}
+    if az.get("findings"):
+        for f in az["findings"]:
+            if isinstance(f, dict) and f.get("level") == "definite":
+                where = f'{f.get("file", "")}' + (f':{f.get("line")}' if f.get("line") else "")
+                items.append(("critical", f.get("title") or "Access problem", where, f.get("plain", "")))
+    elif _n(az.get("critical")):
+        items.append(("critical", f'{_n(az.get("critical"))} serious who-can-do-what problem' + ("" if _n(az.get("critical")) == 1 else "s"),
+                      "database and backend function files",
+                      "Ask your AI builder to check who can run each database action and backend function, or open the deep scan report for each one with a fix."))
     for layer in (data.get("layers") or []):
         if not isinstance(layer, dict):
             continue

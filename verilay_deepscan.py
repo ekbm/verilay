@@ -412,6 +412,12 @@ def _run_job(job_id, user_id=None):
         crypto_findings = _deps["crypto_scan_repo"](all_files)
 
         _check_cancelled(job_id)
+        _update_job(job_id, progress="Checking who can do what in your database and functions...")
+        authz_findings = []
+        if _deps.get("authz_scan_repo") and os.getenv("VERILAY_AUTHZ", "1") != "0":
+            authz_findings = _deps["authz_scan_repo"](all_files)
+
+        _check_cancelled(job_id)
         _update_job(job_id, progress="Checking dependencies against OSV.dev...")
         osv_vulns, osv_checked = _deps["check_dependencies"](all_files)
 
@@ -435,7 +441,8 @@ def _run_job(job_id, user_id=None):
         scan_block = _deps["secret_to_prompt_block"](scan_findings, len(all_files))
         crypto_block = _deps["crypto_to_prompt_block"](crypto_findings, len(all_files))
         osv_block = _deps["osv_to_prompt_block"](osv_vulns, osv_checked)
-        merged_layers = _synthesise(repo, raw_results, scan_block + crypto_block, osv_block)
+        authz_block = _deps["authz_to_prompt_block"](authz_findings, False) if _deps.get("authz_to_prompt_block") else ""
+        merged_layers = _synthesise(repo, raw_results, scan_block + crypto_block + authz_block, osv_block)
         _fix_library_severities(merged_layers, osv_vulns)
         unchecked_layers = deepreport.mark_unchecked_layers(merged_layers, len(files))
 
@@ -445,6 +452,7 @@ def _run_job(job_id, user_id=None):
             files_scanned=len(all_files),
             osv_vulns=osv_vulns, osv_checked=osv_checked,
             files=files, files_total=len(all_files),
+            authz_findings=authz_findings,
         )
         report["layers_not_checked"] = unchecked_layers
         if discovery_result:
@@ -673,7 +681,7 @@ def _fix_library_severities(merged_layers, osv_vulns):
 
 
 def _assemble_report(repo, stack_result, merged_layers, scan_findings, crypto_findings,
-                      files_scanned, osv_vulns, osv_checked, files, files_total):
+                      files_scanned, osv_vulns, osv_checked, files, files_total, authz_findings=None):
     """Shapes everything into the same report format the free scan's saved
     reports use, so /report/<id> and the account report history render this
     exactly like any other report — deep scans aren't a special case on the
@@ -708,7 +716,12 @@ def _assemble_report(repo, stack_result, merged_layers, scan_findings, crypto_fi
     # finding never forces the grade down to D/F on its own.
     crypto_warning = len(crypto_findings)
 
-    crit = max(crit, scan_critical, osv_critical)
+    # Clear-cut "who can do what" problems also set a floor; "please check" ones never do.
+    authz_critical = 0
+    if authz_findings and _deps.get("authz_severity_counts"):
+        authz_critical = _deps["authz_severity_counts"](authz_findings)[0]
+
+    crit = max(crit, scan_critical, osv_critical, authz_critical)
     warn = max(warn, scan_warning, osv_warning, crypto_warning)
 
     report["health"] = {
@@ -719,4 +732,6 @@ def _assemble_report(repo, stack_result, merged_layers, scan_findings, crypto_fi
     report["crypto_scan"] = _deps["crypto_to_report_dict"](crypto_findings, files_scanned)
     # Full detail here, unlike the free scan's teaser — this is what the $19 buys.
     report["osv_scan"] = _deps["osv_to_report_dict"](osv_vulns, osv_checked)
+    if authz_findings is not None and _deps.get("authz_to_report_dict"):
+        report["authz_scan"] = _deps["authz_to_report_dict"](authz_findings)
     return report

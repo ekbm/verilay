@@ -1113,7 +1113,8 @@ function healthFromLayers(layers, data) {
   // can never disagree with each other again.
   var scan = (data && data.secret_scan) || {};
   var osv = (data && data.osv_scan) || {};
-  c = Math.max(c, scan.critical || 0, osv.critical || 0);
+  var authz = (data && data.authz_scan) || {};
+  c = Math.max(c, scan.critical || 0, osv.critical || 0, authz.critical || 0);
   w = Math.max(w, scan.warnings || 0, osv.warnings || 0);
   return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
 }
@@ -1399,6 +1400,7 @@ function filesCoverageHTML(data) {
   html += '</div>';
   html += verifiedFindingsHTML(data);
   html += osvFindingsHTML(data);
+  html += authzFindingsHTML(data);
   return html;
 }
 
@@ -1408,6 +1410,37 @@ function filesCoverageHTML(data) {
 // without also updating the backend teaser dict, or the free/paid boundary
 // silently disappears on the frontend while the backend still thinks it's
 // enforcing it.
+// "Who can do what" (Supabase apps): the free scan shows counts and one example; the deep scan report
+// (a saved page) lists every one with a ready-to-paste fix. Shown only when the check applied.
+function authzFindingsHTML(data) {
+  var az = data.authz_scan;
+  if (!az || !az.applicable) return '';
+  var crit = az.critical || 0, rev = az.review || 0, sc = az.scope || {};
+  var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';
+  h += '<div style="font-weight:600;margin-bottom:4px">Who can do what</div>';
+  if (!crit && !rev) {
+    var bits = [];
+    if (sc.tables) bits.push(sc.tables + (sc.tables === 1 ? ' table' : ' tables'));
+    if (sc.database_functions) bits.push(sc.database_functions + (sc.database_functions === 1 ? ' database action' : ' database actions'));
+    if (sc.backend_functions) bits.push(sc.backend_functions + (sc.backend_functions === 1 ? ' backend function' : ' backend functions'));
+    h += '<div><strong style="color:var(--gr)">\u2713 No obvious access problems found</strong></div>';
+    if (bits.length) h += '<div style="color:var(--mut);font-size:12px;margin-top:4px">Read ' + esc(bits.join(', ')) + '.</div>';
+  } else {
+    var col = crit ? 'var(--rd,#E24B4A)' : 'var(--or,#EF9F27)';
+    var head = crit
+      ? crit + (crit === 1 ? ' serious access problem' : ' serious access problems') + ' found' + (rev ? ' \u00b7 ' + rev + ' more to check' : '')
+      : rev + (rev === 1 ? ' place' : ' places') + ' to check';
+    h += '<div><strong style="color:' + col + '">' + esc(head) + '</strong></div>';
+    if (az.example) {
+      h += '<div style="margin-top:6px"><strong>' + esc(az.example.title) + '</strong>';
+      h += '<div style="color:var(--mut);font-size:12px;line-height:1.5;margin-top:2px">' + esc(az.example.plain) + ' <span style="font-family:monospace">' + esc(az.example.file) + '</span></div></div>';
+    }
+    h += '<div style="font-size:12px;color:var(--txt);margin-top:8px">The <a href="/deep-scan" style="color:var(--pu)">deep scan</a> lists every one with a ready-to-paste fix for your AI builder.</div>';
+  }
+  h += '<div style="color:var(--mut);font-size:11px;margin-top:6px">' + esc(az.scope_note || '') + '</div></div>';
+  return h;
+}
+
 function osvFindingsHTML(data) {
   var osv = data.osv_scan;
   if (!osv || !osv.packages_checked) return '';
@@ -1548,6 +1581,11 @@ function checksSummaryText(data) {
     parts.push(osv.vulnerabilities_found
       ? osv.vulnerabilities_found + ' vulnerable package' + (osv.vulnerabilities_found !== 1 ? 's' : '')
       : osv.packages_checked + ((osv.coverage && (osv.coverage.scope === 'direct' || osv.coverage.scope === 'listed')) ? ' direct packages clean' : (osv.coverage && osv.coverage.scope === 'partial') ? ' packages clean (part of the project)' : ' packages clean'));
+  }
+  var az = data.authz_scan;
+  if (az && az.applicable) {
+    parts.push(az.critical ? az.critical + ' access problem' + (az.critical !== 1 ? 's' : '')
+      : az.review ? az.review + ' to check' : 'no access problems');
   }
   return parts.join(' · ');
 }

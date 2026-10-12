@@ -266,6 +266,58 @@ def _dep_group_html(g, idx):
             f'{_prompt_block(f"dp{idx}", g["prompt"])}</details>')
 
 
+def _plural(n, one, many):
+    return f"{n} {one if n == 1 else many}"
+
+
+def render_authz_html(authz):
+    """The saved report's "Who can do what" section. Free reports carry counts and ONE example; deep reports
+    carry every finding with a ready-to-paste fix. Returns "" when the check did not apply (no Supabase files)."""
+    if not isinstance(authz, dict) or not authz.get("applicable"):
+        return ""
+    crit, review = int(authz.get("critical") or 0), int(authz.get("review") or 0)
+    sc = authz.get("scope") or {}
+    note = (f'<div style="font-size:12px;color:#888;margin-top:.6rem">{_esc(authz.get("scope_note", ""))}</div>')
+    head = '<div class="st">Who can do what</div><div class="card">'
+    if not crit and not review:
+        read = ", ".join(x for x in (
+            _plural(int(sc.get("tables") or 0), "table", "tables") if sc.get("tables") else "",
+            _plural(int(sc.get("database_functions") or 0), "database action", "database actions") if sc.get("database_functions") else "",
+            _plural(int(sc.get("backend_functions") or 0), "backend function", "backend functions") if sc.get("backend_functions") else "") if x)
+        return (head + '<strong style="color:#1D9E75">&#10003; No obvious access problems found</strong>'
+                + (f'<div style="font-size:13px;color:#666;margin-top:.35rem">Read {_esc(read)}.</div>' if read else "")
+                + note + '</div>')
+    color = "#A32D2D" if crit else "#92400E"
+    headline = ((_plural(crit, "serious access problem", "serious access problems") + " found"
+                 + (f" &middot; {review} more to check" if review else "")) if crit
+                else _plural(review, "place", "places") + " to check")
+    findings = authz.get("findings")
+    if findings is None:   # free report: counts and one example
+        ex = authz.get("example") or {}
+        body = ""
+        if ex:
+            body = (f'<div style="margin-top:.5rem"><strong>{_esc(ex.get("title", ""))}</strong>'
+                    f'<div style="font-size:13px;color:#555;margin-top:.2rem">{_esc(ex.get("plain", ""))} '
+                    f'<span style="font-family:monospace;font-size:12px">{_esc(ex.get("file", ""))}</span></div></div>')
+        return (head + f'<strong style="color:{color}">{headline}</strong>' + body
+                + '<div style="font-size:13px;color:#555;margin-top:.6rem">The <a href="/deep-scan" style="color:#534AB7">deep scan</a> '
+                  'lists every one with a ready-to-paste fix for your AI builder.</div>' + note + '</div>')
+    parts = [head, f'<strong style="color:{color}">{headline}</strong>',
+             '<div style="font-size:13px;color:#555;margin:.35rem 0 .5rem">Copy a prompt, paste it into your AI builder, '
+             'then re-run Verilay. Serious ones are clear-cut; &ldquo;please check&rdquo; ones may be intended, so confirm with your AI builder.</div>']
+    for i, f in enumerate(findings):
+        serious = f.get("level") == "definite"
+        parts.append(
+            f'<details class="fix"><summary style="cursor:pointer;font-weight:600">{_esc(f.get("title", ""))}'
+            f'{_pill("serious" if serious else "please check", "critical" if serious else "warning")}</summary>'
+            f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{_esc(f.get("plain", ""))}</div>'
+            f'<div style="font-size:12px;color:#888">Where: <span style="font-family:monospace">{_esc(f.get("file", ""))}'
+            f'{(" line " + str(f.get("line"))) if f.get("line") else ""}</span></div>'
+            f'{_prompt_block(f"az{i}", f.get("fix_prompt", "")) if f.get("fix_prompt") else ""}</details>')
+    parts.append(note + '</div>')
+    return "".join(parts)
+
+
 def render_fixes_html(data):
     """The saved report's 'Fix these first' section. Returns '' when there is nothing to fix."""
     fixes = data.get("top_fixes") or []
