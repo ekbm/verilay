@@ -935,6 +935,7 @@ def account():
     admin_note = ""
     monitor_note = ""
     interest_note = ""
+    clients_note = ""
     if is_admin:
         # Who has registered interest in monitoring (admin only: these are people's emails).
         try:
@@ -964,6 +965,31 @@ def account():
                              '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
                              'being saved as emails only (waitlist, source &ldquo;monitoring&rdquo;). Run '
                              'supabase_monitoring_interest.sql in Supabase to keep the full answers.</p></div></details>')
+        # Who runs scans: browser / script / AI agent ... (a guess from the request's browser identity;
+        # only the label is stored, see verilay_client_type.py).
+        try:
+            import verilay_client_type as _ct
+            _rows_c = _sb().table("reports").select("created_at,client_type:data->>client_type") \
+                .order("created_at", desc=True).limit(1000).execute().data or []
+            _cnt = {}
+            for _r in _rows_c:
+                _k = _r.get("client_type") or "not recorded"
+                _cnt[_k] = _cnt.get(_k, 0) + 1
+            _order = list(_ct.LABELS) + ["not recorded"]
+            _parts = "".join(
+                f'<tr><td style="padding:4px 8px;font-size:13px">{_esc(_ct.LABELS.get(k, "Not recorded (older scans)"))}</td>'
+                f'<td style="padding:4px 8px;font-size:13px;text-align:right">{_cnt[k]}</td></tr>'
+                for k in _order if _cnt.get(k))
+            clients_note = (
+                f'<details class="acc"><summary>\U0001F916 Who runs scans (last {len(_rows_c)} reports)</summary><div class="acc-body">'
+                + (f'<table style="border-collapse:collapse;min-width:260px">{_parts}</table>' if _parts else
+                   '<p class="note" style="margin:0">No scans recorded yet.</p>')
+                + '<p class="note" style="margin:.6rem 0 0">A guess from the browser type each request announced. Nothing else is '
+                  'stored: no addresses and no browser strings. An AI agent that drives a real browser looks like a person, and '
+                  '&ldquo;not recorded&rdquo; means scans from before this was added.</p></div></details>')
+        except Exception:
+            clients_note = ('<details class="acc"><summary>\U0001F916 Who runs scans</summary><div class="acc-body">'
+                            '<p class="note" style="margin:0">Not available right now.</p></div></details>')
         admin_note = (
             '<div class="card" style="background:#EEEDFE;border-color:#534AB7;margin-bottom:1rem">'
             '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
@@ -1098,6 +1124,7 @@ def account():
   {admin_note}
   {monitor_note}
   {interest_note}
+  {clients_note}
   <details class="acc"><summary>Deep scan reports ({len(deep_reports)})</summary>
     <div class="acc-body">{deep_reports_html}</div>
   </details>

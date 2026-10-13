@@ -47,6 +47,7 @@ from verilay_crypto_hygiene import (
     to_prompt_block as crypto_to_prompt_block,
     to_report_dict as crypto_to_report_dict,
 )
+from verilay_client_type import classify as classify_client
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
     to_prompt_block as authz_to_prompt_block,
@@ -2600,13 +2601,18 @@ def _discovery_event(result):
 def analyse_stream():
     """Stream analysis results as newline-delimited JSON events."""
     ip = get_ip()
+    # What kind of client is asking (browser / script / AI agent ...). Only this label is kept: never the
+    # browser string or the address. It lets the owner see whether scripts or AI tools already use the scan.
+    client_type = classify_client(request.headers)
     allowed, reset_in = check_rate_limit(ip)
     if not allowed:
+        print(f"[scan-blocked] client={client_type}", flush=True)
         def blocked():
             yield json.dumps({"event":"error","data":f"Rate limit reached. Try again in {reset_in//60} minutes."}) + "\n"
         return _sse_response(blocked())
 
     method = request.form.get("method","github")
+    print(f"[scan] client={client_type} method={method}", flush=True)
 
     # Read the uploaded ZIP here, before streaming starts. Inside generate()
     # the upload has already been closed, so f.read() there failed with
@@ -2773,6 +2779,7 @@ def analyse_stream():
 
             if is_thin_url:
                 preview = dict(s1)
+                preview["client_type"] = client_type
                 preview["layers"] = []
                 # A key hardcoded into index.html is exactly what a URL scan can prove.
                 # Carry it into the preview — the grade is withheld, the fact is not.
@@ -2903,6 +2910,7 @@ def analyse_stream():
 
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
+            partial["client_type"] = client_type
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
             _missing = (_STEP2_LAYERS if s2_err else []) + (_STEP3_LAYERS if s3_err else [])
             if _missing:
