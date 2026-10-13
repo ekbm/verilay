@@ -9,6 +9,12 @@ Audience: people who built an app with an AI tool and cannot read code. So every
 carries (a) a plain-English title and explanation with no jargon, (b) the exact file and
 line, and (c) a ready-to-paste prompt for their AI builder.
 
+ONLY for Supabase apps. These rules rest on how Supabase works: its database is reachable straight from the
+internet with a public key, so a table without row protection really is open. In an app with its own server in
+front of its database (Express with Drizzle or Prisma, Django, Rails, Laravel ...) the same SQL is normal, and
+flagging it would be a false alarm. So a repo is only checked when it shows clear Supabase signals (see
+_looks_like_supabase). Added 2026-10-13 after a Drizzle app was wrongly marked as having 30 serious problems.
+
 What it reads, for apps that use Supabase (Lovable's default backend):
   * supabase/migrations/*.sql   — database functions, tables, row protection, access rules,
                                    and who was granted or refused permission to use them
@@ -443,6 +449,29 @@ def _is_sql_path(low: str) -> bool:
     return low.endswith(".sql") and ("migrations/" in low or low.startswith("supabase/") or "/supabase/" in low)
 
 
+_SUPABASE_SQL = re.compile(r"auth\.uid\s*\(|auth\.jwt\s*\(|\bto\s+(?:anon|authenticated)\b|\bservice_role\b|supabase", re.I)
+
+
+def _looks_like_supabase(files: Dict[str, str]) -> bool:
+    """True only when the repo clearly uses Supabase: a supabase/ folder, the Supabase library in
+    package.json / requirements, or SQL that uses Supabase-only things (auth.uid(), the anon and
+    authenticated roles). A plain migrations/ folder of CREATE TABLE statements is NOT enough."""
+    for path, text in files.items():
+        low = path.lower()
+        if low.startswith("supabase/") or "/supabase/" in low:
+            return True
+        if not isinstance(text, str):
+            continue
+        if low.endswith("package.json") and "@supabase/" in text:
+            return True
+        if low.endswith(("requirements.txt", "pyproject.toml", "pipfile")) and re.search(r"\bsupabase\b", text, re.I):
+            return True
+    for path, text in files.items():
+        if isinstance(text, str) and _is_sql_path(path.lower()) and _SUPABASE_SQL.search(text[:MAX_FILE_BYTES]):
+            return True
+    return False
+
+
 def scan_repo(files: Dict[str, str]) -> FindingList:
     """Run every rule. Never raises. Definite findings first, then review ones."""
     result = FindingList()
@@ -454,6 +483,8 @@ def scan_repo(files: Dict[str, str]) -> FindingList:
 
 
 def _scan(files: Dict[str, str], result: FindingList) -> None:
+    if not _looks_like_supabase(files):
+        return                      # not a Supabase app: these rules do not apply, say nothing
     fns: Dict[str, _Fn] = {}
     tables: Dict[str, _Table] = {}
     policies: Dict[Tuple[str, str], _Policy] = {}
@@ -609,9 +640,15 @@ def _scan(files: Dict[str, str], result: FindingList) -> None:
 
 # ── Handing results on (same shapes as the other scanners) ─────────────────────
 
+# However many clear-cut findings there are, they can lower the grade by at most this many "critical" counts
+# (a D). A rule can still be wrong in a way the tests did not foresee; one family of rules must never be able
+# to produce an F on its own. The full count is still shown on the report.
+GRADE_CAP = 5
+
+
 def severity_counts(findings) -> Tuple[int, int]:
-    """(critical, warning) that may count toward the grade: DEFINITE findings only, always critical."""
-    return sum(1 for f in findings if f.level == "definite"), 0
+    """(critical, warning) that may count toward the grade: DEFINITE findings only, always critical, capped."""
+    return min(sum(1 for f in findings if f.level == "definite"), GRADE_CAP), 0
 
 
 def _counts(findings) -> Tuple[int, int]:

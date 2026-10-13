@@ -1114,7 +1114,7 @@ function healthFromLayers(layers, data) {
   var scan = (data && data.secret_scan) || {};
   var osv = (data && data.osv_scan) || {};
   var authz = (data && data.authz_scan) || {};
-  c = Math.max(c, scan.critical || 0, osv.critical || 0, authz.critical || 0);
+  c = Math.max(c, scan.critical || 0, osv.critical || 0, Math.min(authz.critical || 0, 5));  // same cap as the server (GRADE_CAP)
   w = Math.max(w, scan.warnings || 0, osv.warnings || 0);
   return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
 }
