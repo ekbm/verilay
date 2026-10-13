@@ -48,6 +48,7 @@ from verilay_crypto_hygiene import (
     to_report_dict as crypto_to_report_dict,
 )
 from verilay_client_type import classify as classify_client
+from verilay_repo_access import repo_visibility, refusal as repo_refusal
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
     to_prompt_block as authz_to_prompt_block,
@@ -826,6 +827,17 @@ def verdict_from_score(score):
     }
     return m.get(score, m["C"])
 
+def _request_is_admin():
+    """True for a signed-in admin (ADMIN_EMAILS). Never raises."""
+    try:
+        import verilay_accounts as _acc
+        import verilay_billing as _bill
+        u = _acc.current_user()
+        return bool(u and u.get("email") and u["email"].strip().lower() in _bill.ADMIN_EMAILS)
+    except Exception:
+        return False
+
+
 def fetch_github(repo_url):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
@@ -840,6 +852,15 @@ def fetch_github(repo_url):
     if not _re_gh.fullmatch(r"[A-Za-z0-9._-]{1,100}", owner) or \
        not _re_gh.fullmatch(r"[A-Za-z0-9._-]{1,100}", repo):
         raise ValueError("That does not look like a valid GitHub repository URL.")
+    if owner.strip(".") == "" or repo.strip(".") == "":     # "." and ".." are path segments, not names
+        raise ValueError("That does not look like a valid GitHub repository URL.")
+    # Verilay reads GitHub with the owner's own token, which can see the owner's PRIVATE repositories. Only a
+    # repository GitHub reports as public may be analysed; the admin may also analyse their own private ones.
+    # If GitHub cannot be asked, refuse: a privacy check must never fail open. (verilay_repo_access.py)
+    _vis = repo_visibility(owner, repo, GITHUB_TOKEN)
+    _why = repo_refusal(_vis, allow_private=(_vis == "private" and _request_is_admin()))
+    if _why:
+        raise ValueError(_why)
     # One bulk request for the whole repo (fetch_all_files_tarball, already
     # proven elsewhere in this codebase for secret-scanning and the deep
     # scan) instead of the OLD design: a git-trees listing call, then ONE

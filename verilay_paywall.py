@@ -251,6 +251,17 @@ _WHAT_YOU_GET = """
 """
 
 
+def _public_repo_error(canonical):
+    """None when a deep scan of this repo may go ahead; otherwise the message to show. A deep scan reads
+    GitHub with Verilay's own token, so it may only read repositories GitHub reports as public."""
+    from verilay_repo_access import repo_visibility, DEEP_SCAN_PUBLIC_ONLY, UNKNOWN
+    owner, _, name = canonical.partition("/")
+    vis = repo_visibility(owner, name)
+    if vis == "public":
+        return None
+    return UNKNOWN if vis == "unknown" else DEEP_SCAN_PUBLIC_ONLY
+
+
 def _is_admin_user(user):
     """True for a SIGNED-IN user whose email is on the ADMIN_EMAILS list. Signing in proves the inbox, so
     only the payment step is skipped for them, never the authentication."""
@@ -352,6 +363,14 @@ def checkout():
         canonical = billing.normalise_repo(repo)
         if canonical:
             return redirect(f"/deep/{canonical}", code=303)
+    # Nobody is charged for a repository that cannot be scanned: the admin is exempt (their own repos), everyone
+    # else must point at a PUBLIC repository.
+    if not _is_admin_user(user):
+        _canon = billing.normalise_repo(repo)
+        if _canon:
+            _err = _public_repo_error(_canon)
+            if _err:
+                return redirect(f"/deep-scan?err={_url_q(_err)}")
     try:
         url = billing.create_checkout_session(
             repo, email=email or None, client_ip=_deps["get_ip"]()
@@ -1251,6 +1270,14 @@ def deep_scan_start(owner, repo):
     existing = deepscan.active_job_for_repo(full)
     if existing:
         return redirect(f"/deep-job/{existing['id']}?already_running=1")
+
+    # A purchased scan only reads public repositories (the repo may have been made private since it was
+    # bought). The admin is exempt. Checked before anything is started or counted.
+    if not _is_admin_user(accounts.current_user()):
+        _err = _public_repo_error(full)
+        if _err:
+            return _page("Deep scan", f'<h1>This repository cannot be scanned</h1><p>{_esc(_err)}</p>'
+                         '<p><a class="btn btn-quiet" href="/account">Back to your account</a></p>', robots="noindex"), 403
 
     # Captured HERE, in the real request with a real session — the scan
     # itself runs in a background thread with no session of its own, so
