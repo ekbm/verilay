@@ -251,6 +251,15 @@ _WHAT_YOU_GET = """
 """
 
 
+def _is_admin_user(user):
+    """True for a SIGNED-IN user whose email is on the ADMIN_EMAILS list. Signing in proves the inbox, so
+    only the payment step is skipped for them, never the authentication."""
+    try:
+        return bool(user and user.get("email") and user["email"].strip().lower() in billing.ADMIN_EMAILS)
+    except Exception:
+        return False
+
+
 @bp.route("/deep-scan")
 def deep_scan_landing():
     cancelled = request.args.get("cancelled")
@@ -280,6 +289,21 @@ def deep_scan_landing():
     if err:
         notice += f'<div class="err">{_esc(err)}</div>'
 
+    admin = _is_admin_user(accounts.current_user())
+    btn_label = "Start deep scan (admin: no payment)" if admin else "Continue to payment"
+    admin_line = ('<p class="note" style="margin:.5rem 0 1rem;color:#3C3489">Signed in as admin: this skips payment '
+                  'and goes straight to the scan.</p>' if admin else "")
+    # The "Checkout Start" funnel event is for real buyers; an admin starting a scan is not one.
+    funnel_script = "" if admin else """
+  <script>
+  // Funnel event: someone submitted the form on their way to Stripe.
+  (function() {{
+    var f = document.querySelector('form[action="/checkout"]');
+    if (f) f.addEventListener('submit', function() {{
+      try {{ if (window.plausible) plausible('Checkout Start'); }} catch (e) {{}}
+    }});
+  }})();
+  </script>"""
     body = f"""
   {notice}
   <div class="eyebrow">One-off payment</div>
@@ -298,22 +322,15 @@ def deep_scan_landing():
         A deep scan is tied to one repository, so we need its address. It must be
         a public GitHub repo. Re-scans of this same app are included.
       </p>
-      <button class="btn" type="submit">Continue to payment</button>
+      {admin_line}
+      <button class="btn" type="submit">{btn_label}</button>
     </form>
   </div>
   <p class="note">Payment is handled by Stripe on their own page — Verilay never
   sees your card. Already bought one?
   <a href="/login">Sign in</a>.</p>
   <p class="note">Want your app checked every week? <a href="/monitoring">Register interest in monitoring</a>.</p>
-  <script>
-  // Funnel event: someone submitted the form on their way to Stripe.
-  (function() {{
-    var f = document.querySelector('form[action="/checkout"]');
-    if (f) f.addEventListener('submit', function() {{
-      try {{ if (window.plausible) plausible('Checkout Start'); }} catch (e) {{}}
-    }});
-  }})();
-  </script>
+  {funnel_script}
   <p class="note">Not a penetration test. See the
   <a href="/terms">terms</a> and the <a href="/ai-disclaimer">AI disclaimer</a> for
   what this is and is not.</p>
@@ -328,6 +345,13 @@ def checkout():
     user = accounts.current_user()
     if user:
         email = user["email"]
+    # Admin (signed in, on ADMIN_EMAILS): no payment. The /deep/<repo> page grants the admin entitlement,
+    # exactly as the "Deep re-scan" link on the account page already does. An unreadable repo falls through
+    # to the normal flow, which refuses it.
+    if _is_admin_user(user):
+        canonical = billing.normalise_repo(repo)
+        if canonical:
+            return redirect(f"/deep/{canonical}", code=303)
     try:
         url = billing.create_checkout_session(
             repo, email=email or None, client_ip=_deps["get_ip"]()
