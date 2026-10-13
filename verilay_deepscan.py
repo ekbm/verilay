@@ -39,6 +39,7 @@ import uuid
 from datetime import datetime, timezone
 
 import verilay_deepreport as deepreport
+import verilay_deepwatch as deepwatch
 import verilay_discovery as discovery
 
 MAX_DEEP_FILES = 150
@@ -389,6 +390,12 @@ def _run_job(job_id, user_id=None):
         all_files = _deps["fetch_all_files_tarball"](owner, name, _deps["github_token"]())
         if not all_files:
             raise ValueError("Could not read any files from this repository.")
+        # Remember which version of the code this scan read, so monitoring can later say exactly what changed
+        # since. Best effort: a failure here never affects the scan.
+        try:
+            repo_head = deepwatch.head_info(owner, name, _deps["github_token"]())
+        except Exception:
+            repo_head = None
 
         selected_paths = _deps["smart_file_selection"](all_files, max_files=MAX_DEEP_FILES)
         files = {p: all_files[p][:_deps["max_file_chars"]] for p in selected_paths}
@@ -455,6 +462,9 @@ def _run_job(job_id, user_id=None):
             authz_findings=authz_findings,
         )
         report["layers_not_checked"] = unchecked_layers
+        if repo_head:
+            report["repo_sha"] = repo_head.get("sha")
+            report["repo_sha_date"] = repo_head.get("date")
         if discovery_result:
             report["discovery"] = discovery_result
         # One deterministic fix per vulnerable package, built from the OSV data.

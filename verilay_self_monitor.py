@@ -40,6 +40,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+import verilay_deepwatch as deepwatch
 import verilay_notify as notify
 
 CHECK_INTERVAL_HOURS = 24
@@ -181,6 +182,10 @@ def _run_scan(app_name, repo):
         _track_findings(sb, app_name, _collect_findings(
             scan_findings, osv_vulns, s2.get("layers", []) + s3.get("layers", [])))
 
+        # Should a deep scan be run? Decided from steady signals only (see verilay_deepwatch.py). Best effort:
+        # it can never cost a check.
+        _update_watch(sb, app_name, repo, scan_findings, osv_vulns, all_files)
+
         # Alert Moses ONLY when critical count went UP (including the first
         # ever successful check finding any) — never on a routine unchanged
         # or improved check. Best-effort: send_self_monitor_alert() never
@@ -279,6 +284,8 @@ def _track_findings(sb, app_name, current):
             log = (fixed + log)[:RESOLVED_LOG_MAX]
         state = {"open": current, "last_fixed": fixed, "last_new": new,
                  "resolved_log": log, "baseline_at": baseline_at, "updated_at": now}
+        if prev.get("watch") is not None:
+            state["watch"] = prev["watch"]      # owned by _update_watch(); never lose it here
         sb.table("self_monitoring").update({"finding_state": state}).eq("app_name", app_name).execute()
     except Exception as e:
         print(f"[self-monitor] finding detail failed for {app_name} (non-critical): {e}", flush=True)
@@ -314,6 +321,7 @@ def admin_detail_html(rows):
     for r in rows:
         name = e(r.get("app_name") or r.get("repo") or "app")
         st = r.get("finding_state")
+        watch_block = watch_html(r)
         if not st:
             blocks.append(f'<p class="note" style="margin:.5rem 0"><strong>{name}</strong>: issue detail starts '
                           f'at the next check (counts above are unaffected).</p>')
@@ -336,7 +344,8 @@ def admin_detail_html(rows):
                           f'this check (the first check after setup records a baseline and cannot name earlier '
                           f'fixes), or the AI worded a finding differently. AI-written findings can vary between '
                           f'runs, so a lower total is not always a real fix.</p>')
-        head = (f'<strong>{name}</strong> &mdash; fixed last check: {len(fixed)} &middot; '
+        _rec = ((st.get("watch") or {}).get("recommend") or {}) if isinstance(st, dict) else {}
+        head = (f'<strong>{"&#128276; " if _rec.get("active") else ""}{name}</strong> &mdash; fixed last check: {len(fixed)} &middot; '
                 f'new: {len(new)} &middot; fixed since tracking: {len(log)} &middot; open: {len(open_items)}'
                 + (f' &middot; totals {"-" if delta > 0 else "+"}{abs(delta)}' if delta else ""))
         base = _format_checked_at(st.get("baseline_at")) or ""
@@ -351,9 +360,117 @@ def admin_detail_html(rows):
             + f'<p class="note" style="margin:.5rem 0 0">Tracking began {e(base)}; fixes before that cannot be named. '
               f'AI-analysis items are matched by title, so a reworded finding can show as one fixed + one new.</p>'
             + '</details>')
+        blocks.append(watch_block)
     return ('<div style="margin-top:1rem"><div style="font-size:12px;font-weight:600;color:#6b6966;'
             'text-transform:uppercase;letter-spacing:.03em;margin-bottom:.25rem">What changed</div>'
             + "".join(blocks) + '</div>')
+
+
+# ── Deep scan recommendation (2026-10-13) ────────────────────────────────────
+
+def _serious_keys(scan_findings, osv_vulns, authz_findings):
+    """{stable_key: short title} of SERIOUS findings from the fixed rules only. The AI sample is left out on
+    purpose: its findings vary between runs and would make the recommendation flicker."""
+    out = {}
+    for f in scan_findings or []:
+        if f.severity == "critical":
+            out[f"secret|{f.rule_id}|{f.file}"] = f"Exposed key: {f.name}"[:100]
+    for v in osv_vulns or []:
+        if v.severity in ("critical", "high") and not v.is_dev:
+            out[f"dep|{v.ecosystem}|{v.package}|{v.id}"] = f"{v.package} {v.version_found}: vulnerable"[:100]
+    for f in authz_findings or []:
+        if f.level == "definite":
+            out[f"authz|{f.rule_id}|{f.subject}"] = f.title[:100]
+    return out
+
+
+def _update_watch(sb, app_name, repo, scan_findings, osv_vulns, all_files):
+    """Work out whether a deep scan is recommended, store it in finding_state["watch"] and email the admin when a
+    recommendation newly appears. Never raises."""
+    try:
+        now = datetime.now(timezone.utc)
+        owner, _, name = repo.partition("/")
+        token = _deps["github_token"]()
+        authz = []
+        if _deps.get("authz_scan_repo"):
+            try:
+                authz = _deps["authz_scan_repo"](all_files)
+            except Exception:
+                authz = []
+        keys = _serious_keys(scan_findings, osv_vulns, authz)
+
+        res = sb.table("self_monitoring").select("finding_state").eq("app_name", app_name).execute()
+        state = dict((res.data[0].get("finding_state") if res.data else None) or {})
+        prev_watch = dict(state.get("watch") or {})
+        prev_det = prev_watch.get("det")
+        # First run only records a baseline: nothing can be "new" yet.
+        new_titles = [] if prev_det is None else [t for k, t in keys.items() if k not in prev_det]
+
+        last = deepwatch.last_deep_scan(sb, repo)
+        head = deepwatch.head_info(owner, name, token)
+        change = None
+        if isinstance(last, dict) and head:
+            base = last.get("sha")
+            if not base:      # an older deep scan did not record its commit: use the commit current at that time
+                before = deepwatch.sha_before(owner, name, token, last.get("created_at"))
+                base = before["sha"] if before else None
+            if base:
+                change = deepwatch.compare(owner, name, token, base, head["sha"])
+
+        rec = deepwatch.evaluate(now, last, change, new_titles, prev_watch.get("recommend"))
+        cats = {}
+        if change:
+            cats, _n = deepwatch.categorise(change.get("files"))
+        watch = {
+            "checked_at": now.isoformat(), "det": keys, "head": head,
+            "last_deep": last if isinstance(last, dict) else (None if last is None else "unknown"),
+            "change": ({"commits": change.get("commits"), "categories": sorted(cats)} if change else None),
+            "recommend": rec,
+        }
+        if deepwatch.should_email(rec):
+            owner_repo = f"{owner}/{name}"
+            link = f"https://verilay.dev/deep/{owner_repo.lower()}"
+            last_txt = ""
+            if isinstance(last, dict):
+                last_txt = f'{_format_checked_at(last.get("created_at")) or ""} (grade {last.get("grade") or "?"})'
+            if notify.send_deep_scan_recommendation(app_name, repo, [r["text"] for r in rec["reasons"]],
+                                                    rec.get("new_serious"), last_txt, link):
+                rec["emailed_signature"] = rec["signature"]
+        state["watch"] = watch
+        sb.table("self_monitoring").update({"finding_state": state}).eq("app_name", app_name).execute()
+    except Exception as e:
+        print(f"[self-monitor] deep scan recommendation skipped for {app_name}: {type(e).__name__}: {e}", flush=True)
+
+
+def watch_html(r):
+    """Admin only: the deep scan status line for one monitored app, with the one-click button when recommended."""
+    e = _html.escape
+    st = r.get("finding_state") or {}
+    w = st.get("watch") if isinstance(st, dict) else None
+    if not w:
+        return ""
+    rec = w.get("recommend") or {}
+    last = w.get("last_deep")
+    repo = (r.get("repo") or "").strip().lower()
+    last_txt = ("No deep scan yet" if last is None else "Last deep scan: unknown (could not look it up)" if last == "unknown" else
+                f'Last deep scan: {e(_format_checked_at(last.get("created_at")) or "")}'
+                + (f' &middot; grade {e(last.get("grade") or "?")}' if last.get("grade") else "")
+                + (f' &middot; <a href="/report/{e(str(last.get("id")))}" target="_blank" rel="noopener">report</a>' if last.get("id") else ""))
+    nm = e(r.get("app_name") or r.get("repo") or "this app")
+    ch = w.get("change") or {}
+    ch_txt = (f' &middot; {int(ch.get("commits") or 0)} change(s) since' if ch and ch.get("commits") is not None else "")
+    if not rec.get("active"):
+        return (f'<p class="note" style="margin:.2rem 0 .9rem .8rem">&#10003; <strong>{nm}</strong> &middot; Deep scan not needed right now &middot; {last_txt}{ch_txt}</p>')
+    items = "".join(f'<li style="margin:.2rem 0">{e(x.get("text", ""))}</li>' for x in rec.get("reasons") or [])
+    titles = rec.get("new_serious") or []
+    tl = ("<div class=\"note\" style=\"margin-top:.3rem\">" + "; ".join(e(t) for t in titles[:5]) + "</div>") if titles else ""
+    button = (f'<form method="POST" action="/deep/{e(repo)}/start" style="margin:.5rem 0 0">'
+              f'<button type="submit" style="font-size:13px;padding:6px 14px;border-radius:20px;border:0;background:#534AB7;'
+              f'color:#fff;cursor:pointer">Run deep scan</button></form>') if "/" in repo else ""
+    return (f'<div style="margin:.2rem 0 .9rem;padding:.6rem .8rem;border:0.5px solid #EF9F27;border-radius:8px;background:#FEF3C7">'
+            f'<div style="font-weight:700;font-size:13px;color:#92400E">&#128276; Deep scan recommended for {nm}</div>'
+            f'<ul style="margin:.3rem 0 0 1.1rem;padding:0;font-size:13px">{items}</ul>{tl}'
+            f'<div class="note" style="margin-top:.3rem">{last_txt}{ch_txt}</div>{button}</div>')
 
 
 def health_data():

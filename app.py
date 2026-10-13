@@ -7431,6 +7431,7 @@ self_monitor.configure(
     osv_severity_counts=osv_severity_counts,
     osv_to_prompt_block=osv_to_prompt_block,
     grade_from_counts=grade_from_counts,
+    authz_scan_repo=authz_scan_repo,
     supabase_client=_sb,
 )
 # Traffic-independent ticking, added 2026-09-15 so the self-monitor badge's

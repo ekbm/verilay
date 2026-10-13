@@ -117,6 +117,36 @@ def _one_line(s, limit=200):
     return " ".join(str(s or "").split())[:limit]
 
 
+def send_deep_scan_recommendation(app_name, repo, reasons, titles=None, last_deep="", link=""):
+    """Best-effort, returns True/False, never raises. Sent to the admin when monitoring decides a deep scan is
+    worth running. Only when a recommendation NEWLY appears or its reasons change: never a daily "all fine"."""
+    if not configured() or not SELF_MONITOR_ALERT_EMAIL:
+        return False
+    lines = "\n".join(f"  - {r}" for r in reasons)
+    extra = ("\nNew serious findings (titles only):\n" + "\n".join(f"  - {t}" for t in (titles or [])[:5]) + "\n") if titles else ""
+    body = (
+        f"Verilay's monitoring thinks a deep scan of {app_name} is worth running.\n\n"
+        f"Why:\n{lines}\n{extra}\n"
+        f"{('Last deep scan: ' + last_deep + chr(10) + chr(10)) if last_deep else ''}"
+        f"Run it here (you must be signed in): {link}\n\n"
+        f"You will get another email only if the reasons change. Once you run a deep scan, this clears by itself.\n\n"
+        f"- Verilay"
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = f"Verilay: a deep scan of {app_name} is recommended"
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = SELF_MONITOR_ALERT_EMAIL
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
+        print(f"[notify] Deep scan recommendation sent for {app_name}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[notify] Deep scan recommendation failed for {app_name}: {e}", flush=True)
+        return False
+
+
 def send_monitoring_interest_alert(email, repo, answers, notes=""):
     """Tell Moses someone registered interest in monitoring. Best-effort, returns True/False, never raises.
     `answers` is an ordered {question: answer} dict of already-readable text."""
