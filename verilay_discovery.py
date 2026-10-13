@@ -108,6 +108,9 @@ def judge(call_claude_text, summary, candidates, max_n=MAX_PROJECTS):
         "libraries, frameworks, tutorials, lists, templates, datasets, research or benchmark code and generic developer "
         "tools unless the app itself is one of those. Prefer projects that are actively maintained. Choose FEWER, or none, if few are truly "
         "similar: a short honest list beats a padded one.\n\n"
+        "ORDER the matches from closest to furthest: put FIRST the one that does the most similar job for the most similar kind of "
+        "user, then the next closest, and so on. The first one is shown on its own in a free report, so it must be your best match. "
+        "Judge closeness by what the app does and who it is for, not by popularity.\n\n"
         "Use ONLY the information above. Do not invent features or projects. Reply with JSON only:\n"
         '{"matches": [{"name": "owner/repo", "why": "one plain sentence, max 22 words, on what it has in common", '
         '"best_at": "one plain sentence, max 22 words, on what it appears strongest at, from the info above"}]}'
