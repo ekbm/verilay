@@ -48,7 +48,10 @@ from verilay_crypto_hygiene import (
     to_report_dict as crypto_to_report_dict,
 )
 from verilay_client_type import classify as classify_client
-from verilay_repo_access import repo_visibility, refusal as repo_refusal
+from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
+from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
+import verilay_scancache as scancache
+import copy as _copy
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
     to_prompt_block as authz_to_prompt_block,
@@ -136,6 +139,9 @@ load_dotenv()
 # END SUMMARY
 
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
+# Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
+# way results are built changes, so no reused result can ever come from older logic.
+ANALYSIS_VERSION = "2026-10-13.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -344,7 +350,16 @@ _NOT_ALLOWED = ("This report can only be changed from the browser that created i
 def _scan_time_label(report_id, data):
     """When the scan ran, as text. Prefers the row's created_at (a UTC timestamp set by the
     database, so every report has one and its time zone is known); falls back to the text
-    stored inside the report."""
+    stored inside the report. A report built from a reused analysis shows when that analysis was made."""
+    rf = data.get("reused_from") if isinstance(data, dict) else None
+    if isinstance(rf, dict) and rf.get("created_at"):
+        try:
+            dt0 = _dt.datetime.fromisoformat(str(rf["created_at"]).replace("Z", "+00:00"))
+            if dt0.tzinfo is not None:
+                dt0 = dt0.astimezone(_dt.timezone.utc)
+            return dt0.strftime("%d %b %Y, %H:%M UTC") + " (same code, reused analysis)"
+        except Exception:
+            pass
     if _HAS_SUPABASE and report_id:
         try:
             res = _sb.table("reports").select("created_at").eq("id", report_id).execute()
@@ -838,7 +853,7 @@ def _request_is_admin():
         return False
 
 
-def fetch_github(repo_url):
+def fetch_github(repo_url, vis=None):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
     for blocked in ["gitlab.com","bitbucket.org","dev.azure.com"]:
@@ -857,7 +872,7 @@ def fetch_github(repo_url):
     # Verilay reads GitHub with the owner's own token, which can see the owner's PRIVATE repositories. Only a
     # repository GitHub reports as public may be analysed; the admin may also analyse their own private ones.
     # If GitHub cannot be asked, refuse: a privacy check must never fail open. (verilay_repo_access.py)
-    _vis = repo_visibility(owner, repo, GITHUB_TOKEN)
+    _vis = vis if vis is not None else repo_visibility(owner, repo, GITHUB_TOKEN)
     _why = repo_refusal(_vis, allow_private=(_vis == "private" and _request_is_admin()))
     if _why:
         raise ValueError(_why)
@@ -2598,8 +2613,42 @@ def analyse_step4(repo_name, built_with, findings_summary):
 # even though the server was working the whole time. X-Accel-Buffering is
 # the standard nginx/nginx-compatible-proxy signal to disable that; explicit
 # Cache-Control guards against any layer treating this as cacheable.
-def _sse_response(generator):
-    resp = Response(stream_with_context(generator), mimetype="application/x-ndjson")
+class _GuardedStream:
+    """Wraps a streaming body so `on_close` runs exactly once when the response ends for ANY reason: it finished,
+    the visitor closed the tab, or it never started (a plain generator's own `finally` does not run in that case)."""
+
+    def __init__(self, body, on_close):
+        self._raw = body
+        self._body = iter(body)
+        self._on_close = on_close
+        self._done = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return next(self._body)
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self):
+        if self._done:
+            return
+        self._done = True
+        try:
+            if hasattr(self._raw, "close"):
+                self._raw.close()
+        finally:
+            self._on_close()
+
+
+def _sse_response(generator, on_close=None):
+    body = stream_with_context(generator)
+    if on_close is not None:
+        body = _GuardedStream(body, on_close)
+    resp = Response(body, mimetype="application/x-ndjson")
     resp.headers["X-Accel-Buffering"] = "no"
     resp.headers["Cache-Control"] = "no-cache"
     return resp
@@ -2616,6 +2665,100 @@ def _discovery_event(result):
     """The streamed 'discovery' event (server-rendered card), or None when there is nothing to show."""
     card = discovery_mod.render_discovery_html(result, tier="free") if result else ""
     return (json.dumps({"event": "discovery", "data": {"html": card}}) + "\n") if card else None
+
+
+def _refund_rate_limit(ip):
+    """Give back the hourly-allowance hit a request just used (a "busy" answer is not the visitor's fault)."""
+    try:
+        hits = _rate_limit.get(ip)
+        if hits:
+            hits.pop()
+    except Exception:
+        pass
+
+
+def _github_owner_name(repo_url):
+    """(owner, repo) from a GitHub address, or None for anything odd (fetch_github then reports it properly)."""
+    try:
+        parts = repo_url.replace("https://", "").replace("http://", "").strip("/").split("/")
+        if parts[0] in ("gitlab.com", "bitbucket.org", "dev.azure.com"):
+            return None
+        owner = parts[1] if parts[0] == "github.com" else parts[0]
+        repo = (parts[2] if parts[0] == "github.com" else parts[1]).replace(".git", "")
+        return (owner, repo) if repo_valid_names(owner, repo) else None
+    except Exception:
+        return None
+
+
+def _cache_prepare(repo_url):
+    """Before downloading anything: is the repo public, what is its newest commit, and do we already hold a
+    fresh analysis of exactly that code? Returns a dict that may hold vis, key, sha, owner, name and hit.
+    Never raises. Only PUBLIC repos are ever looked up (see verilay_scancache.py)."""
+    cx = {}
+    try:
+        if not _HAS_SUPABASE or not scancache.enabled():
+            return cx            # caching is off: fetch_github checks visibility itself, exactly as before
+        on = _github_owner_name(repo_url)
+        if not on:
+            return cx
+        owner, name = on
+        vis = repo_visibility(owner, name, GITHUB_TOKEN)
+        cx["vis"] = vis
+        if vis != "public":
+            return cx
+        head = repo_head_info(owner, name, GITHUB_TOKEN)
+        if not head:
+            return cx
+        key = scancache.make_key(f"{owner}/{name}", head["sha"], ANALYSIS_VERSION)
+        cx.update({"owner": owner, "name": name, "sha": head["sha"], "key": key})
+        hit = scancache.get(_sb, key)
+        if hit:
+            cx["hit"] = hit
+    except Exception as e:
+        print(f"[scancache] prepare skipped: {type(e).__name__}", flush=True)
+    return cx
+
+
+def _ago_text(iso):
+    try:
+        d = _dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        mins = max(0, int((_dt.datetime.now(_dt.timezone.utc) - d).total_seconds() // 60))
+        return "a few minutes ago" if mins < 5 else f"{mins} minutes ago" if mins < 90 else f"{mins // 60} hours ago"
+    except Exception:
+        return "recently"
+
+
+def _replay_cached(cx, client_type, method):
+    """Stream a stored analysis exactly as a live one would arrive (same events, same order), then save a NEW
+    report with its own id and private key. No AI calls."""
+    snap, created = cx["hit"]["snapshot"], cx["hit"]["created_at"]
+    yield json.dumps({"event": "status", "data": f"Reusing a recent analysis of this exact code (made {_ago_text(created)})..."}) + "\n"
+    s1 = dict(snap["s1"])
+    count = get_analysis_count()
+    s1["analysis_count"] = count
+    yield json.dumps({"event": "step1", "data": s1}) + "\n"
+    ev = _discovery_event(snap.get("disc"))
+    if ev:
+        yield ev
+    if (snap.get("s2") or {}).get("layers"):
+        yield json.dumps({"event": "step2", "data": snap["s2"]}) + "\n"
+    if (snap.get("s3") or {}).get("layers"):
+        yield json.dumps({"event": "step3", "data": snap["s3"]}) + "\n"
+    partial = _copy.deepcopy(snap["partial"])
+    partial["client_type"] = client_type
+    partial["analysis_count"] = count
+    partial["reused_from"] = {"created_at": created, "sha": cx.get("sha")}
+    yield json.dumps({"event": "diagram", "data": {
+        "architecture_diagram": partial.get("architecture_diagram"),
+        "module_purpose_rows": partial.get("module_purpose_rows"),
+    }}) + "\n"
+    report_id, manage_token = save_report_with_token(partial)
+    try:
+        increment_analysis_count(score=(partial.get("health") or {}).get("score"), method=method)
+    except Exception as _inc_err:
+        print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
+    yield json.dumps({"event": "saved", "data": {"report_id": report_id, "manage_token": manage_token}}) + "\n"
+    yield json.dumps({"event": "layers_complete", "data": {}}) + "\n"
 
 
 @app.route("/analyse-stream", methods=["POST"])
@@ -2645,6 +2788,8 @@ def analyse_stream():
             zip_upload = (_zf.read(), _zf.filename)
 
     def generate():
+        _cx = {}
+        _s1_event = None
         try:
             # ── Fetch files ────────────────────────────────────────────
             yield json.dumps({"event":"status","data":"Reading your project files..."}) + "\n"
@@ -2658,7 +2803,12 @@ def analyse_stream():
                     yield json.dumps({"event":"error","data":"Please enter a valid GitHub, GitLab, or Bitbucket URL"}) + "\n"; return
                 if len(url) > 500:
                     yield json.dumps({"event":"error","data":"URL is too long"}) + "\n"; return
-                files, tree, repo_name = fetch_github(url)
+                # A fresh analysis of exactly this public code already exists? Replay it: no AI calls.
+                _cx = _cache_prepare(url)
+                if _cx.get("hit"):
+                    yield from _replay_cached(_cx, client_type, method)
+                    return
+                files, tree, repo_name = fetch_github(url, vis=_cx["vis"]) if "vis" in _cx else fetch_github(url)
             elif method == "zip":
                 if not zip_upload:
                     yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
@@ -2797,6 +2947,9 @@ def analyse_stream():
                 s1["health"]["passing"] = None
 
             yield json.dumps({"event":"step1","data":s1}) + "\n"
+            # Step 1 exactly as the visitor just received it. Later code edits the SAME nested objects (the report's
+            # health is recomputed in place), so a reused analysis must replay this copy, not the final state.
+            _s1_event = _copy.deepcopy(s1)
 
             if is_thin_url:
                 preview = dict(s1)
@@ -2974,6 +3127,13 @@ def analyse_stream():
             partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             partial["crypto_scan"] = crypto_to_report_dict(crypto_findings, scan_files_count)
             partial["authz_scan"] = authz_to_teaser_dict(authz_findings)
+            # Keep a copy of this analysis for the next visitor who scans the same code (taken BEFORE the report is
+            # saved, so it holds none of this visitor's private key or feedback). Public repos only; never an
+            # incomplete result.
+            if _cx.get("key") and not _missing and partial.get("layers"):
+                scancache.put(_sb if _HAS_SUPABASE else None, _cx["key"], f'{_cx["owner"]}/{_cx["name"]}', _cx["sha"], ANALYSIS_VERSION, {
+                    "s1": _s1_event or _copy.deepcopy(s1), "s2": _copy.deepcopy(s2), "s3": _copy.deepcopy(s3), "disc": _copy.deepcopy(disc["result"]),
+                    "partial": _copy.deepcopy({k: v for k, v in partial.items() if k != "client_type"})})
             report_id, manage_token = save_report_with_token(partial)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
@@ -2987,7 +3147,17 @@ def analyse_stream():
         except Exception as e:
             yield json.dumps({"event":"error","data":str(e)}) + "\n"
 
-    return _sse_response(generate())
+    # Too many scans running at once on this server? Say so kindly instead of slowing everyone down, and give the
+    # visitor back the hourly-allowance hit this request used. The slot is returned when the stream ends for any
+    # reason (verilay_capacity.py).
+    _slot = FREE_SCANS.try_acquire()
+    if _slot is None:
+        _refund_rate_limit(ip)
+        print(f"[scan-busy] client={client_type}", flush=True)
+        def busy():
+            yield json.dumps({"event":"error","data":BUSY_MESSAGE}) + "\n"
+        return _sse_response(busy())
+    return _sse_response(generate(), on_close=lambda: FREE_SCANS.release(_slot))
 
 
 @app.route("/analyse-step4", methods=["POST"])

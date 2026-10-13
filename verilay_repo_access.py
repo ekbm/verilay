@@ -57,6 +57,24 @@ def repo_visibility(owner, repo, token=None):
         return "unknown"
 
 
+def head_info(owner, repo, token=None):
+    """{"sha", "date"} of the newest commit on the default branch, or None. Best effort, never raises."""
+    if not valid_names(owner, repo):
+        return None
+    try:
+        token = os.getenv("GITHUB_TOKEN", "") if token is None else token
+        headers = {"Accept": "application/vnd.github+json", "User-Agent": "verilay-access-check"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        r = requests.get(f"{GITHUB_API}/repos/{owner}/{repo}/commits", headers=headers, params={"per_page": 1}, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return None
+        c = r.json()[0]
+        return {"sha": c["sha"], "date": c["commit"]["committer"]["date"]}
+    except Exception:
+        return None
+
+
 def refusal(visibility, allow_private=False):
     """The message to show when a repository may NOT be analysed, or None when it may."""
     if visibility == "public":

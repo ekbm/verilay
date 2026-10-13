@@ -1292,6 +1292,14 @@ def deep_scan_start(owner, repo):
     # is the correct value here, not a placeholder.
     purchase_id = None if str(ent["id"]).startswith("admin-bypass-") else ent["id"]
 
+    # Too many deep scans running already? Say so kindly. Nothing has been created or used yet, so the buyer's
+    # scan is untouched. The admin is exempt. (verilay_capacity.py)
+    if not _is_admin_user(accounts.current_user()):
+        from verilay_capacity import DEEP_SCAN_LIMIT, DEEP_BUSY_MESSAGE
+        if deepscan.running_job_count() >= DEEP_SCAN_LIMIT:
+            return _page("Deep scan", f'<h1>Busy right now</h1><p>{_esc(DEEP_BUSY_MESSAGE)}</p>'
+                         f'<p><a class="btn" href="/deep/{_esc(owner)}/{_esc(repo)}">Try again</a></p>', robots="noindex"), 503
+
     job_id = deepscan.create_job(full, purchase_id, user_id)
     deepscan.start_job(job_id, user_id)
     return redirect(f"/deep-job/{job_id}")

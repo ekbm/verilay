@@ -112,6 +112,20 @@ def get_job(job_id):
     return _expire_if_stale(job) if job else None
 
 
+def running_job_count():
+    """How many deep scans are queued or running right now, across every server process (stale ones, whose
+    heartbeat stopped, are not counted). Used to cap how many run at once (verilay_capacity.DEEP_SCAN_LIMIT)."""
+    sb = _sb()
+    if sb is not None:
+        try:
+            res = sb.table("deepscan_jobs").select("*").in_("status", ["queued", "running"]).limit(50).execute()
+            return sum(1 for row in (res.data or []) if _expire_if_stale(row).get("status") in ("queued", "running"))
+        except Exception as e:
+            print(f"[deepscan] running-job count failed, using memory: {e}", flush=True)
+    with _JOBS_LOCK:
+        return sum(1 for j in _JOBS.values() if j.get("status") in ("queued", "running"))
+
+
 def active_job_for_repo(repo):
     """The most recent still-running job for this exact repo, or None.
 
