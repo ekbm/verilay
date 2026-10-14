@@ -52,6 +52,7 @@ from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_i
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_report_expiry as report_expiry
+import verilay_layer_files as layer_files
 import copy as _copy
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
@@ -142,7 +143,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-13.1"
+ANALYSIS_VERSION = "2026-10-14.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -2125,8 +2126,13 @@ def analyse_step1(files, tree, repo_name, method):
 
 
 def analyse_step2(files, repo_name, scan_block=""):
-    sec_keys = [k for k in files if any(w in k.lower() for w in
-        ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
+    if layer_files.enabled():
+        # Chosen by what is inside each file as well as its name (verilay_layer_files.py).
+        sec_keys = layer_files.pick(files, layer_files.LAYERS_STEP2, legacy_words=(
+            "auth","login",".env","config","supabase","database","db","schema","prisma","password","token"))
+    else:
+        sec_keys = [k for k in files if any(w in k.lower() for w in
+            ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
     ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
     ftext = ftext[:250000]
 
@@ -2248,10 +2254,14 @@ def analyse_step2(files, repo_name, scan_block=""):
 
 
 def analyse_step3(files, repo_name, osv_block=""):
-    api_keys = [k for k in files if any(w in k.lower() for w in
-        ["route","api","app.py","main.py","server","app.tsx","app.jsx","package.json"])][:6]
-    if "package.json" in files and "package.json" not in api_keys:
-        api_keys.insert(0, "package.json")
+    if layer_files.enabled():
+        api_keys = layer_files.pick(files, layer_files.LAYERS_STEP3, manifests=True, legacy_words=(
+            "route","api","app.py","main.py","server","app.tsx","app.jsx"))
+    else:
+        api_keys = [k for k in files if any(w in k.lower() for w in
+            ["route","api","app.py","main.py","server","app.tsx","app.jsx","package.json"])][:6]
+        if "package.json" in files and "package.json" not in api_keys:
+            api_keys.insert(0, "package.json")
     ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:3])
     ftext = ftext[:250000]
 
@@ -5022,6 +5032,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> the link to a free report now works for 90 days, and each report shows the date it stops. Deep scan reports stay in your account for as long as you keep it.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> scanning the same public app again within a day, with no new changes to its code, now answers in seconds and says the analysis was reused. When Verilay is very busy it asks you to try again in a minute instead of slowing everyone down, and that attempt does not count against your hourly allowance. Only public GitHub repositories can be scanned from the website.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> apps with all their code in a few files, and no folders called auth or routes, are now read properly. Login, database, settings and page code is found by what it does, not by what the file is called, so fewer areas come back as &ldquo;Not checked&rdquo;.</p>
   </div>
 
   <div class="entry">
