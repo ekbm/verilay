@@ -51,6 +51,7 @@ from verilay_client_type import classify as classify_client
 from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
+import verilay_report_expiry as report_expiry
 import copy as _copy
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
@@ -300,21 +301,33 @@ def save_report_data(data, user_id=None):
     return save_report_with_token(data, user_id)[0]
 
 
+def _report_row(report_id):
+    """The stored row ({data, created_at, user_id}) or None when there is no such report. One lookup that
+    tolerates the user_id column not existing yet. Raises on a database error, so callers keep their retries."""
+    try:
+        res = _sb.table("reports").select("data,created_at,user_id").eq("id", report_id).execute()
+    except Exception:
+        # The user_id column is added separately and may not exist yet.
+        res = _sb.table("reports").select("data,created_at").eq("id", report_id).execute()
+    return res.data[0] if res.data else None
+
+
+def _report_expired(row):
+    """True when a free report's share link has run out (see verilay_report_expiry.py)."""
+    return report_expiry.is_expired(row.get("created_at"), row.get("data"), row.get("user_id"))
+
+
 def _report_auth_info(report_id):
     """(stored data, owner user id) for a live report, or (None, None) when it does not
-    exist or has been deleted."""
+    exist, has been deleted, or its link has expired."""
     data, owner = None, None
     if _HAS_SUPABASE:
         for _attempt in (1, 2):
             try:
-                try:
-                    res = _sb.table("reports").select("data,user_id").eq("id", report_id).execute()
-                except Exception:
-                    # The user_id column is added separately and may not exist yet.
-                    res = _sb.table("reports").select("data").eq("id", report_id).execute()
-                if res.data:
-                    data = res.data[0].get("data")
-                    owner = res.data[0].get("user_id")
+                row = _report_row(report_id)
+                if row and not _report_expired(row):
+                    data = row.get("data")
+                    owner = row.get("user_id")
                 break
             except Exception as e:
                 print(f"Report auth lookup failed (attempt {_attempt}): {e}", flush=True)
@@ -351,24 +364,32 @@ def _scan_time_label(report_id, data):
     """When the scan ran, as text. Prefers the row's created_at (a UTC timestamp set by the
     database, so every report has one and its time zone is known); falls back to the text
     stored inside the report. A report built from a reused analysis shows when that analysis was made."""
+    row = None
+    if _HAS_SUPABASE and report_id:
+        try:
+            row = _report_row(report_id)
+        except Exception:
+            row = None
+    until = ""
+    if row:
+        until = report_expiry.until_text(row.get("created_at"), row.get("data"), row.get("user_id"))
+    tail = f" · link works until {until}" if until else ""
     rf = data.get("reused_from") if isinstance(data, dict) else None
     if isinstance(rf, dict) and rf.get("created_at"):
         try:
             dt0 = _dt.datetime.fromisoformat(str(rf["created_at"]).replace("Z", "+00:00"))
             if dt0.tzinfo is not None:
                 dt0 = dt0.astimezone(_dt.timezone.utc)
-            return dt0.strftime("%d %b %Y, %H:%M UTC") + " (same code, reused analysis)"
+            return dt0.strftime("%d %b %Y, %H:%M UTC") + " (same code, reused analysis)" + tail
         except Exception:
             pass
-    if _HAS_SUPABASE and report_id:
+    ts = row.get("created_at") if row else None
+    if ts:
         try:
-            res = _sb.table("reports").select("created_at").eq("id", report_id).execute()
-            ts = res.data[0].get("created_at") if res.data else None
-            if ts:
-                dt = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                if dt.tzinfo is not None:
-                    dt = dt.astimezone(_dt.timezone.utc)
-                return dt.strftime("%d %b %Y, %H:%M UTC")
+            dt = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(_dt.timezone.utc)
+            return dt.strftime("%d %b %Y, %H:%M UTC") + tail
         except Exception:
             pass
     g = data.get("generated_at") if isinstance(data, dict) else ""
@@ -456,10 +477,10 @@ def get_report_data(report_id):
         # someone's shared report link.
         for _attempt in (1, 2):
             try:
-                result = _sb.table("reports").select("data").eq("id", report_id).execute()
-                if result.data:
-                    _d = result.data[0]["data"]
-                    return None if _is_deleted_report(_d) else _d
+                _row = _report_row(report_id)
+                if _row:
+                    _d = _row["data"]
+                    return None if (_is_deleted_report(_d) or _report_expired(_row)) else _d
                 break
             except Exception as e:
                 print(f"Supabase get failed (attempt {_attempt}): {e}")
@@ -4562,7 +4583,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2>How your data is stored</h2>
   <p>Analysis reports are stored in Supabase (hosted in the EU) linked to a random report ID. Reports are accessible only via your unique share link. We do not publish, share, or sell individual report data.</p>
-  <p>Reports are kept so your share link keeps working and so we can improve the product. You can delete your report at any time using the Delete Report button on your report page, which removes the submitted code and findings.</p>
+  <p>The share link of a free analysis keeps working for 90 days after the scan. After that the link stops working and the report is no longer shown to anyone. The stored copy is not erased automatically, so email <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> if you want it erased. Stored reports also help us improve the product. You can delete your report at any time using the Delete Report button on your report page, which removes the submitted code and findings.</p>
 
   <h2>Accounts and the deep scan</h2>
   <p>Signing in uses a passwordless email link or code — we never ask for or store a password. Buying a deep scan records your email, the app it was purchased for, the amount paid, and the purchase date; this comes from Stripe, which does not verify the email it collects, so a payment on its own does not sign you in. Signing in with that same email afterward links your purchase to an account so your reports are still there when you come back.</p>
@@ -4993,6 +5014,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 14, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Report links expire, and repeat scans are quicker</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> the link to a free report now works for 90 days, and each report shows the date it stops. Deep scan reports stay in your account for as long as you keep it.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> scanning the same public app again within a day, with no new changes to its code, now answers in seconds and says the analysis was reused. When Verilay is very busy it asks you to try again in a minute instead of slowing everyone down, and that attempt does not count against your hourly allowance. Only public GitHub repositories can be scanned from the website.</p>
   </div>
 
   <div class="entry">

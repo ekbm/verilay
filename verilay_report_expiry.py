@@ -1,0 +1,60 @@
+"""
+verilay_report_expiry.py: how long a free report's share link keeps working (2026-10-14).
+
+Until now every saved report stayed readable by anyone holding its link for ever. Now a FREE report's link stops
+working 90 days after the scan. Nothing is erased: the report is simply no longer served (the same "Report not
+found" page a deleted report gets), so the rule is reversible and needs no cleanup job.
+
+Never expires:
+  * deep-scan reports (is_deep_scan) and any report owned by a signed-in account: those people paid for or signed
+    in to keep them, and the privacy page promises they last as long as the account;
+  * anything whose date is missing or unreadable (a bug here must never make reports vanish).
+
+Change the number without a deploy: set VERILAY_REPORT_DAYS on Railway (0 = reports never expire).
+"""
+import os
+from datetime import datetime, timedelta, timezone
+
+DEFAULT_DAYS = 90
+
+
+def days():
+    """How many days a free report's link works; 0 means never expire."""
+    raw = os.getenv("VERILAY_REPORT_DAYS", "")
+    try:
+        n = int(raw) if str(raw).strip() != "" else DEFAULT_DAYS
+    except ValueError:
+        return DEFAULT_DAYS
+    return n if n >= 0 else DEFAULT_DAYS
+
+
+def _parse(ts):
+    try:
+        d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def expires_at(created_at, data, owner):
+    """The moment this report's link stops working, or None when it never does."""
+    n = days()
+    if n == 0 or owner or (isinstance(data, dict) and data.get("is_deep_scan")):
+        return None
+    created = _parse(created_at)
+    if created is None:
+        return None
+    return created + timedelta(days=n)
+
+
+def is_expired(created_at, data, owner, now=None):
+    end = expires_at(created_at, data, owner)
+    if end is None:
+        return False
+    return (now or datetime.now(timezone.utc)) >= end
+
+
+def until_text(created_at, data, owner):
+    """'12 Jan 2027' for a report that will expire, else ''."""
+    end = expires_at(created_at, data, owner)
+    return end.astimezone(timezone.utc).strftime("%d %b %Y") if end else ""
