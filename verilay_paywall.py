@@ -229,9 +229,14 @@ _WHAT_YOU_GET = """
       <td style="padding:8px 0;font-size:13px;color:#4a4846">A ready-to-paste fix for every vulnerable package, plus one prompt to update them all</td>
     </tr>
     <tr style="border-bottom:0.5px solid #f0efec">
+      <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Who can see your data (Supabase apps)</td>
+      <td style="padding:8px 8px;font-size:13px;color:#4a4846">A count of the problems found</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Each one listed in plain English, with a fix</td>
+    </tr>
+    <tr style="border-bottom:0.5px solid #f0efec">
       <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Similar apps</td>
       <td style="padding:8px 8px;font-size:13px;color:#4a4846">The closest open-source match</td>
-      <td style="padding:8px 0;font-size:13px;color:#4a4846">Up to 6 similar projects, with what each is best at (free GitHub repos only, not commercial apps)</td>
+      <td style="padding:8px 0;font-size:13px;color:#4a4846">Up to 6 similar projects to learn from or partner with, with what each is best at (free GitHub repos only, not commercial apps)</td>
     </tr>
     <tr style="border-bottom:0.5px solid #f0efec">
       <td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Checking a fix worked</td>
@@ -249,6 +254,153 @@ _WHAT_YOU_GET = """
   Every file is still checked for exposed keys, free, for everyone. Paying adds
   depth — it never removes anything.</p>
 """
+
+
+_DEEP_STYLE = """
+<style>
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.75rem;margin:.5rem 0 1rem}
+.dcard{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem}
+.dcard h3{font-size:14px;font-weight:600;margin-bottom:.35rem;color:#1a1917}
+.dcard p{font-size:13px;margin:0}
+.dcard.star{border-color:#534AB7;background:#faf9ff}
+.dcard .badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#3C3489;background:#EEEDFE;border-radius:20px;padding:2px 8px;margin-bottom:.4rem}
+.dsteps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem;margin:.5rem 0 1rem}
+.dstep{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1rem}
+.dstep .n{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#534AB7;color:#fff;font-size:12px;font-weight:700;margin-bottom:.45rem}
+.dstep h3{font-size:14px;font-weight:600;margin-bottom:.25rem}
+.dstep p{font-size:13px;margin:0}
+.dfit{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.75rem;margin:.5rem 0 1rem}
+.dfit .card{margin:0}
+.dfit h3{font-size:14px;font-weight:600;margin-bottom:.4rem}
+.dfit ul{margin:0;padding-left:1.1rem;font-size:13px}
+details.faq{background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;margin-bottom:.5rem}
+details.faq>summary{cursor:pointer;padding:.8rem 1rem;font-size:14px;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:.75rem}
+details.faq>summary::-webkit-details-marker{display:none}
+details.faq>summary::after{content:'+';font-weight:400;color:#6b6966}
+details.faq[open]>summary::after{content:'\\2212'}
+details.faq>p{padding:0 1rem .8rem;margin:0;font-size:13px}
+.promise{background:#EEEDFE;border-radius:10px;padding:.9rem 1rem;margin:0 0 1rem}
+.promise p{margin:0;font-size:13px;color:#3C3489}
+.heroactions{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;margin:.25rem 0 1.25rem}
+</style>
+"""
+
+_DEEP_BENEFITS = """
+  <h2>What you get for the price</h2>
+  <div class="dgrid">
+    <div class="dcard star">
+      <span class="badge">Most useful</span>
+      <h3>A fix list, in the right order</h3>
+      <p>The problems that matter most come first. Each one has a plain-English
+      explanation of why it matters and a ready-to-paste prompt for your AI
+      builder, with a Copy button. You don't need to understand the code to act on it.</p>
+    </div>
+    <div class="dcard">
+      <h3>Every risky package, named</h3>
+      <p>Your app is built on dozens or hundreds of packages written by other
+      people. The report names each one that has a known weakness, with its exact
+      version and vulnerability ID, plus one prompt per package and one prompt to
+      update them all.</p>
+    </div>
+    <div class="dcard">
+      <h3>Who can see your data? (Supabase apps)</h3>
+      <p>Verilay reads your database rules and backend functions and lists, in
+      plain English, where anyone on the internet could read or change something
+      they shouldn't, with a fix for each. The free scan only shows a count.
+      (Settings changed only in the Supabase dashboard can't be seen from your files.)</p>
+    </div>
+    <div class="dcard star">
+      <span class="badge">Only in the deep scan</span>
+      <h3>Similar projects to learn from or partner with</h3>
+      <p>Up to 6 free, open-source projects that do something like your app. Each one
+      comes with why it's similar, what it's best at, its licence and when it was last
+      updated, so you can see what already exists, borrow good ideas, build on it, or get
+      in touch with the people behind it about working together. (Check a project's
+      licence before reusing any of its code.) These are free GitHub projects only, not
+      commercial apps, so no match never means nothing similar exists.</p>
+    </div>
+    <div class="dcard">
+      <h3>6&times; more of your code read</h3>
+      <p>150 files instead of 25, so less of your app is left unchecked. If
+      Verilay couldn't read part of your app, the report says so instead of showing
+      a green tick. (If your app has fewer than 25 files, the free scan already
+      reads all of it.)</p>
+    </div>
+    <div class="dcard">
+      <h3>Re-scan to prove it's fixed</h3>
+      <p>After you fix something, scan the same app again as often as you like for
+      30 days and watch the problem disappear. Every report is saved in your account.</p>
+    </div>
+  </div>
+"""
+
+_DEEP_HOW = """
+  <h2>How it works</h2>
+  <div class="dsteps">
+    <div class="dstep"><span class="n">1</span><h3>Paste your GitHub address</h3>
+      <p>Public repositories only for now.</p></div>
+    <div class="dstep"><span class="n">2</span><h3>Pay once</h3>
+      <p>Stripe handles payment on its own page. Verilay never sees your card.</p></div>
+    <div class="dstep"><span class="n">3</span><h3>Get your report</h3>
+      <p>Most scans take a few minutes; bigger apps take longer. Close the tab if you
+      like: the report is saved to your account and we email you when it's ready.</p></div>
+  </div>
+"""
+
+_DEEP_FIT = """
+  <h2>Is it right for you?</h2>
+  <div class="dfit">
+    <div class="card">
+      <h3>A good fit if&hellip;</h3>
+      <ul>
+        <li>You built your app with Lovable, Bolt, Replit, Cursor, v0 or a similar tool</li>
+        <li>You're about to launch, take payments or collect customer details</li>
+        <li>Your app has more than a handful of files</li>
+        <li>You want fixes you can paste, not a lecture</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Not for you if&hellip;</h3>
+      <ul>
+        <li>Your repository is private (public GitHub repositories only, for now)</li>
+        <li>You need a human security audit or a penetration test; this is an automated first pass</li>
+        <li>Your app has fewer than 25 files: the free scan already reads every file, so you'd mainly add the package details and similar projects</li>
+      </ul>
+    </div>
+  </div>
+"""
+
+_DEEP_FAQ = """
+  <h2>Questions</h2>
+  <details class="faq"><summary>Will Verilay change my app or my GitHub?</summary>
+    <p>No. It only reads your public repository and never writes to it. You decide
+    which fixes to apply, using your own AI builder.</p></details>
+  <details class="faq"><summary>Is this a security audit?</summary>
+    <p>No. It's a thorough automated first pass written for non-developers. AI findings
+    can vary between runs and it can miss things. See the
+    <a href="/terms">terms</a> and the <a href="/ai-disclaimer">AI disclaimer</a>.</p></details>
+  <details class="faq"><summary>Do I need to be technical?</summary>
+    <p>No. Every finding is explained in plain English, and the fixes are written as
+    prompts you paste into your AI builder.</p></details>
+  <details class="faq"><summary>Can I scan more than one app?</summary>
+    <p>A deep scan is tied to one repository, including its re-scans. Another app needs
+    its own deep scan.</p></details>
+  <details class="faq"><summary>What if the scan doesn't work?</summary>
+    <p>If a deep scan fails to run or produces no usable report, you get a full refund.
+    See the <a href="/terms">terms</a>.</p></details>
+"""
+
+
+def _sample_report_html():
+    """A link to a real example report, only when the owner has chosen one (VERILAY_SAMPLE_REPORT_ID on Railway,
+    the 12-character id of a saved deep scan report). Nothing is shown until then: no made-up example."""
+    import re as _re
+    rid = os.getenv("VERILAY_SAMPLE_REPORT_ID", "").strip().lower()
+    if not _re.fullmatch(r"[0-9a-f]{12}", rid):
+        return ""
+    return ('<a href="/report/' + rid + '" target="_blank" rel="noopener" '
+            'onclick="try{if(window.plausible)plausible(\'Sample Report Click\')}catch(e){}" '
+            'style="font-size:14px;font-weight:600">See a real deep scan report &rarr;</a>')
 
 
 def _public_repo_error(canonical):
@@ -315,16 +467,28 @@ def deep_scan_landing():
     }});
   }})();
   </script>"""
+    sample = _sample_report_html()
     body = f"""
+  {_DEEP_STYLE}
   {notice}
-  <div class="eyebrow">One-off payment</div>
-  <h1>The deep scan</h1>
+  <div class="eyebrow">The deep scan &middot; one-off payment</div>
+  <h1>Know what's really inside your app before you launch</h1>
+  <p style="font-size:15px">You built it with an AI tool, so you didn't write the code and nobody has
+  checked it. The deep scan reads up to 150 of your files, names every risky package, shows who can see
+  your data if you use Supabase, finds similar projects you can learn from or partner with, and gives you
+  fixes you can paste straight into Lovable, Replit, Cursor or Bolt.</p>
   <div class="price">{_esc(price)}</div>
-  <p class="note" style="margin-top:-.5rem">plus applicable tax, calculated at checkout for your location</p>
-  <p style="margin-top:.35rem">A deep scan of your app, and re-scans whenever you
-  like for 30 days.</p>
+  <p class="note" style="margin-top:-.5rem">plus applicable tax, calculated at checkout for your location.
+  One payment, no subscription, and re-scans of the same app for 30 days are included.</p>
+  <div class="heroactions"><a class="btn" href="#start">Start my deep scan</a> {sample}</div>
+  {_DEEP_BENEFITS}
   {_WHAT_YOU_GET}
-  <div class="card">
+  {_DEEP_HOW}
+  {_DEEP_FIT}
+  <div class="promise"><p><strong>Honest by design.</strong> We build apps with AI tools too, and we run
+  Verilay on our own apps first. If part of your app couldn't be read, the report says so. And if a
+  deep scan fails to run or gives no usable report, you get a full refund.</p></div>
+  <div class="card" id="start">
     <form method="POST" action="/checkout">
       <label for="repo">Which app?</label>
       <input type="text" id="repo" name="repo" placeholder="github.com/you/your-app"
@@ -341,6 +505,7 @@ def deep_scan_landing():
   sees your card. Already bought one?
   <a href="/login">Sign in</a>.</p>
   <p class="note">Want your app checked every week? <a href="/monitoring">Register interest in monitoring</a>.</p>
+  {_DEEP_FAQ}
   {funnel_script}
   <p class="note">Not a penetration test. See the
   <a href="/terms">terms</a> and the <a href="/ai-disclaimer">AI disclaimer</a> for
