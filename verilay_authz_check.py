@@ -445,6 +445,16 @@ def _finding(rule, level, title, plain, file, line, subject, prompt) -> Finding:
 
 # ── The scan ───────────────────────────────────────────────────────────────────
 
+def _sql_order(path: str):
+    """The order SQL files are replayed in. Files under a supabase/ folder come first, by name (their names start
+    with a timestamp, so name order is date order). Other migration folders, such as the drizzle/migrations folder
+    Lovable writes later changes to, come after. Reading everything alphabetically put drizzle/ before supabase/,
+    so a later lock-down (REVOKE) was read before the function existed and did nothing, and Verilay kept reporting a
+    function as open after it had been locked (BuildBook, 2026-10-14)."""
+    low = path.lower()
+    return (0 if (low.startswith("supabase/") or "/supabase/" in low) else 1, path)
+
+
 def _is_sql_path(low: str) -> bool:
     return low.endswith(".sql") and ("migrations/" in low or low.startswith("supabase/") or "/supabase/" in low)
 
@@ -490,8 +500,8 @@ def _scan(files: Dict[str, str], result: FindingList) -> None:
     policies: Dict[Tuple[str, str], _Policy] = {}
     policy_text = []
     dynamic_rls = False
-    sql_paths = sorted(p for p in files if isinstance(files.get(p), str) and _is_sql_path(p.lower())
-                       and len(files[p]) <= MAX_FILE_BYTES)
+    sql_paths = sorted((p for p in files if isinstance(files.get(p), str) and _is_sql_path(p.lower())
+                        and len(files[p]) <= MAX_FILE_BYTES), key=_sql_order)
     for path in sql_paths:
         result.sql_files += 1
         for stmt, line in _split_statements(files[path]):
