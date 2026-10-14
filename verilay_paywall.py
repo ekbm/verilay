@@ -398,9 +398,15 @@ def _sample_report_html():
     rid = os.getenv("VERILAY_SAMPLE_REPORT_ID", "").strip().lower()
     if not _re.fullmatch(r"[0-9a-f]{12}", rid):
         return ""
-    return ('<a href="/report/' + rid + '" target="_blank" rel="noopener" '
+    link = ('<a href="/report/' + rid + '" target="_blank" rel="noopener" '
             'onclick="try{if(window.plausible)plausible(\'Sample Report Click\')}catch(e){}" '
             'style="font-size:14px;font-weight:600">See a real deep scan report &rarr;</a>')
+    # Optional: say what the example is, e.g. "OWASP Juice Shop, an intentionally vulnerable practice app", so nobody
+    # takes its findings for a real product's. Set VERILAY_SAMPLE_REPORT_LABEL on Railway. Escaped, and capped.
+    label = os.getenv("VERILAY_SAMPLE_REPORT_LABEL", "").strip()[:140]
+    if label:
+        link += ' <span class="note" style="display:block;margin-top:.25rem">Example: ' + _esc(label) + '</span>'
+    return link
 
 
 def _public_repo_error(canonical):
