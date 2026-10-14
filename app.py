@@ -53,6 +53,7 @@ from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_report_expiry as report_expiry
 import verilay_layer_files as layer_files
+import verilay_appcount as appcount
 import copy as _copy
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
@@ -180,8 +181,12 @@ _count_lock = threading.Lock()
 _memory_count = 0
 
 def get_analysis_count():
-    """Get cumulative count from stats table — never decreases even if reports deleted."""
+    """The "apps analysed so far" figure: the number of DIFFERENT apps, leaving out the owner's own apps and test
+    repos (verilay_appcount.py). Falls back to the old cumulative total when that cannot be worked out."""
     if _HAS_SUPABASE:
+        _n = appcount.apps_analysed(_sb)
+        if _n is not None:
+            return _n
         try:
             result = _sb.table("stats").select("value").eq("key", "total_analyses").execute()
             if result.data:
