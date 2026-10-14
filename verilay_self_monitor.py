@@ -90,6 +90,55 @@ def start_scheduler():
     threading.Thread(target=_loop, daemon=True).start()
 
 
+REFRESH_EVERY_SECONDS = 600
+_last_refresh = {"at": 0.0}
+
+
+def refresh_deep_status(now_ts=None):
+    """Bring the "deep scan recommended" status up to date when a newer deep scan exists.
+
+    The recommendation used to be worked out only by each app's daily check, so after the owner ran a deep scan the
+    monitoring page kept saying "deep scan needed", with the old date, for up to a day. This runs on every scheduler
+    tick (throttled to once per REFRESH_EVERY_SECONDS per process) and touches ONLY the deep-scan part of the stored
+    status of an app whose newest deep scan is not the one already shown. Database only: no GitHub calls, no AI, no
+    emails, and the daily check's own data (findings, head commit, last check time) is left alone.
+    Returns how many apps were refreshed. Never raises."""
+    sb = _sb()
+    if sb is None:
+        return 0
+    ts = now_ts if now_ts is not None else time.time()
+    if ts - _last_refresh["at"] < REFRESH_EVERY_SECONDS:
+        return 0
+    _last_refresh["at"] = ts
+    done = 0
+    try:
+        now = datetime.now(timezone.utc)
+        rows = sb.table("self_monitoring").select("app_name,repo,finding_state").execute().data or []
+        for r in rows:
+            repo = (r.get("repo") or "").strip()
+            state = dict(r.get("finding_state") or {})
+            watch = dict(state.get("watch") or {})
+            if not repo or not watch:
+                continue                      # no daily check has built a status yet: nothing to refresh
+            last = deepwatch.last_deep_scan(sb, repo)
+            if not isinstance(last, dict):
+                continue                      # none found, or the lookup failed: say nothing new
+            shown = watch.get("last_deep")
+            if isinstance(shown, dict) and shown.get("id") == last.get("id"):
+                continue                      # already up to date
+            rec = deepwatch.evaluate(now, last, {"commits": 0, "files": []}, [], watch.get("recommend"))
+            watch["last_deep"] = last
+            watch["change"] = {"commits": 0, "categories": []}
+            watch["recommend"] = rec
+            watch["refreshed_at"] = now.isoformat()
+            state["watch"] = watch
+            sb.table("self_monitoring").update({"finding_state": state}).eq("app_name", r["app_name"]).execute()
+            done += 1
+    except Exception as e:
+        print(f"[self-monitor] deep scan status refresh skipped: {type(e).__name__}: {e}", flush=True)
+    return done
+
+
 def maybe_tick():
     """Call on a normal page load. Does nothing (one cheap query) unless an
     app is actually overdue. Never raises — a failure here must never break
@@ -97,6 +146,7 @@ def maybe_tick():
     sb = _sb()
     if sb is None:
         return
+    refresh_deep_status()
     try:
         cutoff = _cutoff_iso()
         due = (sb.table("self_monitoring")
