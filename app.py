@@ -6463,6 +6463,29 @@ def favicon():
     return resp
 
 
+_HERO_DEMO_STYLE = ("display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);"
+                    "background:transparent;color:var(--txt);font-size:15px;font-weight:500;border:1.5px solid var(--bdr);"
+                    "cursor:pointer;text-decoration:none")
+
+
+def _sample_button_html():
+    """The homepage's "See a sample report". When VERILAY_SAMPLE_FREE_REPORT_ID names a real saved FREE report (12 hex
+    characters, set on Railway), it is a link that opens that report in a new tab, with an optional line under the
+    buttons saying what it is (VERILAY_SAMPLE_FREE_LABEL). Otherwise it is the old button that opens the built-in
+    example pop-up, so the page never has a dead button."""
+    rid = os.getenv("VERILAY_SAMPLE_FREE_REPORT_ID", "").strip().lower()
+    if _re.fullmatch(r"[0-9a-f]{12}", rid):
+        label = os.getenv("VERILAY_SAMPLE_FREE_LABEL", "").strip()[:200]
+        note = (f'<div style="flex-basis:100%;text-align:center;font-size:12px;color:var(--mut);margin-top:2px">'
+                f'{_htmlmod.escape(label)}</div>') if label else ""
+        return (f'<a id="btn-hero-demo-link" href="/report/{rid}" target="_blank" rel="noopener" '
+                f'onclick="try{{if(window.plausible)plausible(\'Homepage Sample Click\')}}catch(e){{}}" '
+                f'style="{_HERO_DEMO_STYLE}"><i class="ti ti-player-play" style="font-size:16px"></i> '
+                f'See a sample report</a>{note}')
+    return (f'<button id="btn-hero-demo" style="{_HERO_DEMO_STYLE}">'
+            '<i class="ti ti-player-play" style="font-size:16px"></i> See a sample report</button>')
+
+
 @app.route("/")
 def index():
     count = get_analysis_count()
@@ -6483,7 +6506,8 @@ def index():
                 .replace("__ACCOUNTNAV_MOBILE__", nav_mobile)
                 .replace("__SELFMONITOR_BADGE__", selfmon_badge)
                 .replace("__MONITORING_CTA__", monitoring_cta)
-                .replace("__SELFMONITOR_TABLE__", selfmon_table))
+                .replace("__SELFMONITOR_TABLE__", selfmon_table)
+                .replace("__SAMPLE_BUTTON__", _sample_button_html()))
     return render_template_string(html, analysis_count=count if count > 0 else "")
 
 
@@ -6775,9 +6799,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search" style="font-size:16px"></i> Analyse my app — it's free
       </button>
-      <button id="btn-hero-demo" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:transparent;color:var(--txt);font-size:15px;font-weight:500;border:1.5px solid var(--bdr);cursor:pointer">
-        <i class="ti ti-player-play" style="font-size:16px"></i> See a sample report
-      </button>
+      __SAMPLE_BUTTON__
     </div>
     <p style="font-size:14px;color:var(--mut);max-width:520px;margin:0 auto 1.75rem;line-height:1.6">
       No account, nothing to install. Verilay reads your files only to build the report — and it's
@@ -6835,7 +6857,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem;position:relative">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">1</div>
         <div style="font-size:14px;font-weight:500;margin-bottom:.3rem">Analyse</div>
-        <div style="font-size:13px;color:var(--mut);line-height:1.55">Paste your GitHub link, upload a ZIP, or enter your live app URL. Verilay reads every layer of your app in 30 seconds.</div>
+        <div style="font-size:13px;color:var(--mut);line-height:1.55">Paste your GitHub link, upload a ZIP, or enter your live app URL. Verilay reads every layer of your app, usually in one to three minutes.</div>
       </div>
 
       <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
@@ -7017,7 +7039,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   <!-- CTA -->
   <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
     <div style="font-size:17px;font-weight:600;margin-bottom:.4rem">Ready to see what's inside your app?</div>
-    <div style="font-size:14px;color:var(--mut);margin-bottom:1.1rem">Free. Takes 30 seconds. No account needed.</div>
+    <div style="font-size:14px;color:var(--mut);margin-bottom:1.1rem">Free. Usually one to three minutes. No account needed.</div>
     <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
       <i class="ti ti-search" style="font-size:16px"></i> Analyse my app
     </button>
@@ -7219,7 +7241,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     </div>
     <div style="display:flex;justify-content:space-between;margin-bottom:1.25rem">
       <span style="font-size:12px;color:var(--mut)" id="prog-pct">0%</span>
-      <span style="font-size:12px;color:var(--mut)" id="prog-eta">~30 seconds</span>
+      <span style="font-size:12px;color:var(--mut)" id="prog-eta">usually 1-3 minutes</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px" id="step-list">
       <div class="step-item" id="step-0" data-step="0">
@@ -7403,7 +7425,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
       <div>
         <div style="font-size:16px;font-weight:600;margin-bottom:2px">Sample Verilay Report</div>
-        <div style="font-size:13px;color:var(--mut)">A real analysis of a Lovable-built app — this is what you get</div>
+        <div style="font-size:13px;color:var(--mut)">An example of what a Verilay report looks like</div>
       </div>
       <button id="btn-close-modal" style="padding:6px 14px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;cursor:pointer;font-size:13px;color:var(--mut)">Close</button>
     </div>
@@ -7464,7 +7486,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
     <!-- CTA -->
     <div style="text-align:center;padding:.75rem 0 0">
-      <div style="font-size:14px;color:var(--mut);margin-bottom:.75rem">This is what Verilay finds in your app — in 30 seconds</div>
+      <div style="font-size:14px;color:var(--mut);margin-bottom:.75rem">This is the kind of thing Verilay finds in your app, usually in one to three minutes</div>
       <button id="btn-modal-cta" style="display:inline-flex;align-items:center;gap:7px;padding:10px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:14px;font-weight:500;border:none;cursor:pointer">
         <i class="ti ti-search"></i> Analyse my app now
       </button>

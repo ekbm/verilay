@@ -516,13 +516,13 @@ function setStep(i) {
 }
 
 function updateEta() {
+  // Real scans take about one to three minutes (bigger repos longer), so count UP instead of promising a countdown
+  // that reached "Almost done" after half a minute.
   elapsedSecs++;
-  var remaining = Math.max(5, 35 - elapsedSecs);
   var eta = document.getElementById('prog-eta');
   if (eta) {
-    if (remaining > 10) eta.textContent = '~' + remaining + ' seconds remaining';
-    else if (remaining > 0) eta.textContent = 'Almost done...';
-    else eta.textContent = 'Finalising...';
+    var m = Math.floor(elapsedSecs / 60), s = elapsedSecs % 60;
+    eta.textContent = 'Usually 1-3 minutes \u00b7 ' + (m ? m + 'm ' : '') + s + 's so far';
   }
 }
 
