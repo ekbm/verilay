@@ -5033,6 +5033,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> the link to a free report now works for 90 days, and each report shows the date it stops. Deep scan reports stay in your account for as long as you keep it.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> scanning the same public app again within a day, with no new changes to its code, now answers in seconds and says the analysis was reused. When Verilay is very busy it asks you to try again in a minute instead of slowing everyone down, and that attempt does not count against your hourly allowance. Only public GitHub repositories can be scanned from the website.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> apps with all their code in a few files, and no folders called auth or routes, are now read properly. Login, database, settings and page code is found by what it does, not by what the file is called, so fewer areas come back as &ldquo;Not checked&rdquo;.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> in a deep scan, an area with nothing wrong could be labelled &ldquo;Not checked&rdquo;. It now describes what Verilay found there, and &ldquo;Not checked&rdquo; is kept for areas it really did not see.</p>
   </div>
 
   <div class="entry">

@@ -185,15 +185,80 @@ _NOT_PROVIDED = re.compile(
     r"reviewed|seen|submitted)\b", re.I)
 
 
-def mark_unchecked_layers(merged_layers, files_read=None):
+def _batch_layers(raw_results):
+    """Every (layer dict) the batch reviews produced, from both the Auth/Config/Database and the API/Frontend/
+    Libraries passes."""
+    for entry in raw_results or []:
+        for key in ("step2", "step3"):
+            for layer in ((entry.get(key) or {}).get("layers") or []):
+                yield layer
+
+
+def layers_with_code_evidence(raw_results):
+    """{layer name: the batch's own review of it} for every layer where at least one batch's AI described real
+    code (its summary is not empty, not the 'X layer analysis.' filler, and not 'No X code was provided').
+    This is the proof a layer WAS read, however clean it turned out to be."""
+    best = {}
+    for layer in _batch_layers(raw_results):
+        name = layer.get("name") or ""
+        ex = layer.get("expert") or {}
+        summ = (ex.get("summary") or "").strip()
+        if not name or not summ or summ == f"{name} layer analysis." or _NOT_PROVIDED.search(summ):
+            continue
+        richness = len(summ) + len(((layer.get("learner") or {}).get("what_it_does_in_your_app") or ""))
+        if name not in best or richness > best[name][0]:
+            best[name] = (richness, layer)
+    return {n: v[1] for n, v in best.items()}
+
+
+def restore_clean_layers(merged_layers, raw_results):
+    """The merge step is only handed each layer's PROBLEMS, so a healthy layer reached it as an empty list and came
+    back as 'No <layer> code was found', which the 'not checked' detector then read as 'never seen'. A layer that
+    some batch really read, and that has no real findings after merging, gets that batch's own description back
+    (summary and the plain-English narrative) and stays PASSING. Returns the names of layers with evidence."""
+    seen = layers_with_code_evidence(raw_results)
+    for layer in (merged_layers or {}).get("layers", []):
+        name = layer.get("name")
+        src = seen.get(name)
+        if name == "Libraries" or not src:
+            continue
+        ex = layer.get("expert") or {}
+        findings = ex.get("findings") or []
+        if any((f.get("title") or "") not in ("", "No issues found") for f in findings):
+            continue   # it has real findings: the merge already wrote about it
+        summ = (ex.get("summary") or "").strip()
+        if summ and summ != f"{name} layer analysis." and not _NOT_PROVIDED.search(summ):
+            continue   # the merge already described it properly
+        sex = src.get("expert") or {}
+        ex["summary"] = sex.get("summary") or summ
+        layer["expert"] = ex
+        layer["status"] = "passing"
+        lrn, slrn = layer.get("learner") or {}, src.get("learner") or {}
+        for k in ("what_is_it", "analogy", "what_it_does_in_your_app", "how_it_connects", "key_concept"):
+            if slrn.get(k) and (not lrn.get(k) or k in ("what_is_it", "what_it_does_in_your_app", "how_it_connects")):
+                lrn[k] = slrn[k]
+        layer["learner"] = lrn
+        if src.get("app_label") and not layer.get("app_label"):
+            layer["app_label"] = src["app_label"]
+        if src.get("connects_to") and not layer.get("connects_to"):
+            layer["connects_to"] = list(src["connects_to"])
+        if src.get("quiz") and not (layer.get("quiz") or [{}])[0].get("question"):
+            layer["quiz"] = src["quiz"]
+    return set(seen)
+
+
+def mark_unchecked_layers(merged_layers, files_read=None, layers_read=None):
     """If a layer's own summary opens with 'No <layer> code was provided...' and it
     has no real findings, the AI never saw that layer. Showing PASSING there tells
     a buyer something was verified when nothing was. Flags those layers
     'not_checked' (and returns their names). Libraries is never touched: its
-    verdict comes from the OSV data, not from reading files."""
+    verdict comes from the OSV data, not from reading files. `layers_read` = names of layers some
+    batch really read (layers_with_code_evidence): those are never flagged."""
     names = []
     for layer in (merged_layers or {}).get("layers", []):
         if layer.get("name") == "Libraries":
+            continue
+        if layers_read is not None and layer.get("name") in layers_read:
             continue
         ex = layer.get("expert") or {}
         findings = ex.get("findings") or []

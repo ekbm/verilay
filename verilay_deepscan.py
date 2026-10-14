@@ -465,7 +465,10 @@ def _run_job(job_id, user_id=None):
         authz_block = _deps["authz_to_prompt_block"](authz_findings, False) if _deps.get("authz_to_prompt_block") else ""
         merged_layers = _synthesise(repo, raw_results, scan_block + crypto_block + authz_block, osv_block)
         _fix_library_severities(merged_layers, osv_vulns)
-        unchecked_layers = deepreport.mark_unchecked_layers(merged_layers, len(files))
+        # A layer some batch really read, with nothing wrong in it, must stay "passing" (and keep its description),
+        # not turn into "Not checked": see deepreport.restore_clean_layers.
+        layers_read = deepreport.restore_clean_layers(merged_layers, raw_results)
+        unchecked_layers = deepreport.mark_unchecked_layers(merged_layers, len(files), layers_read=layers_read)
 
         report = _assemble_report(
             repo=repo, stack_result=stack_result, merged_layers=merged_layers,
@@ -592,6 +595,21 @@ def _synthesise(repo_name, raw_results, scan_block, osv_block):
         sections.append(f"=== {name} layer — {len(entries)} batches, {len(real)} with findings ===")
         import json as _json
         sections.append(_json.dumps(real, indent=2))
+        # A healthy layer has no findings, so without this the merge saw an empty list and wrote "no <layer> code
+        # was found". Give it what each clean batch said about the code it read.
+        clean_notes = []
+        for e in entries:
+            if e in real:
+                continue
+            summ = (e["expert"].get("summary") or "").strip()
+            if not summ or summ == f"{name} layer analysis." or deepreport._NOT_PROVIDED.search(summ):
+                continue   # an empty note, or a batch that saw none of this layer's code, is not a clean bill of health
+            clean_notes.append({"batch": e["_batch"], "summary": summ,
+                                "what_it_does_in_your_app": (e.get("learner") or {}).get("what_it_does_in_your_app", ""),
+                                "app_label": e.get("app_label", "")})
+        if clean_notes:
+            sections.append(f"Batches that reviewed {name} and found NOTHING wrong (their own notes):")
+            sections.append(_json.dumps(clean_notes, indent=2))
     findings_block = "\n".join(sections)
 
     prompt = (
@@ -607,7 +625,9 @@ def _synthesise(repo_name, raw_results, scan_block, osv_block):
         "six layers — AUTH_*, CONFIG_*, DATABASE_*, API_*, FRONTEND_*, LIBRARIES_* — each with "
         "STATUS, SUMMARY, up to 5 F{n}_SEV/TITLE/DETAIL/FILE/WHY/PLAIN/IMPACT/ACTION, plus "
         "WHAT/ANALOGY/DOES/CONNECTS/CONCEPT/Q/A/QWHY. If a layer genuinely has no real findings "
-        "after merging, say so — do not invent one."
+        "after merging, say so — do not invent one. A layer that has batches listed as 'reviewed ... and found "
+        "NOTHING wrong' is HEALTHY: describe what it does from those notes and give it STATUS passing. Say that no "
+        "code for a layer was found or provided ONLY when no batch described any code for it."
     )
     # 20000 -- all 6 layers merged in one call (vs the free tier's 2 calls
     # of 3, each now budgeted 10000 tokens after live testing showed real
