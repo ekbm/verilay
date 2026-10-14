@@ -181,22 +181,45 @@ def drop_dependency_fixes(top_fixes, vulns):
 # ---------------------------------------------------------------- 2. layers never seen
 
 class _NotProvided:
-    """Does this layer summary say the AI never saw any code for the layer ('No auth code was provided',
-    'No authentication mechanisms were found')? A summary about PROBLEMS ('No issues found in the auth code',
-    'No critical vulnerabilities found') says the opposite: the code was read and is healthy. Found 2026-10-14:
-    the plain pattern treated those healthy sentences as 'never seen', so clean layers showed 'Not checked'."""
+    """Does this layer summary say the AI never read code for the layer? Forms that count:
+      * "No authentication code was provided ...", "No authentication mechanisms were found ..." (at the start)
+      * "... was/were not (directly) provided / reviewed / examined ..." in the first sentence
+      * "no database configuration files ... were directly reviewed", "none of the batches examined ..."
+    A summary about PROBLEMS ("No issues found in the auth code", "No critical vulnerabilities found", "No hardcoded
+    secrets found in any of the 35 files reviewed") says the opposite: the code was read and is healthy. Found
+    2026-10-14: the plain pattern read those healthy sentences as "never seen", so clean layers showed "Not checked";
+    and on the Juice Shop report phrasings such as "were not directly reviewed" were missed, so layers whose own text
+    said the code was not read still showed a green "passing"."""
+    _verbs = (r"provided|supplied|included|reviewed|examined|inspected|seen|visible|available")
     _seen_nothing = re.compile(
         r"^\s*(?:no|none of the)\b([^.;]{0,80}?)\b(?:provided|supplied|included|found|present|visible|available|"
         r"reviewed|seen|submitted)\b", re.I)
     _about_problems = re.compile(
         r"\b(?:issues?|vulnerabilit\w*|problems?|findings?|weakness\w*|concerns?|risks?|flaws?|bugs?|"
-        r"misconfigur\w*|errors?)\b", re.I)
+        r"misconfigur\w*|errors?|hardcoded|secrets?|credentials?|injection|exposure|exposed|leaks?|leaked|xss|csrf|cves?)\b",
+        re.I)
+    _not_read = re.compile(
+        r"\b(?:was|were|is|are|been|could|can)\s+not\s+(?:be\s+)?(?:directly\s+|actually\s+|specifically\s+|fully\s+)?"
+        r"(?:provided|supplied|included|reviewed|examined|inspected|seen|visible|available|analy[sz]ed)\b", re.I)
+    _none_examined = re.compile(
+        r"\bnone\s+(?:of\s+the\s+)?(?:batches\s+|files\s+)?(?:examined|reviewed|inspected|looked\s+at)\b", re.I)
+    _no_then_read = re.compile(
+        r"\bno\b([^.;]{0,120}?)\b(?:provided|supplied|included|reviewed|examined|inspected|seen|visible|available)\b", re.I)
 
     def search(self, text):
-        m = self._seen_nothing.search(text or "")
-        if not m or self._about_problems.search(m.group(1)):
-            return None
-        return m
+        t = (text or "").strip()
+        m = self._seen_nothing.search(t)
+        if m and not self._about_problems.search(m.group(1)):
+            return m
+        first = re.split(r"(?<=[.!?])\s", t, maxsplit=1)[0][:400]
+        for rx in (self._not_read, self._none_examined):
+            m = rx.search(first)
+            if m:
+                return m
+        m = self._no_then_read.search(first)
+        if m and not self._about_problems.search(m.group(1)):
+            return m
+        return None
 
 
 _NOT_PROVIDED = _NotProvided()
@@ -241,15 +264,15 @@ def restore_clean_layers(merged_layers, raw_results):
             continue
         ex = layer.get("expert") or {}
         findings = ex.get("findings") or []
-        if any((f.get("title") or "") not in ("", "No issues found") for f in findings):
-            continue   # it has real findings: the merge already wrote about it
+        has_real = any((f.get("title") or "") not in ("", "No issues found") for f in findings)
         summ = (ex.get("summary") or "").strip()
         if summ and summ != f"{name} layer analysis." and not _NOT_PROVIDED.search(summ):
             continue   # the merge already described it properly
         sex = src.get("expert") or {}
         ex["summary"] = sex.get("summary") or summ
         layer["expert"] = ex
-        layer["status"] = "passing"
+        if not has_real:   # a layer that has findings keeps its status (and its findings)
+            layer["status"] = "passing"
         lrn, slrn = layer.get("learner") or {}, src.get("learner") or {}
         for k in ("what_is_it", "analogy", "what_it_does_in_your_app", "how_it_connects", "key_concept"):
             if slrn.get(k) and (not lrn.get(k) or k in ("what_is_it", "what_it_does_in_your_app", "how_it_connects")):
@@ -262,6 +285,55 @@ def restore_clean_layers(merged_layers, raw_results):
         if src.get("quiz") and not (layer.get("quiz") or [{}])[0].get("question"):
             layer["quiz"] = src["quiz"]
     return set(seen)
+
+
+_LAYER_SEV_RANK = {"passing": 0, "info": 0, "low": 0, "warning": 1, "moderate": 1, "medium": 1, "high": 2, "critical": 2}
+
+
+def align_layer_status(merged_layers):
+    """A layer's status chip can never be calmer than its own worst finding: a layer holding a critical finding is
+    critical, one holding a warning is at least warning (the merge sometimes left such a layer on a green "passing").
+    Only ever raises a status; Libraries (set from the package data) and not_checked layers are left alone.
+    Returns the names changed."""
+    changed = []
+    for layer in (merged_layers or {}).get("layers", []):
+        if layer.get("name") == "Libraries" or layer.get("status") == "not_checked":
+            continue
+        worst = max([_LAYER_SEV_RANK.get((f.get("severity") or "").lower(), 0)
+                     for f in ((layer.get("expert") or {}).get("findings") or [])] or [0])
+        status = layer.get("status")
+        if worst == 2 and status != "critical":
+            layer["status"] = "critical"; changed.append(layer.get("name"))
+        elif worst == 1 and status == "passing":
+            layer["status"] = "warning"; changed.append(layer.get("name"))
+    return changed
+
+
+PARTIAL_NOTE = ("Note: Verilay's AI review did not read dedicated code for this area, so treat this result as "
+                "partial. ")
+
+
+def note_partly_read_layers(merged_layers, layers_read=None):
+    """A layer whose own text says its code was not read, but which still has findings (so it cannot honestly be
+    "Not checked": its findings are real, for example from the automatic key and package scans), keeps those findings
+    and gets a plain note saying the AI review did not read code for it. Layers some batch really read are left alone.
+    Returns the names noted."""
+    noted = []
+    for layer in (merged_layers or {}).get("layers", []):
+        name = layer.get("name")
+        if name == "Libraries" or layer.get("status") == "not_checked":
+            continue
+        if layers_read is not None and name in layers_read:
+            continue
+        ex = layer.get("expert") or {}
+        summ = ex.get("summary") or ""
+        has_real = any((f.get("severity") or "").lower() in ("critical", "warning", "high", "moderate")
+                       for f in (ex.get("findings") or []))
+        if has_real and _NOT_PROVIDED.search(summ) and not summ.startswith(PARTIAL_NOTE):
+            ex["summary"] = PARTIAL_NOTE + summ
+            layer["expert"] = ex
+            noted.append(name)
+    return noted
 
 
 def mark_unchecked_layers(merged_layers, files_read=None, layers_read=None):

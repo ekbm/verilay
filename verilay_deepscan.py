@@ -468,7 +468,11 @@ def _run_job(job_id, user_id=None):
         # A layer some batch really read, with nothing wrong in it, must stay "passing" (and keep its description),
         # not turn into "Not checked": see deepreport.restore_clean_layers.
         layers_read = deepreport.restore_clean_layers(merged_layers, raw_results)
+        # A status chip is never calmer than the layer's own findings; a layer whose text says its code was not read
+        # is "Not checked" (no findings) or keeps its findings with a plain "partial" note.
+        deepreport.align_layer_status(merged_layers)
         unchecked_layers = deepreport.mark_unchecked_layers(merged_layers, len(files), layers_read=layers_read)
+        deepreport.note_partly_read_layers(merged_layers, layers_read=layers_read)
 
         report = _assemble_report(
             repo=repo, stack_result=stack_result, merged_layers=merged_layers,
