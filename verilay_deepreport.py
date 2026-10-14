@@ -180,9 +180,26 @@ def drop_dependency_fixes(top_fixes, vulns):
 
 # ---------------------------------------------------------------- 2. layers never seen
 
-_NOT_PROVIDED = re.compile(
-    r"^\s*(no|none of the)\b[^.;]{0,80}\b(provided|supplied|included|found|present|visible|available|"
-    r"reviewed|seen|submitted)\b", re.I)
+class _NotProvided:
+    """Does this layer summary say the AI never saw any code for the layer ('No auth code was provided',
+    'No authentication mechanisms were found')? A summary about PROBLEMS ('No issues found in the auth code',
+    'No critical vulnerabilities found') says the opposite: the code was read and is healthy. Found 2026-10-14:
+    the plain pattern treated those healthy sentences as 'never seen', so clean layers showed 'Not checked'."""
+    _seen_nothing = re.compile(
+        r"^\s*(?:no|none of the)\b([^.;]{0,80}?)\b(?:provided|supplied|included|found|present|visible|available|"
+        r"reviewed|seen|submitted)\b", re.I)
+    _about_problems = re.compile(
+        r"\b(?:issues?|vulnerabilit\w*|problems?|findings?|weakness\w*|concerns?|risks?|flaws?|bugs?|"
+        r"misconfigur\w*|errors?)\b", re.I)
+
+    def search(self, text):
+        m = self._seen_nothing.search(text or "")
+        if not m or self._about_problems.search(m.group(1)):
+            return None
+        return m
+
+
+_NOT_PROVIDED = _NotProvided()
 
 
 def _batch_layers(raw_results):
