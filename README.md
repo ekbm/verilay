@@ -2,7 +2,7 @@
 
 **Understand what your AI-built app is actually made of.**
 
-Verilay reads any GitHub repo, ZIP export, or live URL and generates a plain-English layer map — showing every part of your app (auth, database, API, libraries, config) with both an expert review and a beginner-friendly explanation, plus a second opinion export so you can verify findings independently.
+Verilay reads any public GitHub repo, ZIP export, or live URL and generates a plain-English layer map — showing every part of your app (auth, database, API, libraries, config) with both an expert review and a beginner-friendly explanation, plus a second opinion export so you can verify findings independently.
 
 Built for the 99% of people who build with AI tools like Lovable, Replit, and Emergent — but can't verify what was generated.
 
@@ -40,6 +40,14 @@ Tools like CodeRabbit and Snyk answer these questions — for developers, in dev
 
 **Dependency vulnerability check** — every dependency checked against OSV.dev, a public database of known security issues
 
+**Weak cryptography check** — your files are checked directly for weak or hard-coded cryptography, not guessed by the AI
+
+**Who can see your data (Supabase apps)** — Verilay reads your database rules and backend functions and tells you, in plain English, where anyone on the internet could read or change something they shouldn't. The free scan shows a count; the deep scan lists each one with a fix. Settings changed only in the Supabase dashboard can't be seen from your files.
+
+**Closest similar project** — the free scan shows the closest open-source project doing something like yours. The deep scan lists up to six, with why each is similar, what it's best at, its licence and when it was last updated, so you can learn from one, build on it, or get in touch with the people behind it. It searches free, open-source projects on GitHub only, not commercial apps, so "no match" never means nothing similar exists.
+
+**IT Review Pack** — a printable checklist for IT teams deciding whether to approve an app a colleague built with AI
+
 **Ask Verilay** — ask a real question about your own report and get an answer grounded in your actual findings, not a generic response
 
 **Production verdict** — is this app ready to ship?
@@ -52,7 +60,17 @@ Tools like CodeRabbit and Snyk answer these questions — for developers, in dev
 
 ### The deep scan (optional, paid)
 
-The free analysis above covers the 25 files most likely to carry risk, and is free forever with no account needed. A one-time **$19 AUD deep scan** goes further: reads far more of your codebase, gives exact package names and fixes for every dependency vulnerability instead of just a count, and includes unlimited re-scans of the same app for 30 days so you can confirm a fix actually worked. See [verilay.dev/deep-scan](https://verilay.dev/deep-scan).
+The free analysis above covers the 25 files most likely to carry risk, and is free forever with no account needed. A one-time **$19 AUD deep scan** goes further:
+
+- **Reads up to 150 files** instead of 25
+- **A "fix these first" list**, in priority order, each with a plain-English explanation and a ready-to-paste prompt for your AI builder
+- **Every risky package named**, with its exact version and vulnerability ID, plus one fix prompt per package and one to update them all
+- **Each access problem listed** for Supabase apps, with a fix, instead of just a count
+- **Up to six similar open-source projects** to learn from or partner with
+- **Unlimited re-scans of the same app for 30 days**, so you can confirm a fix actually worked
+- **Saved in your account**
+
+If part of your app couldn't be read, the deep scan report says "Not checked" for that part instead of showing a green tick. It reads public GitHub repositories only, and it is an automated first pass, not a penetration test. See [verilay.dev/deep-scan](https://verilay.dev/deep-scan).
 
 ---
 
@@ -63,6 +81,8 @@ The free analysis above covers the 25 files most likely to carry risk, and is fr
 | GitHub URL | Public repo URL | Full — all layers |
 | ZIP upload | Export from Lovable/Replit | Full — all layers |
 | Live URL | yourapp.lovable.app | Surface — visible layers only |
+
+Verilay reads **public** GitHub repositories only, and it never writes to your repository. You decide which fixes to apply, using your own AI builder.
 
 ---
 
@@ -83,7 +103,7 @@ cp .env.example .env
 ```
 
 Edit `.env` and add:
-- `ANTHROPIC_API_KEY` — **required.** From https://console.anthropic.com. Each analysis costs approximately $0.01–0.03 in API credits.
+- `ANTHROPIC_API_KEY` — **required.** From https://console.anthropic.com. Each analysis makes several AI calls: a few cents for a small app, and more for a very large one.
 - `GITHUB_TOKEN` — optional but recommended. Free from https://github.com/settings/tokens (read-only scope). Without it: 60 GitHub API requests/hour. With it: 5,000/hour.
 
 That's everything needed for the free analysis tool to run locally. `.env.example` also lists variables for the deep scan, accounts, and Stripe — those are all optional, and the app runs fine without them (the paid path just doesn't load). See [PAYWALL_SETUP.md](PAYWALL_SETUP.md) if you want to set those up too.
@@ -105,7 +125,10 @@ You provide a GitHub URL, ZIP file, or live app URL
                     ↓
 Verilay reads priority files (auth, DB, config, routes...)
                     ↓
-Files sent to Claude API with structured analysis prompt
+Fixed checks run on your files: exposed secrets, weak cryptography,
+known-vulnerable packages (OSV.dev), and database access rules
+                    ↓
+The files most relevant to each layer are sent to the Claude API
                     ↓
 Claude classifies layers, identifies issues, writes plain-English explanations
                     ↓
@@ -113,6 +136,15 @@ Verilay renders interactive dashboard with Expert and Learner modes
                     ↓
 Fix prompts generated — paste directly into Lovable or Replit to fix issues
 ```
+
+---
+
+## Sharing and privacy
+
+- A report is shared by its link. Anyone who has the link can open it, so don't send it to someone you wouldn't show the code to. Reports are not listed anywhere, and search engines are told to ignore them.
+- Only the browser that ran a scan (or, for a deep scan, you, when signed in) can change or delete that report.
+- Reports from a free analysis stop working 90 days after the scan. Deep scan reports are kept in your account.
+- Verilay reads public repositories only.
 
 ---
 
