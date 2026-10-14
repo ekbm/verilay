@@ -36,10 +36,23 @@ def _parse(ts):
         return None
 
 
-def expires_at(created_at, data, owner):
+def sample_ids():
+    """The ids of the example reports shown on the deep scan page (VERILAY_SAMPLE_REPORT_ID, the deep one, and
+    VERILAY_SAMPLE_FREE_REPORT_ID, the free one). Their links must keep working, so they never expire."""
+    out = set()
+    for name in ("VERILAY_SAMPLE_REPORT_ID", "VERILAY_SAMPLE_FREE_REPORT_ID"):
+        v = os.getenv(name, "").strip().lower()
+        if len(v) == 12 and all(ch in "0123456789abcdef" for ch in v):
+            out.add(v)
+    return out
+
+
+def expires_at(created_at, data, owner, report_id=None):
     """The moment this report's link stops working, or None when it never does."""
     n = days()
     if n == 0 or owner or (isinstance(data, dict) and data.get("is_deep_scan")):
+        return None
+    if report_id and str(report_id).lower() in sample_ids():
         return None
     created = _parse(created_at)
     if created is None:
@@ -47,14 +60,14 @@ def expires_at(created_at, data, owner):
     return created + timedelta(days=n)
 
 
-def is_expired(created_at, data, owner, now=None):
-    end = expires_at(created_at, data, owner)
+def is_expired(created_at, data, owner, now=None, report_id=None):
+    end = expires_at(created_at, data, owner, report_id)
     if end is None:
         return False
     return (now or datetime.now(timezone.utc)) >= end
 
 
-def until_text(created_at, data, owner):
+def until_text(created_at, data, owner, report_id=None):
     """'12 Jan 2027' for a report that will expire, else ''."""
-    end = expires_at(created_at, data, owner)
+    end = expires_at(created_at, data, owner, report_id)
     return end.astimezone(timezone.utc).strftime("%d %b %Y") if end else ""

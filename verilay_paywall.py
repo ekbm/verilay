@@ -392,21 +392,29 @@ _DEEP_FAQ = """
 
 
 def _sample_report_html():
-    """A link to a real example report, only when the owner has chosen one (VERILAY_SAMPLE_REPORT_ID on Railway,
-    the 12-character id of a saved deep scan report). Nothing is shown until then: no made-up example."""
+    """Links to real example reports, only when the owner has chosen them (Railway variables):
+    VERILAY_SAMPLE_REPORT_ID = a saved DEEP scan report, VERILAY_SAMPLE_FREE_REPORT_ID = a saved FREE report of the
+    SAME app (both 12 hex characters), VERILAY_SAMPLE_REPORT_LABEL = a short line saying what the example is.
+    With both, the page shows them side by side so a visitor can see the difference. Nothing is shown until set:
+    no made-up example."""
     import re as _re
-    rid = os.getenv("VERILAY_SAMPLE_REPORT_ID", "").strip().lower()
-    if not _re.fullmatch(r"[0-9a-f]{12}", rid):
+    def _ok(name):
+        v = os.getenv(name, "").strip().lower()
+        return v if _re.fullmatch(r"[0-9a-f]{12}", v) else ""
+    deep, free = _ok("VERILAY_SAMPLE_REPORT_ID"), _ok("VERILAY_SAMPLE_FREE_REPORT_ID")
+    if not deep:
         return ""
-    link = ('<a href="/report/' + rid + '" target="_blank" rel="noopener" '
-            'onclick="try{if(window.plausible)plausible(\'Sample Report Click\')}catch(e){}" '
-            'style="font-size:14px;font-weight:600">See a real deep scan report &rarr;</a>')
-    # Optional: say what the example is, e.g. "OWASP Juice Shop, an intentionally vulnerable practice app", so nobody
-    # takes its findings for a real product's. Set VERILAY_SAMPLE_REPORT_LABEL on Railway. Escaped, and capped.
-    label = os.getenv("VERILAY_SAMPLE_REPORT_LABEL", "").strip()[:140]
-    if label:
-        link += ' <span class="note" style="display:block;margin-top:.25rem">Example: ' + _esc(label) + '</span>'
-    return link
+    click = "onclick=\"try{if(window.plausible)plausible('Sample Report Click')}catch(e){}\""
+    label = os.getenv("VERILAY_SAMPLE_REPORT_LABEL", "").strip()[:240]
+    note = ('<span class="note" style="display:block;margin-top:.25rem">Example: ' + _esc(label) + '</span>') if label else ""
+    deep_a = ('<a href="/report/' + deep + '" target="_blank" rel="noopener" ' + click +
+              ' style="font-size:14px;font-weight:600">See a real deep scan report &rarr;</a>')
+    if not free:
+        return deep_a + note
+    free_a = ('<a href="/report/' + free + '" target="_blank" rel="noopener" ' + click +
+              ' style="font-size:14px;font-weight:600">Free scan report &rarr;</a>')
+    return ('<span style="display:block"><strong style="font-size:13px">See the difference on the same app:</strong> '
+            + free_a + ' &nbsp;&middot;&nbsp; ' + deep_a.replace("See a real deep scan report", "Deep scan report") + '</span>' + note)
 
 
 def _public_repo_error(canonical):

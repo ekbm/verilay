@@ -318,9 +318,9 @@ def _report_row(report_id):
     return res.data[0] if res.data else None
 
 
-def _report_expired(row):
+def _report_expired(row, report_id=None):
     """True when a free report's share link has run out (see verilay_report_expiry.py)."""
-    return report_expiry.is_expired(row.get("created_at"), row.get("data"), row.get("user_id"))
+    return report_expiry.is_expired(row.get("created_at"), row.get("data"), row.get("user_id"), report_id=report_id)
 
 
 def _report_auth_info(report_id):
@@ -331,7 +331,7 @@ def _report_auth_info(report_id):
         for _attempt in (1, 2):
             try:
                 row = _report_row(report_id)
-                if row and not _report_expired(row):
+                if row and not _report_expired(row, report_id):
                     data = row.get("data")
                     owner = row.get("user_id")
                 break
@@ -378,7 +378,7 @@ def _scan_time_label(report_id, data):
             row = None
     until = ""
     if row:
-        until = report_expiry.until_text(row.get("created_at"), row.get("data"), row.get("user_id"))
+        until = report_expiry.until_text(row.get("created_at"), row.get("data"), row.get("user_id"), report_id)
     tail = f" · link works until {until}" if until else ""
     rf = data.get("reused_from") if isinstance(data, dict) else None
     if isinstance(rf, dict) and rf.get("created_at"):
@@ -486,7 +486,7 @@ def get_report_data(report_id):
                 _row = _report_row(report_id)
                 if _row:
                     _d = _row["data"]
-                    return None if (_is_deleted_report(_d) or _report_expired(_row)) else _d
+                    return None if (_is_deleted_report(_d) or _report_expired(_row, report_id)) else _d
                 break
             except Exception as e:
                 print(f"Supabase get failed (attempt {_attempt}): {e}")
