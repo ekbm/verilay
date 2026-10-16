@@ -150,8 +150,6 @@ function showDirectoryCard(reportId) {
             '<input id="dir-url" maxlength="200" placeholder="https://yourapp.com" autocapitalize="none" spellcheck="false" style="' + field + '">' +
           '<label style="' + lab + '" for="dir-built">Built with</label><select id="dir-built" style="' + field + '"></select>' +
           '<label style="' + lab + '" for="dir-cat">Category</label><select id="dir-cat" style="' + field + '"></select>' +
-          '<label style="' + lab + '" for="dir-price">Price</label><select id="dir-price" style="' + field + '">' +
-            '<option value="free">Free</option><option value="freemium">Free with paid plans</option><option value="paid">Paid</option></select>' +
           '<label style="' + lab + '" for="dir-contact">How can people reach you? (email or link, shown publicly)</label>' +
             '<input id="dir-contact" maxlength="254" autocapitalize="none" spellcheck="false" style="' + field + '">' +
           '<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--put);margin-top:.6rem"><input type="checkbox" id="dir-beta"> Looking for beta testers</label>' +
@@ -219,7 +217,7 @@ async function submitDirectoryListing(e) {
       headers: reportHeaders(reportId, {'Content-Type': 'application/json'}),
       body: JSON.stringify({
         report_id: reportId, app_name: v('dir-name'), tagline: v('dir-tagline'), app_url: v('dir-url'),
-        built_with: v('dir-built'), category: v('dir-cat'), pricing: v('dir-price'), contact: v('dir-contact'),
+        built_with: v('dir-built'), category: v('dir-cat'), contact: v('dir-contact'),
         beta_testers: c('dir-beta'), custom_work: c('dir-custom'), confirm: c('dir-confirm'), website: v('dir-website')
       })
     });

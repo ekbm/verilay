@@ -63,7 +63,6 @@ CATEGORIES = {
     "developer": "Developer tools",
     "other": "Something else",
 }
-PRICING = {"free": "Free", "freemium": "Free with paid plans", "paid": "Paid"}
 
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
@@ -168,7 +167,6 @@ def validate_form(form):
         "app_url": _clean(form.get("app_url"), 200),
         "built_with": _clean(form.get("built_with"), 40),
         "category": _clean(form.get("category"), 20),
-        "pricing": _clean(form.get("pricing"), 20),
         "contact": _clean(form.get("contact"), 254),
         "beta_testers": bool(form.get("beta_testers")),
         "custom_work": bool(form.get("custom_work")),
@@ -185,8 +183,6 @@ def validate_form(form):
         return f, "Please choose the AI tool you built it with."
     if f["category"] not in CATEGORIES:
         return f, "Please choose a category."
-    if f["pricing"] not in PRICING:
-        f["pricing"] = ""
     c = f["contact"]
     if not (_EMAIL.match(c) or (re.match(r"^https?://", c, re.I) and _valid_url(c))):
         return f, "Please give an email address or a web link where people can reach you."
@@ -350,7 +346,7 @@ def _card(r):
         stamp = f'<span class="stamp stamp-old">Checked {_esc(date)} &middot; due for a fresh check</span>'
     else:
         stamp = ""
-    chips = [r.get("built_with"), CATEGORIES.get(r.get("category"), ""), PRICING.get(r.get("pricing") or "", "")]
+    chips = [r.get("built_with"), CATEGORIES.get(r.get("category"), "")]  # no price: the app's own site shows that
     if r.get("beta_testers"):
         chips.append("Looking for beta testers")
     if r.get("custom_work"):
