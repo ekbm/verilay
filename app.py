@@ -4607,6 +4607,8 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you join the waitlist — your email address</li>
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
+    <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
+    <li>If you contact an app&rsquo;s builder through the directory — your email and message, which we email to the builder and keep</li>
   </ul>
 
   <h2>What we do not collect</h2>
@@ -4631,6 +4633,9 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2>Waitlist emails</h2>
   <p>If you join the waitlist, your email is stored in Supabase and used only to notify you when new features launch. You can request deletion by emailing moses@verilay.dev.</p>
+
+  <h2>App directory</h2>
+  <p>When you list an app, your name and what you write about the app are shown publicly on verilay.dev/apps once the listing is approved. Your email is never shown: when a visitor uses &ldquo;Contact the builder&rdquo;, we email their message to you with their address as the reply-to, so you can answer them directly. We keep each visitor&rsquo;s email and message so we can see which apps people are interested in; they are never shown publicly. You can ask for a listing or a message to be removed by emailing <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a>.</p>
 
   <h2>Feedback</h2>
   <p>If you rate a report and choose to leave a comment or email, these are stored with that report in Supabase. Email is optional and used only to follow up about the feedback you left — for example to let you know an issue was fixed. You can request deletion by emailing moses@verilay.dev.</p>
@@ -5317,6 +5322,10 @@ def sitemap():
         ("https://verilay.dev/monitoring", "monthly", "0.6"),
         ("https://verilay.dev/apps", "daily", "0.8"),
     ]
+    try:
+        urls.extend(directory.sitemap_entries())  # each approved app's own page
+    except Exception as _sm_err:
+        print(f"Sitemap: app pages skipped: {_sm_err}", flush=True)
     for p in BLOG_POSTS:
         if p.get("body") or p["slug"] == "evident-ai-c-to-b":
             urls.append(("https://verilay.dev/blog/" + p["slug"], "monthly", "0.7"))
@@ -6791,9 +6800,6 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <a href="/blog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
     <a href="/deep-scan" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Pricing</a>
     <a href="/changelog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
-    <a href="/privacy" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Privacy</a>
-    <a href="/terms" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Terms</a>
-    <a href="/ai-disclaimer" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">AI Disclaimer</a>
     <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0">GitHub</a>
   </div>
 </div>
@@ -6957,6 +6963,20 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
         </div>
         <div style="font-size:12px;color:var(--mut);line-height:1.45">Copy-ready prompts to verify findings in Claude, ChatGPT, or with a developer.</div>
       </div>
+      <a href="/apps" style="display:block;text-decoration:none;color:inherit;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-rosette-discount-check" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:13px;font-weight:500">Checked by Verilay stamp</span>
+        </div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.45">No critical issues found? Earn a dated stamp to show visitors on your own site.</div>
+      </a>
+      <a href="/apps" style="display:block;text-decoration:none;color:inherit;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem .9rem">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:.4rem">
+          <i class="ti ti-building-store" style="font-size:16px;color:var(--pu)"></i>
+          <span style="font-size:13px;font-weight:500">A free directory listing</span>
+        </div>
+        <div style="font-size:12px;color:var(--mut);line-height:1.45">Put your app in front of people looking for apps built with AI tools, and let them contact you.</div>
+      </a>
     </div>
     <div style="text-align:center;margin-top:1rem">__SELFMONITOR_TABLE__</div>
   </div>

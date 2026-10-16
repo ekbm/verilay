@@ -150,8 +150,10 @@ function showDirectoryCard(reportId) {
             '<input id="dir-url" maxlength="200" placeholder="https://yourapp.com" autocapitalize="none" spellcheck="false" style="' + field + '">' +
           '<label style="' + lab + '" for="dir-built">Built with</label><select id="dir-built" style="' + field + '"></select>' +
           '<label style="' + lab + '" for="dir-cat">Category</label><select id="dir-cat" style="' + field + '"></select>' +
-          '<label style="' + lab + '" for="dir-contact">How can people reach you? (email or link, shown publicly)</label>' +
-            '<input id="dir-contact" maxlength="254" autocapitalize="none" spellcheck="false" style="' + field + '">' +
+          '<label style="' + lab + '" for="dir-builder">Your name or business name (shown on your listing)</label>' +
+            '<input id="dir-builder" maxlength="60" autocomplete="name" style="' + field + '">' +
+          '<label style="' + lab + '" for="dir-contact">Your email (private: visitors\' messages are sent here, never shown)</label>' +
+            '<input id="dir-contact" type="email" maxlength="254" autocomplete="email" autocapitalize="none" spellcheck="false" style="' + field + '">' +
           '<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--put);margin-top:.6rem"><input type="checkbox" id="dir-beta"> Looking for beta testers</label>' +
           '<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--put);margin-top:.3rem"><input type="checkbox" id="dir-custom"> Open to custom work</label>' +
           '<label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--put);margin-top:.6rem;line-height:1.5"><input type="checkbox" id="dir-confirm" style="margin-top:2px"> ' +
@@ -217,7 +219,7 @@ async function submitDirectoryListing(e) {
       headers: reportHeaders(reportId, {'Content-Type': 'application/json'}),
       body: JSON.stringify({
         report_id: reportId, app_name: v('dir-name'), tagline: v('dir-tagline'), app_url: v('dir-url'),
-        built_with: v('dir-built'), category: v('dir-cat'), contact: v('dir-contact'),
+        built_with: v('dir-built'), category: v('dir-cat'), builder_name: v('dir-builder'), contact: v('dir-contact'),
         beta_testers: c('dir-beta'), custom_work: c('dir-custom'), confirm: c('dir-confirm'), website: v('dir-website')
       })
     });
@@ -227,7 +229,8 @@ async function submitDirectoryListing(e) {
       card.querySelector('#dir-form').querySelectorAll('input,select').forEach(function (el) { el.disabled = true; });
       btn.style.display = 'none';
       _dirMsg(out.stamped
-        ? 'Thank you! Your app will appear on verilay.dev/apps with the Checked by Verilay stamp once it has been reviewed.'
+        ? 'Thank you! Your app will appear on verilay.dev/apps with the Checked by Verilay stamp once it has been reviewed. ' +
+          'We will email you when it is live, with a stamp you can put on your own site.'
         : 'Thank you! Your app will appear on verilay.dev/apps once it has been reviewed. This scan found issues to fix first, ' +
           'so it is listed without the stamp: fix them, scan again and list it again to earn the stamp.', true);
       try { if (typeof plausible === 'function') plausible('Directory Listing Submit', {props: {stamped: out.stamped ? 'yes' : 'no'}}); } catch (e3) {}

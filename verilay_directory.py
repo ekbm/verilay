@@ -7,6 +7,10 @@ choose to list their app. Apps whose scan found no critical issues and graded A
 or B carry the "Checked by Verilay" confidence stamp, dated, and it fades after
 STAMP_DAYS so an old clean scan cannot be shown for ever.
 
+Every approved app has its own page, /apps/<slug>, with its check status, a
+"Contact the builder" form and the stamp makers can put on their own sites
+(/apps/<slug>/stamp.svg, drawn live so it never claims more than is true now).
+
 Rules this module keeps:
   - Listing needs the scan's manage token (the browser that ran the scan), so a
     stranger holding a report link cannot list it.
@@ -15,16 +19,22 @@ Rules this module keeps:
     marked `_client_saved` by app.py and can never earn a listing or a stamp.
   - Nothing appears on /apps until Moses approves it on /apps/review. Every
     change to a listing sends it back for review.
+  - The builder's email is never shown. Visitors write through the contact form;
+    Verilay emails the builder with the visitor as Reply-To, and keeps the
+    visitor's email and message (shown to Moses only, on /apps/review).
   - The stamp is a confidence stamp, not a security guarantee, and says so.
 
-The table is created by supabase_app_directory.sql. Moses's own monitored apps are added by
-supabase_app_directory_own_apps.sql, with code_public = false (some of their repositories are private).
+Tables: supabase_app_directory.sql, then supabase_app_directory_v2.sql (builder
+name, slug, contact messages). Moses's own monitored apps are added by
+supabase_app_directory_own_apps.sql, with code_public = false (some of their
+repositories are private).
 
 © 2026 Moses Ekbote.
 """
 
 import datetime as _dt
 import re
+import secrets
 import smtplib
 import threading
 import time
@@ -48,6 +58,7 @@ _deps = {
 
 STAMP_DAYS = 90
 TABLE = "app_listings"
+CONTACTS = "app_contacts"
 
 BUILT_WITH = ["Lovable", "Bolt", "Replit", "Base44", "v0", "Cursor", "Windsurf",
               "Claude Code", "GitHub Copilot", "Other AI tool"]
@@ -66,6 +77,9 @@ CATEGORIES = {
 
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
+_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$")
+# Words used by the directory's own pages; an app can never take them as its address.
+_RESERVED = {"list", "review", "stamp", "contact", "admin", "new", "search", "apps"}
 
 
 def init(app, sb=None, get_ip=None, report_auth_info=None, report_row=None,
@@ -88,6 +102,16 @@ def _esc(s):
 
 def _clean(s, limit):
     return _CTRL.sub(" ", str(s or "")).strip()[:limit]
+
+
+def slugify(name):
+    s = re.sub(r"[^a-z0-9]+", "-", str(name or "").lower()).strip("-")[:40].strip("-") or "app"
+    return s + "-app" if s in _RESERVED else s
+
+
+def app_path(row):
+    slug = (row or {}).get("slug") or ""
+    return "/apps/" + slug if _SLUG.match(slug) else ""
 
 
 # ── Who may list, and who earns the stamp ─────────────────────────────────────
@@ -147,6 +171,15 @@ def stamp_is_fresh(row, now=None):
     return (now - t).days < STAMP_DAYS
 
 
+def stamp_state(row, now=None):
+    """'fresh', 'expired' or 'none'."""
+    if not row or not row.get("stamped"):
+        return "none"
+    if stamp_is_fresh(row, now):
+        return "fresh"
+    return "expired" if _parse_time(row.get("checked_at")) else "none"
+
+
 # ── Form checks ───────────────────────────────────────────────────────────────
 
 def _valid_url(url):
@@ -167,7 +200,8 @@ def validate_form(form):
         "app_url": _clean(form.get("app_url"), 200),
         "built_with": _clean(form.get("built_with"), 40),
         "category": _clean(form.get("category"), 20),
-        "contact": _clean(form.get("contact"), 254),
+        "builder_name": _clean(form.get("builder_name"), 60),
+        "contact": _clean(form.get("contact"), 254).lower(),
         "beta_testers": bool(form.get("beta_testers")),
         "custom_work": bool(form.get("custom_work")),
     }
@@ -183,9 +217,10 @@ def validate_form(form):
         return f, "Please choose the AI tool you built it with."
     if f["category"] not in CATEGORIES:
         return f, "Please choose a category."
-    c = f["contact"]
-    if not (_EMAIL.match(c) or (re.match(r"^https?://", c, re.I) and _valid_url(c))):
-        return f, "Please give an email address or a web link where people can reach you."
+    if len(f["builder_name"]) < 2:
+        return f, "Please add your name (or your business name). It is shown on your listing."
+    if not _EMAIL.match(f["contact"]):
+        return f, "Please give your email address. It stays private: visitors' messages are sent to it."
     if not form.get("confirm"):
         return f, "Please confirm you built this app with AI tools and are happy for it to be listed."
     return f, ""
@@ -193,62 +228,181 @@ def validate_form(form):
 
 # ── Limits ────────────────────────────────────────────────────────────────────
 _HITS = {}
+_CONTACT_HITS = {}
 _NOTIFY_HITS = []
+_MAIL_HITS = []
 
 
-def _rate_ok(ip, limit=5, window=3600):
+def _hit_ok(store, key, limit, window):
     now = time.time()
-    if len(_HITS) > 5000:
-        _HITS.clear()
-    hits = [x for x in _HITS.get(ip, []) if now - x < window]
+    if len(store) > 5000:
+        store.clear()
+    hits = [x for x in store.get(key, []) if now - x < window]
     ok = len(hits) < limit
     if ok:
         hits.append(now)
-    _HITS[ip] = hits
+    store[key] = hits
     return ok
 
 
-def _notify_ok(limit=20, window=3600):
+def _rate_ok(ip, limit=5, window=3600):
+    return _hit_ok(_HITS, ip, limit, window)
+
+
+def _cap_ok(store, limit, window=3600):
     now = time.time()
-    _NOTIFY_HITS[:] = [x for x in _NOTIFY_HITS if now - x < window]
-    if len(_NOTIFY_HITS) >= limit:
+    store[:] = [x for x in store if now - x < window]
+    if len(store) >= limit:
         return False
-    _NOTIFY_HITS.append(now)
+    store.append(now)
     return True
 
 
+def _notify_ok(limit=20, window=3600):
+    return _cap_ok(_NOTIFY_HITS, limit, window)
+
+
+# ── Email ─────────────────────────────────────────────────────────────────────
+
+# Emails to builders come from Moses himself: a person, not a no-reply robot. If the mail service
+# refuses that sender (not yet allowed in ZeptoMail), the same email goes from noreply@ instead.
+BUILDER_FROM = "moses@verilay.dev"
+BUILDER_FROM_NAME = "Moses at Verilay"
+
+
+def _send_mail(to, subject, body, reply_to=None, personal=False):
+    """Best-effort email through Verilay's ZeptoMail relay. Returns True/False, never raises."""
+    try:
+        import verilay_notify as notify
+        if not notify.configured() or not to:
+            print("[directory] email not configured; nothing sent", flush=True)
+            return False
+    except Exception:
+        return False
+    senders = [(BUILDER_FROM, f"{BUILDER_FROM_NAME} <{BUILDER_FROM}>")] if personal else []
+    senders.append((notify.FROM_ADDRESS, f"Verilay <{notify.FROM_ADDRESS}>"))
+    for envelope, header in senders:
+        try:
+            msg = MIMEText(body, "plain", "utf-8")
+            msg["Subject"] = _clean(subject, 150)
+            msg["From"] = header
+            msg["To"] = to
+            if reply_to:
+                msg["Reply-To"] = reply_to
+            with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+                server.login("emailapikey", notify.ZEPTOMAIL_TOKEN)
+                server.sendmail(envelope, [to], msg.as_string())
+            return True
+        except Exception as e:
+            print(f"[directory] email from {envelope} failed: {e}", flush=True)
+    return False
+
+
 def _send_review_alert(row):
-    """Email Moses that a listing is waiting. Best-effort, never raises."""
+    """Email Moses that a listing is waiting."""
     try:
         import verilay_notify as notify
         to = notify.MONITORING_INTEREST_NOTIFY_EMAIL
-        if not notify.configured() or not to:
-            print("[directory] email not configured; listing stored without an alert", flush=True)
-            return False
-        lines = [
-            "A new app listing is waiting for your review.", "",
-            f"App: {row.get('app_name')}",
-            f"What it does: {row.get('tagline')}",
-            f"Web address: {row.get('app_url')}",
-            f"Repository: github.com/{row.get('repo')}",
-            f"Built with: {row.get('built_with')} (the scan guessed: {row.get('detected_with') or 'not recorded'})",
-            f"Confidence stamp: {'yes' if row.get('stamped') else 'no'}",
-            "", "Approve or hide it: https://verilay.dev/apps/review", "", "— Verilay",
-        ]
-        msg = MIMEText("\n".join(_clean(x, 300) for x in lines))
-        msg["Subject"] = _clean(f"New app listing: {row.get('app_name')}", 120)
-        msg["From"] = notify.FROM_ADDRESS
-        msg["To"] = to
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
-            server.login("emailapikey", notify.ZEPTOMAIL_TOKEN)
-            server.sendmail(notify.FROM_ADDRESS, [to], msg.as_string())
-        return True
-    except Exception as e:
-        print(f"[directory] review alert failed: {e}", flush=True)
+    except Exception:
         return False
+    lines = [
+        "A new app listing is waiting for your review.", "",
+        f"App: {row.get('app_name')}",
+        f"What it does: {row.get('tagline')}",
+        f"Web address: {row.get('app_url')}",
+        f"Repository: github.com/{row.get('repo')}",
+        f"Built with: {row.get('built_with')} (the scan guessed: {row.get('detected_with') or 'not recorded'})",
+        f"Builder: {row.get('builder_name')}",
+        f"Confidence stamp: {'yes' if row.get('stamped') else 'no'}",
+        "", "Approve or hide it: https://verilay.dev/apps/review", "", "— Verilay",
+    ]
+    return _send_mail(to, f"New app listing: {row.get('app_name')}", "\n".join(_clean(x, 300) for x in lines))
+
+
+def _hello(listing):
+    first = _clean(listing.get("builder_name"), 60).split(" ")[0] if listing.get("builder_name") else ""
+    return f"Hi {first}," if first else "Hi,"
+
+
+def contact_email(listing, visitor_email, message):
+    """(subject, body) of the email that passes a visitor's message to the builder."""
+    name = _clean(listing.get("app_name"), 60)
+    quoted = "\n".join("> " + line for line in message.split("\n"))
+    body = (f"{_hello(listing)}\n\n"
+            f"Someone found {name} in the Verilay app directory and wrote to you:\n\n"
+            f"{quoted}\n\n"
+            f"From: {visitor_email}\n\n"
+            f"Just press Reply to answer them directly. Your own email address is never shown on the directory.\n\n"
+            f"Moses\n"
+            f"Verilay · https://verilay.dev{app_path(listing)}\n")
+    return f"New message about {name} from the Verilay app directory", body
+
+
+def approval_email(listing, now=None):
+    """(subject, body) of the email sent to a builder when their listing is approved."""
+    name = _clean(listing.get("app_name"), 60)
+    url = "https://verilay.dev" + app_path(listing)
+    if stamp_state(listing, now) == "fresh":
+        date = _date_text(listing.get("checked_at"))
+        until = _date_text((_parse_time(listing["checked_at"]) + _dt.timedelta(days=STAMP_DAYS)).isoformat())
+        stamp = (f"It carries the “Checked by Verilay” stamp, because its scan on {date} found no "
+                 f"critical issues.\n\n"
+                 f"You can put the stamp on your own site too. The code to copy is on your app's page:\n"
+                 f"{url}#stamp\n\n"
+                 f"The stamp keeps itself up to date and stays current until {until}. Run a fresh free scan at "
+                 f"https://verilay.dev before then, list it again, and it renews.\n\n")
+    else:
+        stamp = ("It is listed without the “Checked by Verilay” stamp for now. To earn it, fix the issues "
+                 "from your scan, run a fresh free scan at https://verilay.dev and choose “List my app” "
+                 "again.\n\n")
+    body = (f"{_hello(listing)}\n\n"
+            f"Good news: {name} is now live in the Verilay app directory:\n{url}\n\n"
+            f"{stamp}"
+            f"When someone uses “Contact the builder” on your page, their message comes to this email "
+            f"address. Your address is never shown on the site, and you can reply to them directly.\n\n"
+            f"If anything on your listing needs changing, just reply to this email.\n\n"
+            f"Thanks for building something and sharing it,\n"
+            f"Moses\n"
+            f"Founder, Verilay\n")
+    return f"{name} is now listed on Verilay", body
+
+
+def _send_approval(listing):
+    to = listing.get("contact") or ""
+    if not _EMAIL.match(to) or to.lower() == BUILDER_FROM:
+        return False  # Moses's own apps: no need to email himself
+    subject, body = approval_email(listing)
+    return _send_mail(to, subject, body, personal=True)
+
+
+def _send_contact(listing, visitor_email, message, contact_id=None):
+    """Pass a visitor's message to the builder. The visitor is the Reply-To, so the builder answers
+    them directly and the builder's own address is never shown to anyone."""
+    to = listing.get("contact") or ""
+    if not _EMAIL.match(to):
+        return False
+    subject, body = contact_email(listing, visitor_email, message)
+    sent = _send_mail(to, subject, body, reply_to=visitor_email, personal=True)
+    sb = _deps["sb"]
+    if sent and contact_id and sb is not None:
+        try:
+            sb.table(CONTACTS).update({"emailed": True}).eq("id", contact_id).execute()
+        except Exception:
+            pass
+    return sent
 
 
 # ── Storage ───────────────────────────────────────────────────────────────────
+
+def _free_slug(sb, base, repo):
+    """`base`, or base-2, base-3 ... — the first one no other app uses."""
+    for n in range(1, 30):
+        cand = base if n == 1 else f"{base}-{n}"
+        used = sb.table(TABLE).select("repo").eq("slug", cand).limit(1).execute().data or []
+        if not used or used[0].get("repo") == repo:
+            return cand
+    return f"{base}-{secrets.token_hex(3)}"
+
 
 def save_listing(row):
     """Insert or update the listing for row['repo']. Returns 'new', 'updated' or 'none'."""
@@ -257,11 +411,15 @@ def save_listing(row):
         return "none"
     now = _dt.datetime.now(_dt.timezone.utc).isoformat()
     try:
-        existing = sb.table(TABLE).select("id").eq("repo", row["repo"]).limit(1).execute().data or []
+        existing = sb.table(TABLE).select("id,slug").eq("repo", row["repo"]).limit(1).execute().data or []
         if existing:
-            sb.table(TABLE).update(dict(row, status="pending", updated_at=now)).eq("id", existing[0]["id"]).execute()
+            # Keep the app's address once it has one, so stamps already on people's sites keep working.
+            slug = existing[0].get("slug") or _free_slug(sb, slugify(row.get("app_name")), row["repo"])
+            sb.table(TABLE).update(dict(row, slug=slug, status="pending", updated_at=now)) \
+                .eq("id", existing[0]["id"]).execute()
             return "updated"
-        sb.table(TABLE).insert(dict(row, status="pending", updated_at=now)).execute()
+        slug = _free_slug(sb, slugify(row.get("app_name")), row["repo"])
+        sb.table(TABLE).insert(dict(row, slug=slug, status="pending", updated_at=now)).execute()
         return "new"
     except Exception as e:
         print(f"[directory] could not save listing for {row.get('repo')}: {e}", flush=True)
@@ -282,7 +440,24 @@ def approved_listings():
     return sorted(rows, key=lambda r: 0 if stamp_is_fresh(r) else 1)
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+def approved_by_slug(slug):
+    sb = _deps["sb"]
+    if sb is None or not _SLUG.match(slug or ""):
+        return None
+    try:
+        rows = sb.table(TABLE).select("*").eq("slug", slug).eq("status", "approved").limit(1).execute().data or []
+    except Exception as e:
+        print(f"[directory] lookup failed for {slug}: {e}", flush=True)
+        return None
+    return rows[0] if rows else None
+
+
+def sitemap_entries():
+    """(url, changefreq, priority) for every approved app page, for /sitemap.xml."""
+    return [("https://verilay.dev" + app_path(r), "weekly", "0.6") for r in approved_listings() if app_path(r)]
+
+
+# ── Listing (from the results page) ───────────────────────────────────────────
 
 @bp.route("/apps/list", methods=["POST"])
 def list_app():
@@ -317,6 +492,8 @@ def list_app():
     return jsonify({"ok": True, "stamped": bool(stamped), "updated": result == "updated"})
 
 
+# ── The directory page ────────────────────────────────────────────────────────
+
 _STYLE = """<style>
 .wrap{max-width:860px}
 .dir-tools{display:flex;gap:8px;flex-wrap:wrap;margin:1.25rem 0 1rem}
@@ -325,48 +502,57 @@ _STYLE = """<style>
 .dir-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;margin:0;padding:0 4px;cursor:pointer}
 .dir-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.75rem}
 .app-card{background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1rem;display:flex;flex-direction:column;gap:.5rem;min-width:0}
-.app-name{font-weight:700;font-size:16px;color:#1a1917;overflow-wrap:anywhere}
+.app-name{font-weight:700;font-size:16px;color:#1a1917;overflow-wrap:anywhere;text-decoration:none}
+.app-by{font-size:12px;color:#6b6966;margin-top:-.3rem;overflow-wrap:anywhere}
 .app-line{font-size:13px;color:#4a4846;line-height:1.55;overflow-wrap:anywhere}
 .chips{display:flex;gap:5px;flex-wrap:wrap}
 .chip{font-size:11px;padding:2px 9px;border-radius:20px;background:#f0efec;color:#4a4846}
-.stamp{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:#E1F5EE;color:#085041;align-self:flex-start}
+.stamp{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:#E1F5EE;color:#085041;align-self:flex-start;text-decoration:none}
 .stamp-old{background:#f0efec;color:#6b6966;font-weight:500}
 .app-links{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-top:auto;padding-top:.25rem}
 .dir-empty{background:#fff;border:0.5px dashed #c9c7c2;border-radius:12px;padding:1.5rem;text-align:center;color:#6b6966;font-size:14px}
 </style>"""
 
 
-def _card(r):
-    fresh = stamp_is_fresh(r)
-    date = _date_text(r.get("checked_at"))
-    if fresh:
-        stamp = (f'<span class="stamp" title="No critical issues found in what Verilay checked on {_esc(date)}. '
-                 f'A confidence stamp, not a guarantee of security.">&#x2713; Checked by Verilay &middot; {_esc(date)}</span>')
-    elif r.get("stamped") and date:
-        stamp = f'<span class="stamp stamp-old">Checked {_esc(date)} &middot; due for a fresh check</span>'
-    else:
-        stamp = ""
+def _chips(r):
     chips = [r.get("built_with"), CATEGORIES.get(r.get("category"), "")]  # no price: the app's own site shows that
     if r.get("beta_testers"):
         chips.append("Looking for beta testers")
     if r.get("custom_work"):
         chips.append("Open to custom work")
-    chips_html = "".join(f'<span class="chip">{_esc(c)}</span>' for c in chips if c)
+    return "".join(f'<span class="chip">{_esc(c)}</span>' for c in chips if c)
+
+
+def _card(r):
+    fresh = stamp_is_fresh(r)
+    date = _date_text(r.get("checked_at"))
+    page = app_path(r)
+    if fresh:
+        tag = "a" if page else "span"
+        href = f' href="{_esc(page)}"' if page else ""
+        stamp = (f'<{tag} class="stamp"{href} title="No critical issues found in what Verilay checked on '
+                 f'{_esc(date)}. A confidence stamp, not a guarantee of security.">'
+                 f'&#x2713; Checked by Verilay &middot; {_esc(date)}</{tag}>')
+    elif r.get("stamped") and date:
+        stamp = f'<span class="stamp stamp-old">Checked {_esc(date)} &middot; due for a fresh check</span>'
+    else:
+        stamp = ""
     rel = "noopener" if fresh else "nofollow ugc noopener"
-    contact = r.get("contact") or ""
-    contact_href = ("mailto:" + contact) if _EMAIL.match(contact) else contact
     repo = r.get("repo") or ""
+    name = _esc(r.get("app_name"))
+    title = f'<a class="app-name" href="{_esc(page)}">{name}</a>' if page else f'<div class="app-name">{name}</div>'
+    by = f'<div class="app-by">Built by {_esc(r.get("builder_name"))}</div>' if r.get("builder_name") else ""
     search = " ".join(str(x or "") for x in (r.get("app_name"), r.get("tagline"), r.get("built_with"),
-                                              CATEGORIES.get(r.get("category"), ""), repo)).lower()
+                                              CATEGORIES.get(r.get("category"), ""), r.get("builder_name"))).lower()
     return (
         f'<div class="app-card" data-search="{_esc(search)}" data-built="{_esc(r.get("built_with"))}" '
         f'data-cat="{_esc(r.get("category"))}" data-checked="{"1" if fresh else "0"}">'
-        f'<div class="app-name">{_esc(r.get("app_name"))}</div>'
+        f'{title}{by}'
         f'<div class="app-line">{_esc(r.get("tagline"))}</div>'
-        f'{stamp}<div class="chips">{chips_html}</div>'
+        f'{stamp}<div class="chips">{_chips(r)}</div>'
         f'<div class="app-links">'
         f'<a href="{_esc(r.get("app_url"))}" target="_blank" rel="{rel}">Open the app &#x2197;</a>'
-        f'<a href="{_esc(contact_href)}" target="_blank" rel="nofollow noopener">Contact the builder</a>'
+        + (f'<a href="{_esc(page)}#contact">Contact the builder</a>' if page else "")
         + (f'<a href="https://github.com/{_esc(repo)}" target="_blank" rel="nofollow noopener" style="color:#6b6966">Code</a>'
            if repo and r.get("code_public") is not False else "")
         + '</div></div>'
@@ -435,7 +621,7 @@ def apps_page():
     <h2 style="margin-top:0">Built an app with AI? List it free</h2>
     <p style="margin-bottom:.75rem">Run a free Verilay scan of your app's public GitHub repository. When it finishes,
     choose &ldquo;List my app&rdquo;. If the scan finds no critical issues, your listing carries the
-    <strong>Checked by Verilay</strong> stamp.</p>
+    <strong>Checked by Verilay</strong> stamp, and your app's page here gives you a stamp to put on your own site.</p>
     <a class="btn" href="/">Run a free scan</a>
   </div>
   <p class="note"><strong>What the stamp means:</strong> on the date shown, a Verilay scan of the app's code
@@ -444,6 +630,211 @@ def apps_page():
   Listings are written by the people who built the apps and are reviewed before they appear.</p>
 """
     return _page("Apps built with AI tools", body + (_FILTER_JS if rows else ""))
+
+
+# ── The stamp makers put on their own sites ───────────────────────────────────
+# Drawn live from the listing every time it is shown, so it can never claim more than is true right
+# now: fresh check → "No critical issues"; older than STAMP_DAYS → "Due for a fresh check"; not listed,
+# hidden, or no stamp → "No current check". It contains no text typed by a maker, only Verilay's own
+# wording and a date, and always links back to the app's page on verilay.dev.
+
+_STAMP_W, _STAMP_H = 250, 54
+_LOGO = ('<svg x="13" y="11" width="32" height="32" viewBox="0 0 400 400"><rect width="400" height="400" rx="88" '
+         'fill="#534AB7"/><circle cx="200" cy="200" r="112" fill="#ffffff" fill-opacity="0.12"/><circle cx="200" '
+         'cy="200" r="86" fill="#ffffff" fill-opacity="0.12"/><path d="M140 142 L200 268 L260 142" fill="none" '
+         'stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><path d="M122 142 '
+         'L278 142" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/></svg>')
+
+
+def stamp_svg(row, dark=False, now=None):
+    state = stamp_state(row, now)
+    date = _date_text(row.get("checked_at")) if row else ""
+    if dark:
+        bg, border, txt, purple, green, grey = "#1f1e1c", "#3a3936", "#f1efe8", "#AFA9EC", "#5DCAA5", "#9c9a92"
+    else:
+        bg, border, txt, purple, green, grey = "#ffffff", "#e3e1db", "#1a1917", "#534AB7", "#0F6E56", "#6b6966"
+    if state == "fresh":
+        accent, label, headline, foot = green, "✓ CHECKED", "No critical issues", f"Verilay · {date}"
+    elif state == "expired":
+        accent, label, headline, foot = grey, "CHECK EXPIRED", "Due for a fresh check", f"Verilay · checked {date}"
+    else:
+        accent, label, headline, foot = grey, "VERILAY", "No current check", "verilay.dev/apps"
+    alt = {"fresh": f"Checked by Verilay on {date}: no critical issues found",
+           "expired": f"Verilay check from {date} has expired",
+           "none": "No current Verilay check"}[state]
+    font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{_STAMP_W}" height="{_STAMP_H}" '
+        f'viewBox="0 0 {_STAMP_W} {_STAMP_H}" role="img" aria-label="{_esc(alt)}">'
+        f'<title>{_esc(alt)}</title>'
+        f'<rect x="0.5" y="0.5" width="{_STAMP_W - 1}" height="{_STAMP_H - 1}" rx="10" fill="{bg}" stroke="{border}"/>'
+        f'<rect x="0.5" y="9" width="4" height="36" rx="2" fill="{accent}"/>'
+        f'{_LOGO}'
+        f'<g font-family="{font}">'
+        f'<text x="56" y="19" font-size="9.5" font-weight="700" letter-spacing="0.9" fill="{accent}">{_esc(label)}</text>'
+        f'<text x="56" y="35" font-size="14.5" font-weight="700" fill="{txt}">{_esc(headline)}</text>'
+        f'<text x="56" y="47.5" font-size="10.5" font-weight="600" fill="{purple}">{_esc(foot)}</text>'
+        f'<text x="{_STAMP_W - 14}" y="17" font-size="11" fill="{grey}" text-anchor="middle">↗</text>'
+        f'</g></svg>'
+    )
+
+
+@bp.route("/apps/<slug>/stamp.svg")
+def stamp_image(slug):
+    svg = stamp_svg(approved_by_slug(slug), dark=request.args.get("theme") == "dark")
+    return Response(svg, mimetype="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+_COPY_JS = """<script>
+document.querySelectorAll('[data-copy]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var t=document.getElementById(btn.getAttribute('data-copy'));
+    function done(){btn.textContent='Copied';setTimeout(function(){btn.textContent='Copy';},1800);}
+    if(navigator.clipboard){navigator.clipboard.writeText(t.value).then(done,function(){t.select();});}
+    else{t.select();try{document.execCommand('copy');done();}catch(e){}}
+  });
+});
+</script>"""
+
+
+def _code_box(box_id, label, code):
+    return (f'<label for="{box_id}">{label}</label><div style="display:flex;gap:6px;align-items:flex-start;'
+            f'margin-bottom:.9rem"><textarea id="{box_id}" rows="3" readonly style="font-family:ui-monospace,'
+            f'Consolas,monospace;font-size:12px">{_esc(code)}</textarea><button type="button" class="btn '
+            f'btn-quiet" data-copy="{box_id}" style="padding:8px 14px;font-size:13px">Copy</button></div>')
+
+
+# ── Each app's own page: check status, contact form, stamp code ───────────────
+
+@bp.route("/apps/<slug>")
+def app_page(slug):
+    row = approved_by_slug(slug)
+    if not row:
+        body = ('<div class="eyebrow">App directory</div><h1>Not in the directory</h1>'
+                '<p>There is no current listing at this address. It may have been removed, or it was never listed.</p>'
+                '<p><a class="btn" href="/apps">See apps built with AI tools</a></p>')
+        resp = _page("Not in the directory", body, robots="noindex,follow")
+        resp.status_code = 404
+        return resp
+    state = stamp_state(row)
+    date = _date_text(row.get("checked_at"))
+    page = app_path(row)
+    base = "https://verilay.dev" + page
+    img = base + "/stamp.svg"
+    builder = _esc(row.get("builder_name") or "the builder")
+    if state == "fresh":
+        until = _date_text((_parse_time(row["checked_at"]) + _dt.timedelta(days=STAMP_DAYS)).isoformat())
+        status = (f'<div class="ok">On {_esc(date)}, a Verilay scan of this app\'s code found <strong>no critical '
+                  f'issues</strong> and graded it A or B. The stamp stays current until {_esc(until)} unless the app is '
+                  f'checked again.</div>')
+    elif state == "expired":
+        status = (f'<div class="warn">This app was checked on {_esc(date)}, more than {STAMP_DAYS} days ago, so its '
+                  f'stamp has expired until it is checked again.</div>')
+    else:
+        status = ""
+
+    sent, err = request.args.get("sent"), _clean(request.args.get("err"), 160)
+    banner = ""
+    if sent:
+        banner = f'<div class="ok">Thank you. Your message has been passed to {builder}, who can reply to you by email.</div>'
+    if err:
+        banner += f'<div class="err">{_esc(err)}</div>'
+    contact = (
+        f'<div class="card" id="contact" style="margin-top:1.25rem"><h2 style="margin-top:0">Contact {builder}</h2>'
+        f'<p>Ask a question, report a problem or talk about custom work. Your message is emailed to {builder}, who '
+        f'can reply to you directly. Their email address is never shown here.</p>{banner}'
+        f'<form method="POST" action="{_esc(page)}/contact">'
+        f'<label for="c-email">Your email</label>'
+        f'<input type="email" id="c-email" name="email" required maxlength="254" autocomplete="email" placeholder="you@example.com">'
+        f'<div style="height:.75rem"></div>'
+        f'<label for="c-msg">Your message</label>'
+        f'<textarea id="c-msg" name="message" rows="4" required minlength="10" maxlength="1000"></textarea>'
+        f'<div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website'
+        f'<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
+        f'<p class="note" style="margin:.5rem 0 .75rem">Verilay keeps your email and message so it can see which '
+        f'apps people are interested in. It is never shown publicly. See the <a href="/privacy">privacy policy</a>.</p>'
+        f'<button class="btn" type="submit">Send message</button></form></div>'
+    )
+
+    embed = ""
+    if state == "fresh":
+        html_light = (f'<a href="{base}" target="_blank" rel="noopener"><img src="{img}" '
+                      f'alt="Checked by Verilay" width="{_STAMP_W}" height="{_STAMP_H}"></a>')
+        html_dark = html_light.replace(img, img + "?theme=dark")
+        md = f"[![Checked by Verilay]({img})]({base})"
+        embed = (
+            '<div class="card" id="stamp" style="margin-top:1.25rem"><h2 style="margin-top:0">Built this app? Add the stamp '
+            'to your site</h2><p>Paste one of these into your site, for example its footer (in Lovable, Bolt or '
+            'Replit, ask the AI to &ldquo;add this HTML to the footer&rdquo;). The stamp keeps itself up to date: '
+            'if the check expires, it says so.</p>'
+            f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:.25rem 0 1rem">'
+            f'<img src="{_esc(page)}/stamp.svg" alt="Light stamp" width="{_STAMP_W}" height="{_STAMP_H}">'
+            f'<img src="{_esc(page)}/stamp.svg?theme=dark" alt="Dark stamp" width="{_STAMP_W}" height="{_STAMP_H}" '
+            f'style="background:#1f1e1c;border-radius:10px"></div>'
+            + _code_box("code-light", "HTML, for a light background", html_light)
+            + _code_box("code-dark", "HTML, for a dark background", html_dark)
+            + _code_box("code-md", "Markdown, for a GitHub README", md)
+            + '</div>')
+
+    rel = "noopener" if state == "fresh" else "nofollow ugc noopener"
+    stamp_img = (f'<p style="margin:1rem 0"><img src="{_esc(page)}/stamp.svg" alt="Verilay stamp" '
+                 f'width="{_STAMP_W}" height="{_STAMP_H}"></p>') if state != "none" else ""
+    body = (
+        f'{_STYLE}<div class="eyebrow"><a href="/apps" style="text-decoration:none">App directory</a></div>'
+        f'<h1>{_esc(row.get("app_name"))}</h1>'
+        + (f'<p class="note" style="margin-top:-.25rem">Built by {_esc(row.get("builder_name"))}</p>'
+           if row.get("builder_name") else "")
+        + f'<p>{_esc(row.get("tagline"))}</p><div class="chips" style="margin-bottom:.5rem">{_chips(row)}</div>'
+        f'{stamp_img}{status}'
+        f'<p style="margin-top:1rem"><a class="btn" href="{_esc(row.get("app_url"))}" target="_blank" rel="{rel}">'
+        f'Open the app &#x2197;</a> &nbsp;<a href="#contact">Contact {builder}</a></p>'
+        f'{contact}{embed}'
+        f'<p class="note" style="margin-top:1.25rem"><strong>What the stamp means:</strong> a Verilay scan of the '
+        f'app\'s code found no critical issues and graded it A or B on the date shown. It is a confidence stamp '
+        f'for new builders, not a security guarantee or a penetration test. Listings are written by the people '
+        f'who built the apps. <a href="/">Check your own app free</a>.</p>'
+    )
+    return _page(f"{row.get('app_name')} - built with {row.get('built_with') or 'AI'}", body + (_COPY_JS if embed else ""))
+
+
+@bp.route("/apps/<slug>/contact", methods=["POST"])
+def contact_builder(slug):
+    row = approved_by_slug(slug)
+    if not row:
+        return redirect("/apps")
+    page = app_path(row)
+
+    def back(err=""):
+        return redirect(page + ("?err=" + urllib.parse.quote(err) if err else "?sent=1") + "#contact")
+
+    if request.form.get("website"):  # bot: look like success, send and store nothing
+        return back()
+    email = _clean(request.form.get("email"), 254).lower()
+    message = str(request.form.get("message") or "").replace("\r\n", "\n").strip()[:1000]
+    message = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", message)
+    if not _EMAIL.match(email):
+        return back("Please enter a valid email address, so the builder can reply.")
+    if len(message) < 10:
+        return back("Please write a slightly longer message (at least 10 characters).")
+    if not _hit_ok(_CONTACT_HITS, "ip:" + _deps["get_ip"](), 5, 3600) or \
+            not _hit_ok(_CONTACT_HITS, "app:" + slug, 30, 86400):
+        return back("Too many messages just now. Please try again later.")
+    contact_id = None
+    sb = _deps["sb"]
+    if sb is not None:
+        try:
+            res = sb.table(CONTACTS).insert({"listing_id": row.get("id"), "app_name": row.get("app_name"),
+                                             "visitor_email": email, "message": message,
+                                             "emailed": False}).execute()
+            contact_id = (res.data or [{}])[0].get("id")
+        except Exception as e:
+            print(f"[directory] could not store contact message: {e}", flush=True)
+    if _cap_ok(_MAIL_HITS, 60):
+        threading.Thread(target=_send_contact, args=(row, email, message, contact_id), daemon=True).start()
+    else:
+        print("[directory] contact email cap reached this hour; message stored, not emailed", flush=True)
+    return back()
 
 
 # ── Moses's review page ───────────────────────────────────────────────────────
@@ -455,6 +846,22 @@ def _same_origin():
         return urllib.parse.urlsplit(src).netloc == request.host
     except Exception:
         return False
+
+
+def _messages_html(sb):
+    try:
+        msgs = sb.table(CONTACTS).select("*").order("created_at", desc=True).limit(50).execute().data or []
+    except Exception:
+        return ('<p class="note">Messages to builders are not being kept yet. Run supabase_app_directory_v2.sql '
+                'in Supabase.</p>')
+    if not msgs:
+        return '<p class="note">No messages yet.</p>'
+    return "".join(
+        f'<div class="card"><p class="note" style="margin:0">{_esc(_date_text(m.get("created_at")))} &middot; '
+        f'<strong>{_esc(m.get("app_name"))}</strong> &middot; from {_esc(m.get("visitor_email"))} &middot; '
+        f'{"emailed to the builder" if m.get("emailed") else "NOT emailed"}</p>'
+        f'<p style="margin:.4rem 0 0;white-space:pre-wrap">{_esc(m.get("message"))}</p></div>'
+        for m in msgs)
 
 
 @bp.route("/apps/review")
@@ -479,6 +886,7 @@ def review_page():
             f'style="padding:7px 14px;font-size:13px">{label}</button>'
             for act, label in (("approve", "Approve"), ("hide", "Hide"), ("pending", "Back to pending"))
             if act != {"approved": "approve", "hidden": "hide", "pending": "pending"}.get(status))
+        page = app_path(r)
         items.append(
             f'<div class="card"><div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap">'
             f'<strong>{_esc(r.get("app_name"))}</strong><span class="tag{" tag-off" if status != "approved" else ""}">'
@@ -489,9 +897,11 @@ def review_page():
             f'rel="noopener">github.com/{_esc(r.get("repo"))}</a><br>Built with: {_esc(r.get("built_with"))} '
             f'(scan guessed: {_esc(r.get("detected_with") or "not recorded")})<br>'
             f'Category: {_esc(CATEGORIES.get(r.get("category"), r.get("category")))} &middot; '
-            f'Contact: {_esc(r.get("contact"))}<br>Stamp: {"yes" if r.get("stamped") else "no"}'
+            f'Builder: {_esc(r.get("builder_name") or "-")} ({_esc(r.get("contact"))})<br>'
+            f'Stamp: {"yes" if r.get("stamped") else "no"}'
             f' &middot; checked {_esc(_date_text(r.get("checked_at")) or "?")}'
-            f' &middot; scan report <a href="/report/{_esc(r.get("report_id"))}" target="_blank" rel="noopener">'
+            + (f' &middot; page <a href="{_esc(page)}" target="_blank" rel="noopener">{_esc(page)}</a>' if page else "")
+            + f' &middot; scan report <a href="/report/{_esc(r.get("report_id"))}" target="_blank" rel="noopener">'
             f'{_esc(r.get("report_id"))}</a></p>'
             f'<form method="POST" action="/apps/review/{_esc(r.get("id"))}" '
             f'style="display:flex;gap:6px;flex-wrap:wrap;margin-top:.75rem">{buttons}</form></div>')
@@ -500,7 +910,9 @@ def review_page():
             f'<p>{pending} waiting. Check the app is real, built with AI tools, and that the web address matches '
             f'the code. Only approved apps appear on <a href="/apps">/apps</a>.</p>'
             + (f'<div class="err">{_esc(problem)}</div>' if problem else "")
-            + ("".join(items) or '<p class="note">No listings yet.</p>'))
+            + ("".join(items) or '<p class="note">No listings yet.</p>')
+            + '<h2>Messages to builders</h2>'
+            + (_messages_html(sb) if sb is not None else ""))
     return _page("Review app listings", body, robots="noindex,nofollow")
 
 
@@ -514,7 +926,11 @@ def review_action(listing_id):
     sb = _deps["sb"]
     if status and sb is not None and re.match(r"^[0-9a-fA-F-]{8,40}$", listing_id or ""):
         try:
+            before = sb.table(TABLE).select("*").eq("id", listing_id).limit(1).execute().data or []
             sb.table(TABLE).update({"status": status}).eq("id", listing_id).execute()
+            # Tell the builder their app is live (once per approval, not on every click).
+            if status == "approved" and before and before[0].get("status") != "approved":
+                threading.Thread(target=_send_approval, args=(dict(before[0], status=status),), daemon=True).start()
         except Exception as e:
             print(f"[directory] review update failed: {e}", flush=True)
     return redirect("/apps/review")
