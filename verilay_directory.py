@@ -17,7 +17,8 @@ Rules this module keeps:
     change to a listing sends it back for review.
   - The stamp is a confidence stamp, not a security guarantee, and says so.
 
-The table is created by supabase_app_directory.sql.
+The table is created by supabase_app_directory.sql. Moses's own monitored apps are added by
+supabase_app_directory_own_apps.sql, with code_public = false (some of their repositories are private).
 
 © 2026 Moses Ekbote.
 """
@@ -370,7 +371,8 @@ def _card(r):
         f'<div class="app-links">'
         f'<a href="{_esc(r.get("app_url"))}" target="_blank" rel="{rel}">Open the app &#x2197;</a>'
         f'<a href="{_esc(contact_href)}" target="_blank" rel="nofollow noopener">Contact the builder</a>'
-        + (f'<a href="https://github.com/{_esc(repo)}" target="_blank" rel="nofollow noopener" style="color:#6b6966">Code</a>' if repo else "")
+        + (f'<a href="https://github.com/{_esc(repo)}" target="_blank" rel="nofollow noopener" style="color:#6b6966">Code</a>'
+           if repo and r.get("code_public") is not False else "")
         + '</div></div>'
     )
 

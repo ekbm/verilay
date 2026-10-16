@@ -6599,6 +6599,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 #nav-toggle:checked + #burger-menu{display:block!important}
 #nav-toggle:checked + * #burger-btn{background:var(--pul);color:var(--pu)}
 @media(max-width:768px){.wrap{padding:1rem 1rem!important}#nav-links{display:none!important}#burger-btn{display:flex!important;align-items:center}.layer-panel{flex-direction:column!important}#layer-nav{width:100%!important;min-width:0!important;border-right:none!important;border-bottom:0.5px solid var(--bdr)!important;display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:4px!important;padding:.5rem!important;overflow-x:auto}#layer-nav .lb{flex:1 1 calc(33% - 4px)!important;min-width:80px!important;font-size:12px!important;padding:6px 8px!important}#layer-content{padding:.75rem!important}.hcs{grid-template-columns:1fr 1fr!important}.hc{min-width:0!important}h1{font-size:1.6rem!important}#hero-section{padding:0!important}}
+/* The top menu gained an "Apps" link (2026-10-16): below 900px the pills no longer fit on one line, so the burger menu takes over there too. */
+@media(max-width:900px){ #nav-links{display:none!important}#burger-btn{display:flex!important;align-items:center}}
 .logo{display:flex;align-items:center;gap:10px;margin-bottom:.3rem}
 .logo-text{font-size:24px;font-weight:600;color:var(--pu)}
 .tagline{font-size:15px;color:var(--mut);margin-bottom:2rem}
@@ -6763,6 +6765,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <div id="nav-links" style="display:flex;gap:6px;align-items:center">
       __ACCOUNTNAV__
       <a href="/ask-verilay" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Ask Verilay</a>
+      <a href="/apps" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Apps</a>
       <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Blog</a>
       <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">GitHub</a>
@@ -6783,6 +6786,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   <div style="display:flex;flex-direction:column;gap:.5rem">
     __ACCOUNTNAV_MOBILE__
     <a href="/ask-verilay" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Ask Verilay</a>
+    <a href="/apps" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Apps built with AI</a>
     <a href="/about" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
     <a href="/blog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
     <a href="/deep-scan" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Pricing</a>
@@ -7410,6 +7414,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     </a>
     <div style="display:flex;gap:1rem;justify-content:center;margin-top:.5rem;flex-wrap:wrap">
       <a href="/ask-verilay" style="font-size:12px;color:var(--mut);text-decoration:none">Ask Verilay</a>
+      <a href="/apps" style="font-size:12px;color:var(--mut);text-decoration:none">Apps</a>
       <a href="/about" style="font-size:12px;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="font-size:12px;color:var(--mut);text-decoration:none">Blog</a>
       <a href="/changelog" style="font-size:12px;color:var(--mut);text-decoration:none">Changelog</a>
@@ -7528,6 +7533,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     ⭐ Found Verilay useful? Star us on GitHub
   </a>
   <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:.5rem">
+    <a href="/apps" style="font-size:12px;color:var(--mut);text-decoration:none">Apps</a>
     <a href="/about" style="font-size:12px;color:var(--mut);text-decoration:none">About</a>
     <a href="/blog" style="font-size:12px;color:var(--mut);text-decoration:none">Blog</a>
     <a href="/changelog" style="font-size:12px;color:var(--mut);text-decoration:none">Changelog</a>
