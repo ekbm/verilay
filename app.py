@@ -4477,6 +4477,15 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 </body>
 </html>"""
 
+SHARE_CSS = """
+.share{margin-top:1.1rem}
+.share-head{font-size:14px;font-weight:600;color:#1a1917;margin-bottom:.5rem}
+.share-row{display:flex;flex-wrap:wrap;gap:6px}
+.share-btn{display:inline-flex;align-items:center;font:inherit;font-size:12px;font-weight:500;padding:5px 12px;border-radius:20px;border:0.5px solid #d8d6d0;background:#fff;color:#4a4846;text-decoration:none;cursor:pointer;white-space:nowrap}
+.share-btn:hover{border-color:#534AB7;color:#534AB7}
+.share-btn:focus-visible{outline:2px solid #534AB7;outline-offset:2px}
+"""
+
 POST_CSS = """
 h2{font-size:19px;font-weight:700;margin:2.25rem 0 .75rem;line-height:1.35}
 h3{font-size:16px;font-weight:700;margin:1.75rem 0 .5rem}
@@ -4528,6 +4537,47 @@ def _externalise_links(html):
     return _re_lk.sub(r'<a\s+href="([^"]+)"[^>]*>', _fix, html)
 
 
+def _share_bar(post, heading=""):
+    """Share buttons for a blog post. Plain links to each network's own share page: no social-media
+    scripts are loaded, so nobody can follow readers around verilay.dev. One small script copies the link
+    and counts clicks (Plausible, which the blog already uses)."""
+    import urllib.parse as _up
+    url = "https://verilay.dev/blog/" + post["slug"]
+    title = _htmlmod.unescape(_re.sub(r"<[^>]+>", "", post.get("title", "")))
+    u, t = _up.quote(url, safe=""), _up.quote(title, safe="")
+    links = [
+        ("LinkedIn", f"https://www.linkedin.com/sharing/share-offsite/?url={u}"),
+        ("X", f"https://x.com/intent/tweet?text={t}&url={u}"),
+        ("Facebook", f"https://www.facebook.com/sharer/sharer.php?u={u}"),
+        ("WhatsApp", f"https://wa.me/?text={t}%20{u}"),
+        ("Reddit", f"https://www.reddit.com/submit?url={u}&title={t}"),
+        ("Email", f"mailto:?subject={t}&body={u}"),
+    ]
+    items = "".join(
+        f'<a class="share-btn" href="{_htmlmod.escape(href)}" data-share="{name.lower()}"'
+        + ('' if name == "Email" else ' target="_blank" rel="noopener nofollow"')
+        + f'>{name}</a>' for name, href in links)
+    items += (f'<button type="button" class="share-btn" data-share="copy" data-url="{_htmlmod.escape(url)}">'
+              'Copy link</button>')
+    head = f'<div class="share-head">{heading}</div>' if heading else ""
+    return f'<div class="share">{head}<div class="share-row">{items}</div></div>'
+
+
+SHARE_JS = """<script>
+document.querySelectorAll('.share-btn').forEach(function(b){
+  b.addEventListener('click',function(){
+    var n=b.getAttribute('data-share');
+    try{if(window.plausible)plausible('Blog Share',{props:{network:n}})}catch(e){}
+    if(n!=='copy')return;
+    var u=b.getAttribute('data-url');
+    function ok(){var t=b.textContent;b.textContent='Link copied';setTimeout(function(){b.textContent=t;},1800);}
+    if(navigator.clipboard){navigator.clipboard.writeText(u).then(ok,function(){window.prompt('Copy this link:',u);});}
+    else{window.prompt('Copy this link:',u);}
+  });
+});
+</script>"""
+
+
 def render_post(post):
     """Render a self-hosted post from its `body` HTML.
 
@@ -4548,7 +4598,11 @@ def render_post(post):
 <meta property="og:description" content=\"""" + post.get("excerpt", "").replace('"', "&quot;") + """\">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://verilay.dev/blog/""" + post["slug"] + """">
-<style>""" + BLOG_CSS + POST_CSS + """</style>
+<meta property="og:image" content="https://verilay.dev/og-image.png?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<style>""" + BLOG_CSS + POST_CSS + SHARE_CSS + """</style>
 </head>
 <body>
 <nav>
@@ -4566,9 +4620,11 @@ def render_post(post):
     </div>
     <h1 style="font-size:29px;font-weight:700;line-height:1.25;margin-bottom:1rem">""" + post["title"] + """</h1>
     <p style="font-size:17px;color:#6b6966;line-height:1.6">""" + post.get("excerpt", "") + """</p>
+    """ + _share_bar(post) + """
   </div>
   <hr>
 """ + _externalise_links(post.get("body", "")) + """
+  """ + _share_bar(post, "Found this useful? Share it") + """
   <div class="cta">
     <strong>Verilay is free at <a href="/">verilay.dev</a> &mdash; no account needed.</strong><br>
     Paste in a GitHub link, a ZIP from Lovable or Replit, or your live app&rsquo;s address, and
@@ -4577,6 +4633,7 @@ def render_post(post):
     <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener">github.com/ekbm/verilay</a>.
   </div>
 </div>
+""" + SHARE_JS + """
 </body>
 </html>"""
 
