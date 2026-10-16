@@ -48,6 +48,8 @@ Tools like CodeRabbit and Snyk answer these questions — for developers, in dev
 
 **IT Review Pack** — a printable checklist for IT teams deciding whether to approve an app a colleague built with AI
 
+**Checked apps** — a free directory of apps built with AI tools, where a scan result can earn a dated "Checked by Verilay" stamp. See [Checked apps](#checked-apps) below.
+
 **Ask Verilay** — ask a real question about your own report and get an answer grounded in your actual findings, not a generic response
 
 **Production verdict** — is this app ready to ship?
@@ -145,6 +147,23 @@ Fix prompts generated — paste directly into Lovable or Replit to fix issues
 - Only the browser that ran a scan (or, for a deep scan, you, when signed in) can change or delete that report.
 - Reports from a free analysis stop working 90 days after the scan. Deep scan reports are kept in your account.
 - Verilay reads public repositories only.
+
+---
+
+## Checked apps
+
+[verilay.dev/apps](https://verilay.dev/apps) is a free, searchable directory of apps built with AI tools.
+
+- **How an app gets listed.** Run a free scan of a public GitHub repository, then choose "List my app" under your results. The repository, grade and date come from the saved scan, not from a form you fill in. You say which AI tool built the app; Verilay doesn't verify that.
+- **Every listing is reviewed before it appears**, and any later change to it is reviewed again.
+- **Each app has its own page** with its check status and a "Contact the builder" form. The builder's email is never shown: a visitor's message is emailed to the builder, who can reply to the visitor directly. Verilay also keeps the message privately.
+- **The stamp** is a dated badge you can put on your own site (HTML or Markdown, light or dark). It says what was checked, and it can't be bought: it only comes from a scan result.
+  - **Green, "Checked / no critical issues":** a finished scan that found no critical issues and graded A or B.
+  - **Amber, "Expired":** the same, but the check is more than 90 days old, so it is due for a fresh one.
+  - **Grey, "No current check":** the app is listed, but its scan didn't earn a stamp (for example, a critical issue was found, or the grade was C or lower).
+  - **Purple, "Deep check":** an app that passed the paid deep scan. It says "Whole codebase and every package checked" only when the report proves it. Otherwise it states exactly how many files and packages were covered.
+
+> The stamp is a confidence stamp, not a certificate or a guarantee. It means: checked by Verilay on that date, and no critical issues found in what was checked. A free scan reads the 25 files most likely to matter, so the stamp covers what was read. Verilay is an automated first pass and can miss things.
 
 ---
 
