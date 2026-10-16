@@ -606,16 +606,17 @@ def apps_page():
         tools = (f'<div class="dir-tools"><input type="search" id="dir-q" placeholder="What do you need? e.g. booking, quotes, tracker" '
                  f'aria-label="Search apps"><select id="dir-built" aria-label="Built with">{built_opts}</select>'
                  f'<select id="dir-cat" aria-label="Category">{cat_opts}</select>'
-                 f'<label class="dir-check"><input type="checkbox" id="dir-checked"> Checked only</label></div>')
+                 f'<label class="dir-check"><input type="checkbox" id="dir-checked"> Green stamp only</label></div>')
     else:
         listing = ('<div class="dir-empty">No apps are listed yet. Built something with AI? '
                    '<a href="/">Run a free scan</a> and be one of the first.</div>')
         tools = ""
     body = f"""{_STYLE}
   <div class="eyebrow">App directory</div>
-  <h1>Apps built with AI tools</h1>
-  <p>Real apps made by founders, small businesses and first-time builders using Lovable, Bolt, Replit and other
-  AI tools. Find something that solves your problem, try it, or get in touch with the person who built it.</p>
+  <h1>Checked apps</h1>
+  <p>Apps built with AI tools by founders, small businesses and first-time builders, using Lovable, Bolt, Replit
+  and others. Every app here has been scanned by Verilay; a green stamp means the scan found no critical
+  issues. Find something that solves your problem, try it, or get in touch with the person who built it.</p>
   {tools}
   {listing}
   <div class="card" style="margin-top:1.5rem">
@@ -630,7 +631,7 @@ def apps_page():
   guarantee or a penetration test, and it fades after {STAMP_DAYS} days unless the app is checked again.
   Listings are written by the people who built the apps and are reviewed before they appear.</p>
 """
-    return _page("Apps built with AI tools", body + (_FILTER_JS if rows else ""))
+    return _page("Checked apps: apps built with AI tools", body + (_FILTER_JS if rows else ""))
 
 
 # ── The stamp makers put on their own sites ───────────────────────────────────
@@ -723,7 +724,7 @@ def app_page(slug):
     if not row:
         body = ('<div class="eyebrow">App directory</div><h1>Not in the directory</h1>'
                 '<p>There is no current listing at this address. It may have been removed, or it was never listed.</p>'
-                '<p><a class="btn" href="/apps">See apps built with AI tools</a></p>')
+                '<p><a class="btn" href="/apps">See the checked apps</a></p>')
         resp = _page("Not in the directory", body, robots="noindex,follow")
         resp.status_code = 404
         return resp
@@ -791,7 +792,7 @@ def app_page(slug):
     stamp_img = (f'<p style="margin:1rem 0"><img src="{_esc(page)}/stamp.svg" alt="Verilay stamp" '
                  f'width="{_STAMP_W}" height="{_STAMP_H}"></p>') if state != "none" else ""
     body = (
-        f'{_STYLE}<div class="eyebrow"><a href="/apps" style="text-decoration:none">App directory</a></div>'
+        f'{_STYLE}<div class="eyebrow"><a href="/apps" style="text-decoration:none">Checked apps</a></div>'
         f'<h1>{_esc(row.get("app_name"))}</h1>'
         + (f'<p class="note" style="margin-top:-.25rem">Built by {_esc(row.get("builder_name"))}</p>'
            if row.get("builder_name") else "")
