@@ -3442,6 +3442,74 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "560000-new-apps-how-yours-gets-noticed",
+        "title": "560,000 New Apps in Six Months. How Does Yours Get Noticed?",
+        "date": "October 16, 2026",
+        "category": "Story",
+        "excerpt": "Twice as many new apps, almost the same number of downloads. Why getting noticed is now the hard part of building with AI, and what I built to help.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": True,
+        "body": """
+<p>Last week I wrote that when anyone can build an app in a weekend, most new apps will find no one. I said it was a guess.</p>
+<p>It isn&rsquo;t really a guess any more.</p>
+
+<h2>Twice the apps, almost the same downloads</h2>
+<p>About 600,000 new apps arrived on Apple&rsquo;s App Store in 2025, up 30% on the year before. In the first six months of 2026, another 560,000 arrived. That&rsquo;s nearly a whole year&rsquo;s worth in half a year. Those numbers are Sensor Tower&rsquo;s estimates, reported by The New York Times in July.</p>
+<p>Here&rsquo;s the part that matters if you&rsquo;ve built one of them. Over the same six months, App Store downloads grew 2%.</p>
+<p><strong>Twice as many apps. Almost the same number of people downloading them.</strong></p>
+<p>And that&rsquo;s only Apple&rsquo;s store. Plenty of apps built with Lovable, Bolt or Replit never go near an app store. They&rsquo;re websites with a login, shared on LinkedIn or in a Facebook group. Reported figures for Lovable alone run from 100,000 to 200,000 new projects started every day. Most of those will never be finished, let alone launched. But the ones that are launched are all asking the same people for the same few minutes of attention.</p>
+
+<h2>Why &ldquo;just market it&rdquo; isn&rsquo;t enough</h2>
+<p>Getting noticed is half of it. The other half is getting someone to actually sign up.</p>
+<p>Think about what you&rsquo;re asking a stranger to do. Sign up to an app they&rsquo;ve never heard of, built by someone they don&rsquo;t know, probably in a few weeks, and type in their email, their business details, sometimes their customers&rsquo; details.</p>
+<p>They&rsquo;re right to hesitate. In a 2025 study, Veracode tested AI-generated code on security-sensitive tasks across more than 100 AI models, and 45% of the results contained a well-known kind of security flaw. The same year, a researcher scanned 1,645 apps built with Lovable and found about 1 in 10 let anyone read or change data they shouldn&rsquo;t have, including usernames, emails and payment status. (Lovable disputes treating that as a flaw in Lovable itself, and says each app&rsquo;s owner is responsible for protecting its data.)</p>
+<p>None of that means your app is unsafe. It means a stranger can&rsquo;t tell either way. And when they can&rsquo;t tell, most of them close the tab.</p>
+
+<h2>What I built: Checked apps</h2>
+<p>So I built two things into Verilay, and they work together.</p>
+<p><strong>A directory of apps built with AI tools: <a href="/apps" style="color:#534AB7">Checked apps</a>.</strong> Every app in it has been through a Verilay scan. That&rsquo;s the only way in. Visitors can search by what they need (&ldquo;bookings&rdquo;, &ldquo;quotes&rdquo;, &ldquo;home build&rdquo;), filter by the tool it was built with, open the app, or contact the person who built it.</p>
+<p><strong>A stamp for apps that pass.</strong> If the scan finds no critical issues and grades your app A or B, your listing carries a green stamp, <em>Checked &middot; No critical issues</em>, with the date. You also get the same stamp to put on your own site, with copy-and-paste code for your footer or your GitHub README.</p>
+<p style="margin:1.25rem 0"><img src="/apps/buildbook/stamp.svg?v=2" alt="The Checked by Verilay stamp, as shown for BuildBook" width="190" height="86"></p>
+<p>A few details I cared about:</p>
+<ul>
+<li><strong>The stamp keeps itself honest.</strong> It&rsquo;s drawn live every time someone sees it. A check older than 90 days turns amber and says <em>Expired &middot; Due for a fresh check</em>. If a listing is removed, the stamp says so too. Nobody can show a green stamp for an app that&rsquo;s moved on.</li>
+<li><strong>Your email stays private.</strong> Your listing shows your name, never your email address. When someone uses &ldquo;Contact the builder&rdquo;, I email their message to you, and you reply to them directly.</li>
+<li><strong>Every listing is checked by a person before it appears.</strong> That&rsquo;s me, for now.</li>
+<li><strong>It&rsquo;s free.</strong> The scan, the listing and the stamp.</li>
+</ul>
+
+<h2>How to get your app in</h2>
+<ol>
+<li>Run a free scan of your app&rsquo;s public GitHub repository at <a href="/" style="color:#534AB7">verilay.dev</a>.</li>
+<li>If it finds issues, use the fix prompts in your report with your AI builder, then scan again. This is the part that actually makes your app safer. The stamp is just the proof you did it.</li>
+<li>When the scan finishes, click <strong>List my app</strong> and fill in the short form.</li>
+<li>Once it&rsquo;s approved, I&rsquo;ll email you the link to your app&rsquo;s page, with your stamp code if it passed.</li>
+</ol>
+
+<h2>What the stamp is not</h2>
+<p>I want to be straight about this, because a badge that overpromises is worse than no badge.</p>
+<ul>
+<li><strong>It&rsquo;s not a certificate, a guarantee or a penetration test.</strong> It means a Verilay scan of your code found no critical issues on the date shown. Verilay&rsquo;s findings are written by AI and can vary between runs.</li>
+<li><strong>It checks your code, not everything around it.</strong> How your hosting is set up, settings that live outside your code, and how your app behaves under a real attack are not things a code scan can see.</li>
+<li><strong>Only public GitHub repositories, for now.</strong> If your code is private, you can&rsquo;t list it yet.</li>
+<li><strong>Apps that don&rsquo;t pass can still be listed.</strong> They just don&rsquo;t get the stamp, and nothing on their listing says why. Fix the issues, scan again, list again, and the stamp appears.</li>
+</ul>
+
+<h2>Be one of the first</h2>
+<p>My own apps are the first in the directory, and it&rsquo;s still small. That&rsquo;s fine. I&rsquo;d rather have ten real, checked apps than a thousand nobody looked at.</p>
+<p>If you&rsquo;ve built something with Lovable, Bolt, Replit, Cursor or any other AI tool, <a href="/" style="color:#534AB7">run a free scan</a> and list it. And if you think I&rsquo;ve got the stamp wrong, too strict, not strict enough, or missing something you&rsquo;d want to see, tell me at <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a>.</p>
+
+<h2>Sources</h2>
+<ul>
+<li>App Store numbers: Sensor Tower estimates, via The New York Times, reported by <a href="https://9to5mac.com/2026/07/20/report-app-store-added-nearly-as-many-new-apps-in-h1-2026-as-in-all-of-2025/" target="_blank" rel="noopener" style="color:#534AB7">9to5Mac, 20 July 2026</a>.</li>
+<li><a href="https://www.veracode.com/press-release/ai-generated-code-poses-major-security-risks-in-nearly-half-of-all-development-tasks-veracode-research-reveals/" target="_blank" rel="noopener" style="color:#534AB7">Veracode 2025 GenAI Code Security Report</a>.</li>
+<li>The scan of 1,645 Lovable apps (CVE-2025-48757, disputed by Lovable): <a href="https://www.superblocks.com/blog/lovable-vulnerabilities" target="_blank" rel="noopener" style="color:#534AB7">Superblocks write-up</a>.</li>
+<li>Lovable project figures come from secondary reports and vary, for example <a href="https://tech-insider.org/ie/lovable-vibe-coding-12-billion-2026/" target="_blank" rel="noopener" style="color:#534AB7">tech-insider.org</a>.</li>
+</ul>
+""",
+    },
+    {
         "slug": "anyone-with-the-link-safe-verilay-report-security",
         "title": "Is &ldquo;Anyone With the Link&rdquo; Safe? What I Fixed",
         "date": "October 12, 2026",
@@ -3449,7 +3517,7 @@ BLOG_POSTS = [
         "excerpt": "Anyone with a Verilay report link could read it. I found they could also change it. What I fixed, what I didn&rsquo;t, and three questions for your own app.",
         "medium_url": None,
         "read_time": "5 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>Verilay reports are shared by link. Run a scan, get a link, send it to whoever needs to see it. I like that. No account, no password, nothing to remember.</p>
 <p>But I found out what that link quietly means. Anyone who has it can open the report. That part is on purpose. For a long time, though, anyone who had the link could also <em>change</em> the report. Nobody told me. I found it by going through my own report pages the way I&rsquo;d go through someone else&rsquo;s app.</p>
@@ -5056,6 +5124,15 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 16, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Checked apps: a directory for apps built with AI, and a stamp for yours</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> <a href="/apps" style="color:#534AB7">Checked apps</a>, a free directory of apps built with AI tools. After a free scan of a public GitHub app, choose &ldquo;List my app&rdquo;. Each app gets its own page, and visitors can search, filter by the tool it was built with, and contact the builder. Builders&rsquo; email addresses are never shown: messages are passed on by email.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> apps whose scan finds no critical issues and grades A or B get a green &ldquo;Checked&rdquo; stamp, dated, with code to put it on their own site. It turns amber after 90 days until the app is checked again.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the menu has a &ldquo;Checked apps&rdquo; link, and the phone menu is shorter: Privacy, Terms and AI Disclaimer are in the footer. <a href="/blog/560000-new-apps-how-yours-gets-noticed" style="color:#534AB7">Why I built it</a>.</p>
   </div>
 
   <div class="entry">

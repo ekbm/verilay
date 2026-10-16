@@ -641,6 +641,15 @@ def apps_page():
 # wording and a date, and always links back to the app's page on verilay.dev.
 
 _STAMP_W, _STAMP_H = 190, 86
+# Part of every stamp address Verilay hands out. Cloudflare keeps its own copy of a stamp for hours, so a
+# changed DESIGN would not show until that copy expired; bumping this gives the new design a new address.
+# (A change of STATE, e.g. fresh -> expired, still waits for the cached copy to expire: at most a few hours.)
+STAMP_VERSION = "2"
+
+
+def stamp_src(page, dark=False):
+    """The stamp image address for an app page path, e.g. /apps/buildbook/stamp.svg?v=2."""
+    return f"{page}/stamp.svg?v={STAMP_VERSION}" + ("&theme=dark" if dark else "")
 
 
 def stamp_svg(row, dark=False, now=None):
@@ -732,7 +741,8 @@ def app_page(slug):
     date = _date_text(row.get("checked_at"))
     page = app_path(row)
     base = "https://verilay.dev" + page
-    img = base + "/stamp.svg"
+    img = "https://verilay.dev" + stamp_src(page)
+    img_dark = "https://verilay.dev" + stamp_src(page, dark=True)
     builder = _esc(row.get("builder_name") or "the builder")
     if state == "fresh":
         until = _date_text((_parse_time(row["checked_at"]) + _dt.timedelta(days=STAMP_DAYS)).isoformat())
@@ -772,7 +782,7 @@ def app_page(slug):
     if state == "fresh":
         html_light = (f'<a href="{base}" target="_blank" rel="noopener"><img src="{img}" '
                       f'alt="Checked by Verilay" width="{_STAMP_W}" height="{_STAMP_H}"></a>')
-        html_dark = html_light.replace(img, img + "?theme=dark")
+        html_dark = html_light.replace(img, img_dark)
         md = f"[![Checked by Verilay]({img})]({base})"
         embed = (
             '<div class="card" id="stamp" style="margin-top:1.25rem"><h2 style="margin-top:0">Built this app? Add the stamp '
@@ -780,8 +790,8 @@ def app_page(slug):
             'Replit, ask the AI to &ldquo;add this HTML to the footer&rdquo;). The stamp keeps itself up to date: '
             'if the check expires, it says so.</p>'
             f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:.25rem 0 1rem">'
-            f'<img src="{_esc(page)}/stamp.svg" alt="Light stamp" width="{_STAMP_W}" height="{_STAMP_H}">'
-            f'<img src="{_esc(page)}/stamp.svg?theme=dark" alt="Dark stamp" width="{_STAMP_W}" height="{_STAMP_H}" '
+            f'<img src="{_esc(stamp_src(page))}" alt="Light stamp" width="{_STAMP_W}" height="{_STAMP_H}">'
+            f'<img src="{_esc(stamp_src(page, dark=True))}" alt="Dark stamp" width="{_STAMP_W}" height="{_STAMP_H}" '
             f'style="background:#2c2c2a;border-radius:10px;padding:4px"></div>'
             + _code_box("code-light", "HTML, for a light background", html_light)
             + _code_box("code-dark", "HTML, for a dark background", html_dark)
@@ -789,7 +799,7 @@ def app_page(slug):
             + '</div>')
 
     rel = "noopener" if state == "fresh" else "nofollow ugc noopener"
-    stamp_img = (f'<p style="margin:1rem 0"><img src="{_esc(page)}/stamp.svg" alt="Verilay stamp" '
+    stamp_img = (f'<p style="margin:1rem 0"><img src="{_esc(stamp_src(page))}" alt="Verilay stamp" '
                  f'width="{_STAMP_W}" height="{_STAMP_H}"></p>') if state != "none" else ""
     body = (
         f'{_STYLE}<div class="eyebrow"><a href="/apps" style="text-decoration:none">Checked apps</a></div>'
