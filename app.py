@@ -5614,6 +5614,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # Summary card
     deep_badge = ('<div style="display:inline-block;background:#EEEDFE;color:#3C3489;font-size:11px;'
                   'font-weight:600;padding:3px 10px;border-radius:20px;margin-bottom:.5rem">Deep scan report</div>'
+                  f' <a href="/apps/list/{_htmlmod.escape(report_id)}" style="font-size:12px;color:#534AB7;'
+                  'margin-left:6px">List this app in Checked apps &rarr;</a>'
                   if data.get("is_deep_scan") else "")
     scan_line = (f'<div style="font-size:13px;color:#444;margin-bottom:.4rem">Scanned {scan_when}</div>'
                  if scan_when else "")

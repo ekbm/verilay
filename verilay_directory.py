@@ -132,8 +132,41 @@ def scan_verdict(data):
     health = data.get("health") or {}
     crit = health.get("critical")
     stamped = (isinstance(crit, int) and crit == 0 and str(health.get("score") or "") in ("A", "B")
-               and not data.get("analysis_incomplete"))
+               and not data.get("analysis_incomplete") and not data.get("layers_not_checked"))
     return True, stamped, ""
+
+
+def deep_coverage(data):
+    """For a deep scan report: what it actually covered, kept on the listing so the caption under the
+    Deep check stamp can say exactly that. None for a free scan."""
+    if not isinstance(data, dict) or not data.get("is_deep_scan"):
+        return None
+    osv = data.get("osv_scan") or {}
+    try:
+        files_read, files_total = int(data.get("files_read") or 0), int(data.get("files_total") or 0)
+        packages = int(osv.get("packages_checked") or 0)
+    except (TypeError, ValueError):
+        files_read = files_total = packages = 0
+    return {"files_read": files_read, "files_total": files_total, "packages": packages,
+            "scope": str((osv.get("coverage") or {}).get("scope") or "unknown")}
+
+
+def deep_caption(row):
+    """The line under a Deep check stamp. Moses's wording, 'Whole codebase and every package checked', only
+    when the report proves it: every file read in depth AND the full package list (dependencies included)
+    checked. Otherwise a precise line that says what was covered."""
+    cov = (row or {}).get("coverage") or {}
+    read, total, n, scope = cov.get("files_read") or 0, cov.get("files_total") or 0, cov.get("packages") or 0, cov.get("scope")
+    if read and read >= total and scope == "full":
+        return "Whole codebase and every package checked"
+    files = "every file read in depth" if read and read >= total else f"{read} of {total} files read in depth"
+    pk = f"{n} package" + ("" if n == 1 else "s")
+    packages = {"full": f"{pk} and the ones they depend on checked",
+                "direct": f"{pk} installed directly checked",
+                "listed": f"{pk} listed in requirements.txt checked",
+                "partial": f"{pk} checked (part of the project)",
+                "none": "no package list found"}.get(scope, f"{pk} checked")
+    return f"Deep scan: {files}, every file checked for exposed keys, {packages}"
 
 
 def _checked_at(report_id, data):
@@ -345,8 +378,10 @@ def approval_email(listing, now=None):
     if stamp_state(listing, now) == "fresh":
         date = _date_text(listing.get("checked_at"))
         until = _date_text((_parse_time(listing["checked_at"]) + _dt.timedelta(days=STAMP_DAYS)).isoformat())
-        stamp = (f"It carries the “Checked by Verilay” stamp, because its scan on {date} found no "
-                 f"critical issues.\n\n"
+        kind = (f"the “Deep check” stamp, because its deep scan on {date} found no critical issues "
+                f"({deep_caption(listing)[0].lower() + deep_caption(listing)[1:]})" if listing.get("deep")
+                else f"the “Checked by Verilay” stamp, because its scan on {date} found no critical issues")
+        stamp = (f"It carries {kind}.\n\n"
                  f"You can put the stamp on your own site too. The code to copy is on your app's page:\n"
                  f"{url}#stamp\n\n"
                  f"The stamp keeps itself up to date and stays current until {until}. Run a fresh free scan at "
@@ -459,37 +494,136 @@ def sitemap_entries():
 
 # ── Listing (from the results page) ───────────────────────────────────────────
 
-@bp.route("/apps/list", methods=["POST"])
-def list_app():
-    body = request.get_json(silent=True) or {}
+def _create_listing(report_id, body):
+    """(http status, result dict). One path for both ways in: the card after a free scan (JSON, manage
+    token) and the form for a deep scan report (signed-in owner)."""
     if body.get("website"):  # hidden field only a bot fills in: look like success, store nothing
-        return jsonify({"ok": True, "stamped": False})
-    report_id = _clean(body.get("report_id"), 40)
+        return 200, {"ok": True, "stamped": False}
     if not report_id or not _deps["can_write_report"](report_id):
-        return jsonify({"ok": False, "error": "Only the browser that ran this scan can list it. "
-                                              "Please run a new free scan of your app."}), 403
+        return 403, {"ok": False, "error": "Only the browser that ran this scan, or the account that ran a deep "
+                                           "scan, can list it. Please run a new free scan of your app."}
     data, _owner = _deps["report_auth_info"](report_id)
     listable, stamped, reason = scan_verdict(data)
     if not listable:
-        return jsonify({"ok": False, "error": reason}), 400
+        return 400, {"ok": False, "error": reason}
     fields, err = validate_form(body)
     if err:
-        return jsonify({"ok": False, "error": err}), 400
+        return 400, {"ok": False, "error": err}
     if not _rate_ok(_deps["get_ip"]()):
-        return jsonify({"ok": False, "error": "Too many listings from this connection. Please try again later."}), 429
+        return 429, {"ok": False, "error": "Too many listings from this connection. Please try again later."}
+    coverage = deep_coverage(data)
     row = dict(fields,
                repo=str(data.get("repo"))[:200],
                report_id=report_id,
                detected_with=_clean(data.get("built_with"), 120),
                stamped=bool(stamped),
+               deep=bool(coverage) and bool(stamped),
+               coverage=coverage,
                checked_at=_checked_at(report_id, data))
     result = save_listing(row)
     if result == "none":
-        return jsonify({"ok": False, "error": "Sorry, the directory could not save your listing just now. "
-                                              "Please try again in a few minutes."}), 503
+        return 503, {"ok": False, "error": "Sorry, the directory could not save your listing just now. "
+                                           "Please try again in a few minutes."}
     if _notify_ok():
         threading.Thread(target=_send_review_alert, args=(row,), daemon=True).start()
-    return jsonify({"ok": True, "stamped": bool(stamped), "updated": result == "updated"})
+    return 200, {"ok": True, "stamped": bool(stamped), "deep": row["deep"], "updated": result == "updated"}
+
+
+@bp.route("/apps/list", methods=["POST"])
+def list_app():
+    body = request.get_json(silent=True) or {}
+    code, out = _create_listing(_clean(body.get("report_id"), 40), body)
+    return jsonify(out), code
+
+
+def _deep_form(report_id, data, values, error="", done=None):
+    """The 'List my app' form for a deep scan report (the free scan has its own card on the results page)."""
+    listable, stamped, reason = scan_verdict(data)
+    cov = deep_coverage(data) or {}
+    if done:
+        msg = ("Thank you. Your app will appear in Checked apps with the <strong>Deep check</strong> stamp once it "
+               "has been reviewed. I'll email you when it is live, with the stamp for your own site."
+               if done.get("deep") else
+               "Thank you. Your app will appear in Checked apps once it has been reviewed, without a stamp for now: "
+               "this deep scan found issues to fix first. Fix them, run the deep scan again, and list it again.")
+        return f'<div class="eyebrow">Checked apps</div><h1>Listing sent</h1><div class="ok">{msg}</div>' \
+               f'<p><a href="/report/{_esc(report_id)}">Back to your report</a> &nbsp; <a href="/apps">See Checked apps</a></p>'
+    verdict = (f'<div class="ok">This deep scan earns the <strong>Deep check</strong> stamp: '
+               f'{_esc(deep_caption({"coverage": cov}))}.</div>' if stamped else
+               '<div class="warn">This deep scan found issues to fix first, so the listing would have no stamp. '
+               'You can still list it now, or fix the issues and run the deep scan again.</div>')
+    v = lambda k: _esc(values.get(k, ""))
+    sel = lambda opts, cur: "".join(f'<option value="{_esc(k)}"{" selected" if k == cur else ""}>{_esc(t)}</option>'
+                                    for k, t in opts)
+    built = values.get("built_with") or next((b for b in BUILT_WITH if b != "Other AI tool"
+                                              and b.lower() in str(data.get("built_with") or "").lower()), "")
+    chk = lambda k: " checked" if values.get(k) else ""
+    return (
+        f'<div class="eyebrow">Checked apps</div><h1>List {_esc(data.get("repo"))}</h1>'
+        f'<p>Your deep scan report can go into <a href="/apps">Checked apps</a>, the free directory of apps built '
+        f'with AI tools.</p>{verdict}'
+        + (f'<div class="err">{_esc(error)}</div>' if error else "")
+        + f'<div class="card"><form method="POST" action="/apps/list/{_esc(report_id)}">'
+        f'<label for="f-name">App name</label><input type="text" id="f-name" name="app_name" maxlength="60" required value="{v("app_name")}">'
+        f'<div style="height:.75rem"></div><label for="f-tag">What does it do, in one line?</label>'
+        f'<input type="text" id="f-tag" name="tagline" maxlength="140" required value="{v("tagline")}">'
+        f'<div style="height:.75rem"></div><label for="f-url">Where can people use it? (web address)</label>'
+        f'<input type="text" id="f-url" name="app_url" maxlength="200" required value="{v("app_url")}" placeholder="https://yourapp.com">'
+        f'<div style="height:.75rem"></div><label for="f-built">Built with</label><select id="f-built" name="built_with">'
+        f'<option value="">Choose one</option>{sel([(b, b) for b in BUILT_WITH], built)}</select>'
+        f'<div style="height:.75rem"></div><label for="f-cat">Category</label><select id="f-cat" name="category">'
+        f'<option value="">Choose one</option>{sel(list(CATEGORIES.items()), values.get("category"))}</select>'
+        f'<div style="height:.75rem"></div><label for="f-builder">Your name or business name (shown on your listing)</label>'
+        f'<input type="text" id="f-builder" name="builder_name" maxlength="60" required value="{v("builder_name")}">'
+        f'<div style="height:.75rem"></div><label for="f-contact">Your email (private: visitors&rsquo; messages are sent here, never shown)</label>'
+        f'<input type="email" id="f-contact" name="contact" maxlength="254" required value="{v("contact")}">'
+        f'<p style="margin:.75rem 0 .25rem"><label style="display:inline;font-weight:400"><input type="checkbox" name="beta_testers"{chk("beta_testers")}> Looking for beta testers</label></p>'
+        f'<p style="margin:0 0 .25rem"><label style="display:inline;font-weight:400"><input type="checkbox" name="custom_work"{chk("custom_work")}> Open to custom work</label></p>'
+        f'<p style="margin:.5rem 0"><label style="display:inline;font-weight:400"><input type="checkbox" name="confirm"{chk("confirm")}> '
+        f'I built this app with AI tools and I am happy for these details to be listed publicly.</label></p>'
+        f'<div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
+        f'<button class="btn" type="submit">Submit listing</button>'
+        f'<p class="note" style="margin-top:.5rem">Listings are reviewed before they appear, usually within a day.</p>'
+        f'</form></div>'
+    )
+
+
+@bp.route("/apps/list/<report_id>", methods=["GET", "POST"])
+def list_deep_report(report_id):
+    """'List my app' for a deep scan report, for the signed-in account that ran it."""
+    report_id = _clean(report_id, 40)
+    data, _owner = _deps["report_auth_info"](report_id)
+    if not isinstance(data, dict) or not data.get("is_deep_scan"):
+        body = ('<div class="eyebrow">Checked apps</div><h1>Nothing to list here</h1><p>This page is for deep scan '
+                'reports. After a free scan, use &ldquo;List my app&rdquo; under your results instead.</p>'
+                '<p><a class="btn" href="/">Run a free scan</a></p>')
+        resp = _page("List your app", body, robots="noindex,nofollow")
+        resp.status_code = 404
+        return resp
+    if not _deps["can_write_report"](report_id):
+        body = ('<div class="eyebrow">Checked apps</div><h1>Sign in to list this app</h1><p>Only the account that ran '
+                'this deep scan can list it. Sign in with that email, and you will come straight back here.</p>'
+                f'<p><a class="btn" href="/login?next=/apps/list/{_esc(report_id)}">Sign in</a></p>')
+        return _page("List your app", body, robots="noindex,nofollow")
+    if request.method == "POST":
+        if not _same_origin():
+            return Response("Please use the form on this page.", status=403)
+        values = {k: request.form.get(k, "") for k in ("app_name", "tagline", "app_url", "built_with", "category",
+                                                        "builder_name", "contact", "website")}
+        for k in ("beta_testers", "custom_work", "confirm"):
+            values[k] = bool(request.form.get(k))
+        code, out = _create_listing(report_id, values)
+        if out.get("ok"):
+            return _page("Listing sent", _deep_form(report_id, data, values, done=out), robots="noindex,nofollow")
+        resp = _page("List your app", _deep_form(report_id, data, values, error=out.get("error", "")), robots="noindex,nofollow")
+        resp.status_code = code
+        return resp
+    try:
+        import verilay_accounts as _acc
+        email = (_acc.current_user() or {}).get("email", "")
+    except Exception:
+        email = ""
+    return _page("List your app", _deep_form(report_id, data, {"contact": email}), robots="noindex,nofollow")
 
 
 # ── The directory page ────────────────────────────────────────────────────────
@@ -510,6 +644,7 @@ _STYLE = """<style>
 .stamp{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:#E1F5EE;color:#085041;align-self:flex-start;text-decoration:none}
 .stamp-old{background:#f0efec;color:#6b6966;font-weight:500}
 .card-stamp{display:block;align-self:flex-start;line-height:0;margin:-.15rem 0 -.1rem -.2rem}
+.deep-cap{font-size:12px;font-weight:600;color:#3C3489;line-height:1.45;margin-top:-.2rem}
 .app-links{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-top:auto;padding-top:.25rem}
 .dir-empty{background:#fff;border:0.5px dashed #c9c7c2;border-radius:12px;padding:1.5rem;text-align:center;color:#6b6966;font-size:14px}
 </style>"""
@@ -536,6 +671,8 @@ def _card(r):
         tip = (f"No critical issues found in what Verilay checked on {date}. A confidence stamp, not a guarantee "
                f"of security." if fresh else f"Checked on {date}; the stamp has expired until the app is checked again.")
         stamp = f'<{tag} class="card-stamp"{href} title="{_esc(tip)}">{art}</{tag}>'
+        if fresh and r.get("deep"):
+            stamp += f'<div class="deep-cap">{_esc(deep_caption(r))}</div>'
     else:
         stamp = ""
     rel = "noopener" if fresh else "nofollow ugc noopener"
@@ -606,7 +743,7 @@ def apps_page():
         tools = (f'<div class="dir-tools"><input type="search" id="dir-q" placeholder="What do you need? e.g. booking, quotes, tracker" '
                  f'aria-label="Search apps"><select id="dir-built" aria-label="Built with">{built_opts}</select>'
                  f'<select id="dir-cat" aria-label="Category">{cat_opts}</select>'
-                 f'<label class="dir-check"><input type="checkbox" id="dir-checked"> Green stamp only</label></div>')
+                 f'<label class="dir-check"><input type="checkbox" id="dir-checked"> Stamped only</label></div>')
     else:
         listing = ('<div class="dir-empty">No apps are listed yet. Built something with AI? '
                    '<a href="/">Run a free scan</a> and be one of the first.</div>')
@@ -616,7 +753,8 @@ def apps_page():
   <h1>Checked apps</h1>
   <p>Apps built with AI tools by founders, small businesses and first-time builders, using Lovable, Bolt, Replit
   and others. Every app here has been scanned by Verilay; a green stamp means the scan found no critical
-  issues. Find something that solves your problem, try it, or get in touch with the person who built it.</p>
+  issues, and a purple <strong>Deep check</strong> stamp means the deep scan, which reads much more of the code,
+  found none either. Find something that solves your problem, try it, or get in touch with the person who built it.</p>
   {tools}
   {listing}
   <div class="card" style="margin-top:1.5rem">
@@ -666,7 +804,18 @@ def stamp_svg(row, dark=False, now=None):
     else:
         paper, green, amber, grey = "#ffffff", "#0F6E56", "#A35F00", "#6b6966"
         deep = {green: "#04342C", amber: "#633806", grey: "#2C2C2A"}
-    if state == "fresh":
+    is_deep = state == "fresh" and bool((row or {}).get("deep"))
+    if is_deep:
+        # Deep check (Moses, 2026-10-16): Verilay's deep purple, a double tick and a solid double border, so it
+        # reads as the more thorough check without saying anything about payment. The caption under it on the
+        # page says what the deep scan covered.
+        purple, purple_deep = ("#AFA9EC", "#EEEDFE") if dark else ("#3C3489", "#26215C")
+        deep[purple] = purple_deep
+    if is_deep:
+        ink, label, line2, line3 = purple, "DEEP CHECK", "NO CRITICAL ISSUES", f"VERILAY · {date}"
+        icon = (f'<path d="M21 31 L26.5 36.5 L36 26" fill="none" stroke="{ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
+                f'<path d="M29 31 L34.5 36.5 L44 26" fill="none" stroke="{ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>')
+    elif state == "fresh":
         ink, label, line2, line3 = green, "CHECKED", "NO CRITICAL ISSUES", f"VERILAY · {date}"
         # A drawn tick, not a text character, so it looks the same on every device.
         icon = f'<path d="M33 31 L38.5 36.5 L48 26" fill="none" stroke="{ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
@@ -677,22 +826,22 @@ def stamp_svg(row, dark=False, now=None):
     else:
         ink, label, line2, line3 = grey, "VERILAY", "NO CURRENT CHECK", "VERILAY.DEV/APPS"
         icon = ""
-    alt = {"fresh": f"Checked by Verilay on {date.title()}: no critical issues found",
+    alt = {"fresh": f"{'Deep check' if is_deep else 'Checked'} by Verilay on {date.title()}: no critical issues found",
            "expired": f"Verilay check from {date.title()} has expired",
            "none": "No current Verilay check"}[state]
     font = "'Courier New',Courier,monospace"
-    label_x = 104 if icon else 95
+    label_x = 112 if is_deep else (104 if icon else 95)
+    border, inner = ('3.5', 'stroke-width="1.4"') if is_deep else ('2.5', 'stroke-width="1" stroke-dasharray="3 2.5"')
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{_STAMP_W}" height="{_STAMP_H}" '
         f'viewBox="0 0 {_STAMP_W} {_STAMP_H}" role="img" aria-label="{_esc(alt)}">'
         f'<title>{_esc(alt)}</title>'
         f'<g transform="rotate(-4 95 43)">'
-        f'<rect x="6" y="8" width="178" height="70" rx="6" fill="{paper}" stroke="{ink}" stroke-width="2.5"/>'
-        f'<rect x="11" y="13" width="168" height="60" rx="3" fill="none" stroke="{ink}" stroke-width="1" '
-        f'stroke-dasharray="3 2.5"/>'
+        f'<rect x="6" y="8" width="178" height="70" rx="6" fill="{paper}" stroke="{ink}" stroke-width="{border}"/>'
+        f'<rect x="11" y="13" width="168" height="60" rx="3" fill="none" stroke="{ink}" {inner}/>'
         f'{icon}'
         f'<g font-family="{font}" font-weight="700" fill="{ink}" text-anchor="middle">'
-        f'<text x="{label_x}" y="38" font-size="20" letter-spacing="3">{_esc(label)}</text>'
+        f'<text x="{label_x}" y="38" font-size="{16 if is_deep else 20}" letter-spacing="{1.5 if is_deep else 3}">{_esc(label)}</text>'
         f'<text x="95" y="53" font-size="10">{_esc(line2)}</text>'
         f'<text x="95" y="67" font-size="11" letter-spacing="0.5" fill="{deep[ink]}">{_esc(line3)}</text>'
         f'</g></g></svg>'
@@ -746,7 +895,8 @@ def app_page(slug):
     builder = _esc(row.get("builder_name") or "the builder")
     if state == "fresh":
         until = _date_text((_parse_time(row["checked_at"]) + _dt.timedelta(days=STAMP_DAYS)).isoformat())
-        status = (f'<div class="ok">On {_esc(date)}, a Verilay scan of this app\'s code found <strong>no critical '
+        scan = "Verilay deep scan" if row.get("deep") else "Verilay scan"
+        status = (f'<div class="ok">On {_esc(date)}, a {scan} of this app\'s code found <strong>no critical '
                   f'issues</strong> and graded it A or B. The stamp stays current until {_esc(until)} unless the app is '
                   f'checked again.</div>')
     elif state == "expired":
@@ -779,11 +929,12 @@ def app_page(slug):
     )
 
     embed = ""
+    alt_word = "Deep check" if row.get("deep") else "Checked"
     if state == "fresh":
         html_light = (f'<a href="{base}" target="_blank" rel="noopener"><img src="{img}" '
-                      f'alt="Checked by Verilay" width="{_STAMP_W}" height="{_STAMP_H}"></a>')
+                      f'alt="{alt_word} by Verilay" width="{_STAMP_W}" height="{_STAMP_H}"></a>')
         html_dark = html_light.replace(img, img_dark)
-        md = f"[![Checked by Verilay]({img})]({base})"
+        md = f"[![{alt_word} by Verilay]({img})]({base})"
         embed = (
             '<div class="card" id="stamp" style="margin-top:1.25rem"><h2 style="margin-top:0">Built this app? Add the stamp '
             'to your site</h2><p>Paste one of these into your site, for example its footer (in Lovable, Bolt or '
@@ -799,8 +950,10 @@ def app_page(slug):
             + '</div>')
 
     rel = "noopener" if state == "fresh" else "nofollow ugc noopener"
-    stamp_img = (f'<p style="margin:1rem 0"><img src="{_esc(stamp_src(page))}" alt="Verilay stamp" '
+    stamp_img = (f'<p style="margin:1rem 0 .25rem"><img src="{_esc(stamp_src(page))}" alt="Verilay stamp" '
                  f'width="{_STAMP_W}" height="{_STAMP_H}"></p>') if state != "none" else ""
+    if state == "fresh" and row.get("deep"):
+        stamp_img += f'<p style="margin:0 0 .75rem;font-weight:600;color:#3C3489">{_esc(deep_caption(row))}</p>'
     body = (
         f'{_STYLE}<div class="eyebrow"><a href="/apps" style="text-decoration:none">Checked apps</a></div>'
         f'<h1>{_esc(row.get("app_name"))}</h1>'
