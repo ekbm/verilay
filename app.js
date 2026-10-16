@@ -112,6 +112,139 @@ async function saveReport() {
   }
 }
 
+// ── App directory: "List my app" after a free scan ───────────────────────────
+// Uses the report id the SERVER saved for this scan (kept in the card), not savedReportId: the
+// Share link button saves a fresh browser copy, and a browser-saved copy cannot be listed.
+var DIR_BUILT_WITH = ['Lovable', 'Bolt', 'Replit', 'Base44', 'v0', 'Cursor', 'Windsurf', 'Claude Code', 'GitHub Copilot', 'Other AI tool'];
+var DIR_CATEGORIES = [['business', 'Business & productivity'], ['money', 'Money & finance'], ['home', 'Home & property'],
+  ['health', 'Health & fitness'], ['education', 'Education & careers'], ['marketing', 'Marketing & sales'],
+  ['community', 'Community & social'], ['ai', 'AI tools'], ['developer', 'Developer tools'], ['other', 'Something else']];
+
+function showDirectoryCard(reportId) {
+  if (!reportId) return;
+  var old = document.getElementById('directory-card');
+  if (old) old.remove();
+  var banner = document.getElementById('share-banner');
+  if (!banner || !banner.parentNode) return;
+  var card = document.createElement('div');
+  card.id = 'directory-card';
+  card.setAttribute('data-report', reportId);
+  card.style.cssText = 'background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem';
+  var field = 'width:100%;border:0.5px solid var(--bdr);border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit;background:white;color:var(--txt);margin-top:3px';
+  var lab = 'display:block;font-size:12px;font-weight:600;color:var(--put);margin-top:.6rem';
+  card.innerHTML =
+    '<div style="display:flex;align-items:flex-start;gap:10px">' +
+      '<i class="ti ti-building-store" style="font-size:20px;color:var(--pu);flex-shrink:0;margin-top:1px"></i>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:600;color:var(--put)">List your app in the Verilay app directory, free</div>' +
+        '<div style="font-size:12px;color:var(--put);line-height:1.55;margin-top:2px">A searchable home for apps built with AI tools, ' +
+          'so people can find yours and get in touch. If this scan found no critical issues, your listing carries the ' +
+          '<strong>Checked by Verilay</strong> stamp. Your findings stay private: only what you type below is shown. ' +
+          '<a href="/apps" target="_blank" style="color:var(--put)">See the directory</a></div>' +
+        '<button type="button" id="dir-open" class="btn-sm" style="margin-top:.6rem">List my app</button>' +
+        '<form id="dir-form" style="display:none" novalidate>' +
+          '<label style="' + lab + '" for="dir-name">App name</label><input id="dir-name" maxlength="60" style="' + field + '">' +
+          '<label style="' + lab + '" for="dir-tagline">What does it do, in one line?</label>' +
+            '<input id="dir-tagline" maxlength="140" placeholder="e.g. Tracks every stage of your new home build" style="' + field + '">' +
+          '<label style="' + lab + '" for="dir-url">Where can people use it? (web address)</label>' +
+            '<input id="dir-url" maxlength="200" placeholder="https://yourapp.com" autocapitalize="none" spellcheck="false" style="' + field + '">' +
+          '<label style="' + lab + '" for="dir-built">Built with</label><select id="dir-built" style="' + field + '"></select>' +
+          '<label style="' + lab + '" for="dir-cat">Category</label><select id="dir-cat" style="' + field + '"></select>' +
+          '<label style="' + lab + '" for="dir-price">Price</label><select id="dir-price" style="' + field + '">' +
+            '<option value="free">Free</option><option value="freemium">Free with paid plans</option><option value="paid">Paid</option></select>' +
+          '<label style="' + lab + '" for="dir-contact">How can people reach you? (email or link, shown publicly)</label>' +
+            '<input id="dir-contact" maxlength="254" autocapitalize="none" spellcheck="false" style="' + field + '">' +
+          '<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--put);margin-top:.6rem"><input type="checkbox" id="dir-beta"> Looking for beta testers</label>' +
+          '<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--put);margin-top:.3rem"><input type="checkbox" id="dir-custom"> Open to custom work</label>' +
+          '<label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--put);margin-top:.6rem;line-height:1.5"><input type="checkbox" id="dir-confirm" style="margin-top:2px"> ' +
+            'I built this app with AI tools and I am happy for these details to be listed publicly.</label>' +
+          '<input type="text" id="dir-website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px">' +
+          '<div id="dir-msg" style="display:none;font-size:12px;margin-top:.6rem;padding:7px 9px;border-radius:6px"></div>' +
+          '<button type="submit" id="dir-submit" class="btn-sm" style="margin-top:.7rem">Submit listing</button>' +
+          '<div style="font-size:11px;color:var(--put);opacity:.85;margin-top:.4rem">Listings are reviewed before they appear, usually within a day.</div>' +
+        '</form>' +
+      '</div>' +
+    '</div>';
+  banner.parentNode.insertBefore(card, banner.nextSibling);
+
+  var built = card.querySelector('#dir-built');
+  var detected = ((currentReport && currentReport.built_with) || '').toLowerCase();
+  var guess = '';
+  DIR_BUILT_WITH.forEach(function (b) { if (!guess && b !== 'Other AI tool' && detected.indexOf(b.toLowerCase()) > -1) guess = b; });
+  built.innerHTML = '<option value="">Choose one</option>';
+  DIR_BUILT_WITH.forEach(function (b) {
+    var o = document.createElement('option'); o.value = b; o.textContent = b; if (b === guess) o.selected = true; built.appendChild(o);
+  });
+  var cat = card.querySelector('#dir-cat');
+  cat.innerHTML = '<option value="">Choose one</option>';
+  DIR_CATEGORIES.forEach(function (c) {
+    var o = document.createElement('option'); o.value = c[0]; o.textContent = c[1]; cat.appendChild(o);
+  });
+  var repo = (currentReport && currentReport.repo) || '';
+  var nameGuess = repo.split('/').pop().replace(/[-_]+/g, ' ').trim();
+  card.querySelector('#dir-name').value = nameGuess ? nameGuess.charAt(0).toUpperCase() + nameGuess.slice(1) : '';
+
+  card.querySelector('#dir-open').addEventListener('click', function () {
+    this.style.display = 'none';
+    card.querySelector('#dir-form').style.display = 'block';
+    card.querySelector('#dir-tagline').focus();
+    try { if (typeof plausible === 'function') plausible('Directory Form Open'); } catch (e) {}
+  });
+  card.querySelector('#dir-form').addEventListener('submit', submitDirectoryListing);
+}
+
+function _dirMsg(text, ok) {
+  var m = document.getElementById('dir-msg');
+  if (!m) return;
+  m.textContent = text;
+  m.style.display = 'block';
+  m.style.background = ok ? 'var(--grl)' : '#FCEBEB';
+  m.style.color = ok ? 'var(--grt)' : '#A32D2D';
+}
+
+async function submitDirectoryListing(e) {
+  e.preventDefault();
+  var card = document.getElementById('directory-card');
+  if (!card) return;
+  var reportId = card.getAttribute('data-report');
+  var v = function (id) { var el = card.querySelector('#' + id); return el ? el.value.trim() : ''; };
+  var c = function (id) { var el = card.querySelector('#' + id); return !!(el && el.checked); };
+  if (!c('dir-confirm')) { _dirMsg('Please tick the box to confirm you built it with AI tools.', false); return; }
+  var btn = card.querySelector('#dir-submit');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  try {
+    var resp = await fetch('/apps/list', {
+      method: 'POST',
+      headers: reportHeaders(reportId, {'Content-Type': 'application/json'}),
+      body: JSON.stringify({
+        report_id: reportId, app_name: v('dir-name'), tagline: v('dir-tagline'), app_url: v('dir-url'),
+        built_with: v('dir-built'), category: v('dir-cat'), pricing: v('dir-price'), contact: v('dir-contact'),
+        beta_testers: c('dir-beta'), custom_work: c('dir-custom'), confirm: c('dir-confirm'), website: v('dir-website')
+      })
+    });
+    var out = {};
+    try { out = await resp.json(); } catch (e2) {}
+    if (resp.ok && out.ok) {
+      card.querySelector('#dir-form').querySelectorAll('input,select').forEach(function (el) { el.disabled = true; });
+      btn.style.display = 'none';
+      _dirMsg(out.stamped
+        ? 'Thank you! Your app will appear on verilay.dev/apps with the Checked by Verilay stamp once it has been reviewed.'
+        : 'Thank you! Your app will appear on verilay.dev/apps once it has been reviewed. This scan found issues to fix first, ' +
+          'so it is listed without the stamp: fix them, scan again and list it again to earn the stamp.', true);
+      try { if (typeof plausible === 'function') plausible('Directory Listing Submit', {props: {stamped: out.stamped ? 'yes' : 'no'}}); } catch (e3) {}
+    } else {
+      _dirMsg(out.error || 'Sorry, something went wrong. Please try again.', false);
+      btn.disabled = false;
+      btn.textContent = 'Submit listing';
+    }
+  } catch (err) {
+    _dirMsg('Could not reach Verilay. Please check your connection and try again.', false);
+    btn.disabled = false;
+    btn.textContent = 'Submit listing';
+  }
+}
+
 function exportMarkdown() {
   if (!savedReportId) {
     // Save first then download
@@ -873,6 +1006,8 @@ function handleStreamEvent(evt) {
       // Add delete button to share banner
       var deleteBtn = document.getElementById('delete-report-btn');
       if (deleteBtn) deleteBtn.style.display = 'inline-block';
+      // Offer a listing in the app directory (GitHub scans only; the server checks everything again).
+      if (currentMethod === 'github') showDirectoryCard(evt.data.report_id);
 
       // Show waitlist nudge after 3+ analyses
       var analysisCount = parseInt(localStorage.getItem('verilay_analysis_count') || '0') + 1;
@@ -1030,6 +1165,8 @@ function resetForm(goToForm) {
   activeLayer = null;
   activeMode = 'expert';
   savedReportId = null;
+  var dirCard = document.getElementById('directory-card');
+  if (dirCard) dirCard.remove();
 
   // Navigate
   if (goToForm) {

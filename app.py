@@ -684,6 +684,28 @@ if _HAS_PAYWALL:
         _HAS_PAYWALL = False
         print(f"⚠️  Paid path failed to register: {_bp_err}", flush=True)
 
+# ── App directory (/apps) ──────────────────────────────────────────────────────
+# Makers list their app after a free scan; Moses approves listings on /apps/review.
+# Registered after the paid path so it can reuse its page shell and admin check.
+try:
+    import verilay_directory as directory
+
+    def _directory_is_admin():
+        if not _HAS_PAYWALL:
+            return False
+        try:
+            import verilay_accounts as _acc
+            return paywall._is_admin_user(_acc.current_user())
+        except Exception:
+            return False
+
+    directory.init(app, sb=_sb, get_ip=get_ip, report_auth_info=_report_auth_info, report_row=_report_row,
+                   can_write_report=_can_write_report, is_admin=_directory_is_admin,
+                   page=paywall._page if _HAS_PAYWALL else None)
+    print("✓ App directory registered", flush=True)
+except Exception as _dir_err:
+    print(f"⚠️  App directory failed to register: {_dir_err}", flush=True)
+
 # ── File readers ───────────────────────────────────────────────────────────────
 PRIORITY_FILES = [
     # Dependency manifests — ALWAYS read first
@@ -5293,6 +5315,7 @@ def sitemap():
         ("https://verilay.dev/blog", "weekly", "0.8"),
         ("https://verilay.dev/about", "monthly", "0.5"),
         ("https://verilay.dev/monitoring", "monthly", "0.6"),
+        ("https://verilay.dev/apps", "daily", "0.8"),
     ]
     for p in BLOG_POSTS:
         if p.get("body") or p["slug"] == "evident-ai-c-to-b":
@@ -5338,6 +5361,9 @@ def save_report_route():
         data = request.get_json()
         existing_id = data.pop("report_id", None)
         data.pop("_mgmt", None)  # never accept a client-supplied token hash
+        # Everything in a browser-saved report (grade included) came from the browser, so it can
+        # never earn an app-directory listing or stamp (see verilay_directory.scan_verdict).
+        data["_client_saved"] = True
         if existing_id:
             # Replacing a saved report needs the manage token (or the owning account).
             if not _can_write_report(str(existing_id)):
@@ -6404,7 +6430,7 @@ _PLAUSIBLE_SNIPPET = (
     '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
 )
 _ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer",
-                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring")
+                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps")
 
 
 @app.after_request
@@ -6414,7 +6440,7 @@ def _add_analytics(resp):
                 or resp.mimetype != "text/html" or resp.direct_passthrough):
             return resp
         p = request.path.rstrip("/") or "/"
-        if not any(p == a or p.startswith(a + "/") for a in _ANALYTICS_PATHS):
+        if not any(p == a or p.startswith(a + "/") for a in _ANALYTICS_PATHS) or p.startswith("/apps/review"):
             return resp
         body = resp.get_data(as_text=True)
         if "plausible.io/js" in body or "</head>" not in body:
@@ -6713,7 +6739,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 @media print{
-  .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner{display:none!important}
+  .sticky-bar,.p2-banner,.bottom-cta,#hero-section,#form-section,.ld,#btn-new,#btn-new2,#btn-save-report,#btn-export-md,#btn-print,#btn-back-hero,#share-banner,#directory-card{display:none!important}
   .rpt{display:block!important}
   body{background:white;padding:0}
   .wrap{max-width:100%;padding:1rem}
