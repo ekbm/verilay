@@ -509,6 +509,7 @@ _STYLE = """<style>
 .chip{font-size:11px;padding:2px 9px;border-radius:20px;background:#f0efec;color:#4a4846}
 .stamp{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:#E1F5EE;color:#085041;align-self:flex-start;text-decoration:none}
 .stamp-old{background:#f0efec;color:#6b6966;font-weight:500}
+.card-stamp{display:block;align-self:flex-start;line-height:0;margin:-.15rem 0 -.1rem -.2rem}
 .app-links{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-top:auto;padding-top:.25rem}
 .dir-empty{background:#fff;border:0.5px dashed #c9c7c2;border-radius:12px;padding:1.5rem;text-align:center;color:#6b6966;font-size:14px}
 </style>"""
@@ -527,14 +528,14 @@ def _card(r):
     fresh = stamp_is_fresh(r)
     date = _date_text(r.get("checked_at"))
     page = app_path(r)
-    if fresh:
+    if stamp_state(r) != "none":
+        # The same stamp makers put on their sites, drawn inline (no extra request) at a card-friendly size.
+        art = stamp_svg(r).replace(f'width="{_STAMP_W}" height="{_STAMP_H}"', 'width="152" height="69"', 1)
         tag = "a" if page else "span"
         href = f' href="{_esc(page)}"' if page else ""
-        stamp = (f'<{tag} class="stamp"{href} title="No critical issues found in what Verilay checked on '
-                 f'{_esc(date)}. A confidence stamp, not a guarantee of security.">'
-                 f'&#x2713; Checked by Verilay &middot; {_esc(date)}</{tag}>')
-    elif r.get("stamped") and date:
-        stamp = f'<span class="stamp stamp-old">Checked {_esc(date)} &middot; due for a fresh check</span>'
+        tip = (f"No critical issues found in what Verilay checked on {date}. A confidence stamp, not a guarantee "
+               f"of security." if fresh else f"Checked on {date}; the stamp has expired until the app is checked again.")
+        stamp = f'<{tag} class="card-stamp"{href} title="{_esc(tip)}">{art}</{tag}>'
     else:
         stamp = ""
     rel = "noopener" if fresh else "nofollow ugc noopener"
@@ -634,48 +635,57 @@ def apps_page():
 
 # ── The stamp makers put on their own sites ───────────────────────────────────
 # Drawn live from the listing every time it is shown, so it can never claim more than is true right
-# now: fresh check → "No critical issues"; older than STAMP_DAYS → "Due for a fresh check"; not listed,
+# now: fresh check → green "CHECKED"; older than STAMP_DAYS → amber "EXPIRED"; not listed,
 # hidden, or no stamp → "No current check". It contains no text typed by a maker, only Verilay's own
 # wording and a date, and always links back to the app's page on verilay.dev.
 
-_STAMP_W, _STAMP_H = 250, 54
-_LOGO = ('<svg x="13" y="11" width="32" height="32" viewBox="0 0 400 400"><rect width="400" height="400" rx="88" '
-         'fill="#534AB7"/><circle cx="200" cy="200" r="112" fill="#ffffff" fill-opacity="0.12"/><circle cx="200" '
-         'cy="200" r="86" fill="#ffffff" fill-opacity="0.12"/><path d="M140 142 L200 268 L260 142" fill="none" '
-         'stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><path d="M122 142 '
-         'L278 142" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/></svg>')
+_STAMP_W, _STAMP_H = 190, 86
 
 
 def stamp_svg(row, dark=False, now=None):
+    """The ink stamp (Moses's choice, 2026-10-16): a double-bordered rubber stamp, tilted as if pressed.
+    Each state has its own colour AND its own symbol, so they tell apart at a glance even for someone who
+    can't see colour well: green with a tick when the check is current, amber with a clock when it has
+    expired, grey with no symbol when there is no current check. The corners stay transparent, so it sits
+    on any background."""
     state = stamp_state(row, now)
-    date = _date_text(row.get("checked_at")) if row else ""
+    date = _date_text(row.get("checked_at")).upper() if row else ""
     if dark:
-        bg, border, txt, purple, green, grey = "#1f1e1c", "#3a3936", "#f1efe8", "#AFA9EC", "#5DCAA5", "#9c9a92"
+        paper, green, amber, grey = "#1f1e1c", "#5DCAA5", "#EF9F27", "#9c9a92"
+        deep = {green: "#9FE1CB", amber: "#FAC775", grey: "#D3D1C7"}
     else:
-        bg, border, txt, purple, green, grey = "#ffffff", "#e3e1db", "#1a1917", "#534AB7", "#0F6E56", "#6b6966"
+        paper, green, amber, grey = "#ffffff", "#0F6E56", "#A35F00", "#6b6966"
+        deep = {green: "#04342C", amber: "#633806", grey: "#2C2C2A"}
     if state == "fresh":
-        accent, label, headline, foot = green, "✓ CHECKED", "No critical issues", f"Verilay · {date}"
+        ink, label, line2, line3 = green, "CHECKED", "NO CRITICAL ISSUES", f"VERILAY · {date}"
+        # A drawn tick, not a text character, so it looks the same on every device.
+        icon = f'<path d="M33 31 L38.5 36.5 L48 26" fill="none" stroke="{ink}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
     elif state == "expired":
-        accent, label, headline, foot = grey, "CHECK EXPIRED", "Due for a fresh check", f"Verilay · checked {date}"
+        ink, label, line2, line3 = amber, "EXPIRED", "DUE FOR A FRESH CHECK", f"VERILAY · {date}"
+        icon = (f'<circle cx="40.5" cy="31" r="7.5" fill="none" stroke="{ink}" stroke-width="2.2"/>'
+                f'<path d="M40.5 26.5 V31 L43.5 33" fill="none" stroke="{ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>')
     else:
-        accent, label, headline, foot = grey, "VERILAY", "No current check", "verilay.dev/apps"
-    alt = {"fresh": f"Checked by Verilay on {date}: no critical issues found",
-           "expired": f"Verilay check from {date} has expired",
+        ink, label, line2, line3 = grey, "VERILAY", "NO CURRENT CHECK", "VERILAY.DEV/APPS"
+        icon = ""
+    alt = {"fresh": f"Checked by Verilay on {date.title()}: no critical issues found",
+           "expired": f"Verilay check from {date.title()} has expired",
            "none": "No current Verilay check"}[state]
-    font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+    font = "'Courier New',Courier,monospace"
+    label_x = 104 if icon else 95
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{_STAMP_W}" height="{_STAMP_H}" '
         f'viewBox="0 0 {_STAMP_W} {_STAMP_H}" role="img" aria-label="{_esc(alt)}">'
         f'<title>{_esc(alt)}</title>'
-        f'<rect x="0.5" y="0.5" width="{_STAMP_W - 1}" height="{_STAMP_H - 1}" rx="10" fill="{bg}" stroke="{border}"/>'
-        f'<rect x="0.5" y="9" width="4" height="36" rx="2" fill="{accent}"/>'
-        f'{_LOGO}'
-        f'<g font-family="{font}">'
-        f'<text x="56" y="19" font-size="9.5" font-weight="700" letter-spacing="0.9" fill="{accent}">{_esc(label)}</text>'
-        f'<text x="56" y="35" font-size="14.5" font-weight="700" fill="{txt}">{_esc(headline)}</text>'
-        f'<text x="56" y="47.5" font-size="10.5" font-weight="600" fill="{purple}">{_esc(foot)}</text>'
-        f'<text x="{_STAMP_W - 14}" y="17" font-size="11" fill="{grey}" text-anchor="middle">↗</text>'
-        f'</g></svg>'
+        f'<g transform="rotate(-4 95 43)">'
+        f'<rect x="6" y="8" width="178" height="70" rx="6" fill="{paper}" stroke="{ink}" stroke-width="2.5"/>'
+        f'<rect x="11" y="13" width="168" height="60" rx="3" fill="none" stroke="{ink}" stroke-width="1" '
+        f'stroke-dasharray="3 2.5"/>'
+        f'{icon}'
+        f'<g font-family="{font}" font-weight="700" fill="{ink}" text-anchor="middle">'
+        f'<text x="{label_x}" y="38" font-size="20" letter-spacing="3">{_esc(label)}</text>'
+        f'<text x="95" y="53" font-size="10">{_esc(line2)}</text>'
+        f'<text x="95" y="67" font-size="11" letter-spacing="0.5" fill="{deep[ink]}">{_esc(line3)}</text>'
+        f'</g></g></svg>'
     )
 
 
@@ -771,7 +781,7 @@ def app_page(slug):
             f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:.25rem 0 1rem">'
             f'<img src="{_esc(page)}/stamp.svg" alt="Light stamp" width="{_STAMP_W}" height="{_STAMP_H}">'
             f'<img src="{_esc(page)}/stamp.svg?theme=dark" alt="Dark stamp" width="{_STAMP_W}" height="{_STAMP_H}" '
-            f'style="background:#1f1e1c;border-radius:10px"></div>'
+            f'style="background:#2c2c2a;border-radius:10px;padding:4px"></div>'
             + _code_box("code-light", "HTML, for a light background", html_light)
             + _code_box("code-dark", "HTML, for a dark background", html_dark)
             + _code_box("code-md", "Markdown, for a GitHub README", md)
