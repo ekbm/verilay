@@ -52,6 +52,7 @@ from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_i
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 from verilay_glance import render_glance_html, sample_preview_html
+import verilay_fonts as vl_fonts
 import verilay_report_expiry as report_expiry
 import verilay_layer_files as layer_files
 import verilay_appcount as appcount
@@ -5680,7 +5681,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                  if scan_when else "")
     out.append(f"""<div class="card">
   {deep_badge}
-  <div style="font-size:20px;font-weight:700;margin-bottom:.25rem;overflow-wrap:break-word;word-break:break-word">{data.get('repo','')}</div>
+  <div class="vl-display" style="font-size:22px;margin-bottom:.25rem;overflow-wrap:break-word;word-break:break-word">{data.get('repo','')}</div>
   {scan_line}
   <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
   <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
@@ -6604,6 +6605,35 @@ def _add_analytics(resp):
     return resp
 
 
+@app.route("/fonts/<name>")
+def heading_font(name):
+    """The two Fraunces files (see verilay_fonts.py). Whitelisted by name; anything else is a 404."""
+    data = vl_fonts.serve_font(name)
+    if data is None:
+        return ("", 404)
+    resp = Response(data, mimetype="font/woff2")
+    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+@app.after_request
+def _add_heading_font(resp):
+    """Adds the heading-font <style> to the pages named in verilay_fonts.wants_fonts(). Never allowed to break a page."""
+    try:
+        if (request.method != "GET" or resp.status_code != 200
+                or resp.mimetype != "text/html" or resp.direct_passthrough
+                or not vl_fonts.wants_fonts(request.path)):
+            return resp
+        body = resp.get_data(as_text=True)
+        if vl_fonts.MARK in body or "</head>" not in body:
+            return resp
+        resp.set_data(body.replace("</head>", vl_fonts.head_html() + "</head>", 1))
+    except Exception:
+        pass
+    return resp
+
+
 @app.route("/og-image.png")
 def og_image():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "og-image.png")
@@ -6993,7 +7023,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   <style>
   .hx{background:var(--pul);border-radius:20px;text-align:center;padding:2.6rem 1.25rem 2rem;margin-bottom:1.25rem}
   .hx-pill{display:inline-flex;align-items:center;gap:6px;background:#fff;border:0.5px solid #d6d1f5;color:var(--put);font-size:12px;font-weight:600;padding:5px 13px;border-radius:999px;margin-bottom:1.1rem}
-  .hx h1{font-size:clamp(2.1rem,6.2vw,3.7rem);font-weight:900;line-height:1.02;letter-spacing:-.035em;text-transform:uppercase;max-width:720px;margin:0 auto .9rem}
+  .hx h1{font-family:"Fraunces",Georgia,"Times New Roman",serif;font-size:clamp(2rem,5.6vw,3.4rem);font-weight:700;line-height:1.08;letter-spacing:-.02em;text-wrap:balance;max-width:720px;margin:0 auto .9rem}
   .hx h1 em{font-style:normal;color:var(--pu)}
   .hx-sub{font-size:16px;color:#4a4945;max-width:610px;margin:0 auto 1.4rem;line-height:1.6}
   .hx-box{display:flex;gap:8px;background:#fff;border:1.5px solid #cfc9f3;border-radius:999px;padding:6px;max-width:620px;margin:0 auto;box-shadow:var(--shadow-sm)}
@@ -7292,7 +7322,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
   <!-- CTA -->
   <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
-    <div style="font-size:17px;font-weight:600;margin-bottom:.4rem">Ready to see what's inside your app?</div>
+    <div class="vl-display" style="font-size:22px;margin-bottom:.4rem">Ready to see what's inside your app?</div>
     <div style="font-size:14px;color:var(--mut);margin-bottom:1.1rem">Free. No sign-up, no login. Usually one to three minutes.</div>
     <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
       <i class="ti ti-search" style="font-size:16px"></i> Analyse my app
