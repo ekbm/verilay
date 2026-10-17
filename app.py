@@ -51,6 +51,7 @@ from verilay_client_type import classify as classify_client
 from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
+from verilay_glance import render_glance_html
 import verilay_report_expiry as report_expiry
 import verilay_layer_files as layer_files
 import verilay_appcount as appcount
@@ -5716,6 +5717,12 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                    + ", ".join(str(n) for n in _nc)  # data is already escaped
                    + '. Verilay did not see any code for these layers, so nothing there should be read as a pass.'
                    '</div></div>')
+
+    # Scan at a glance: what each check covered, in numbers (verilay_glance.py)
+    try:
+        out.append(render_glance_html(data))
+    except Exception as _e:
+        app.logger.warning("glance panel skipped: %s", _e)  # never let a stats panel break a report
 
     # Stack
     if stack:
