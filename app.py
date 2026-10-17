@@ -4741,6 +4741,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>The free analysis needs no account — we don't know who you are unless you buy a deep scan or sign in</li>
     <li>No cookies or tracking beyond Plausible Analytics (privacy-friendly, no personal data)</li>
     <li>If you register interest in monitoring, we store your email and your answers and use them only to tell you about monitoring</li>
+    <li>If you register interest in private repository support, we store your email and your answers and use them only to tell you about that</li>
     <li>No payment card details — Stripe handles payment directly and Verilay never sees or stores your card number</li>
     <li>No access to your GitHub account beyond what you explicitly submit — we read public repos only via GitHub API, and never write to or modify any repository</li>
   </ul>
@@ -6575,7 +6576,7 @@ _PLAUSIBLE_SNIPPET = (
     '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
 )
 _ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer",
-                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps")
+                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos")
 
 
 @app.after_request
@@ -7342,7 +7343,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
         </div>
       </div>
       <div style="margin-top:.65rem;font-size:12px;color:var(--mut)">
-        <strong style="color:var(--txt)">Note:</strong> Repo must be public for Verilay to read it, or connect with a personal access token in your .env file.
+        <strong style="color:var(--txt)">Note:</strong> The repo must be public for Verilay to read it. Private code? Upload a ZIP instead, or <a href="/private-repos" style="color:var(--pu)">tell us you'd like private repository support</a>.
       </div>
     </div>
   </div>

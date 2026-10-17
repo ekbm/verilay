@@ -362,7 +362,7 @@ _DEEP_FIT = """
     <div class="card">
       <h3>Not for you if&hellip;</h3>
       <ul>
-        <li>Your repository is private (public GitHub repositories only, for now)</li>
+        <li>Your repository is private (public GitHub repositories only, for now; you can <a href="/private-repos">register interest in private repositories</a>)</li>
         <li>You need a human security audit or a penetration test; this is an automated first pass</li>
         <li>Your app has fewer than 25 files: the free scan already reads every file, so you'd mainly add the package details and similar projects</li>
       </ul>
@@ -1047,6 +1047,154 @@ def monitoring_interest_submit():
     return redirect("/monitoring?thanks=1#form")
 
 
+# ── Private repositories: expression of interest ───────────────────────────────
+# Verilay reads PUBLIC GitHub repositories only. This page measures whether people with private code want a way to
+# connect it, and how, before anything is built. Answers go to the `private_repo_interest` table
+# (supabase_private_repo_interest.sql); if that table has not been created yet the email still lands in the existing
+# `waitlist` table with source "private-repos".
+_PRIV_CHOICES = {
+    "host": {"github": "GitHub", "gitlab": "GitLab", "bitbucket": "Bitbucket", "azure": "Azure DevOps", "other": "Somewhere else"},
+    "connect": {
+        "app": "A read-only GitHub App I install with one click, limited to the repositories I choose",
+        "action": "A GitHub Action that runs inside my own repository",
+        "local": "A command I run on my own computer, so my code never leaves it",
+        "zip": "Uploading a ZIP each time is fine",
+        "unsure": "Not sure yet",
+    },
+    "reason": {
+        "customer": "It holds customer or personal data",
+        "company": "It is my employer's or a client's code",
+        "secrets": "It may contain keys or passwords I don't want exposed",
+        "prefer": "I just prefer it private",
+        "other": "Something else",
+    },
+    "repos": {"1": "1 repository", "2-3": "2 to 3 repositories", "4-10": "4 to 10 repositories", "10+": "More than 10 repositories"},
+}
+_PRIV_LABELS = {"host": "Where the code lives", "connect": "How they'd like to connect", "reason": "Why it is private",
+                "repos": "How many private repositories"}
+
+
+def _store_private_interest(row):
+    """'new', 'updated' (same email again), 'fallback' (email-only waitlist entry because the table is missing) or 'none'."""
+    sb = _sb()
+    if sb is None:
+        print("[private-repos] no database configured; interest not stored", flush=True)
+        return "none"
+    try:
+        sb.table("private_repo_interest").insert(row).execute()
+        return "new"
+    except Exception as e:
+        msg = str(e).lower()
+        if "duplicate" in msg or "unique" in msg:
+            try:
+                sb.table("private_repo_interest").update(
+                    {k: v for k, v in row.items() if k != "email"}).eq("email", row["email"]).execute()
+            except Exception:
+                pass
+            return "updated"
+        print(f"[private-repos] interest table unavailable, saving the email to the waitlist instead: {e}", flush=True)
+    try:
+        sb.table("waitlist").insert({"email": row["email"], "analyses_count": 0, "source": "private-repos"}).execute()
+        return "fallback"
+    except Exception as e2:
+        print(f"[private-repos] waitlist fallback failed (a duplicate is fine): {e2}", flush=True)
+        return "none"
+
+
+def _priv_notify_async(row):
+    """Email Moses about a new sign-up without making the visitor wait. Shares the hourly cap with the monitoring alerts.
+    Returns the thread (tests join it); None when the cap is reached."""
+    if not _mon_notify_ok():
+        print("[private-repos] alert email cap reached this hour; sign-up stored, no email sent", flush=True)
+        return None
+    answers = {_PRIV_LABELS[k]: _PRIV_CHOICES[k].get(row.get(k), "") for k in _PRIV_LABELS}
+    t = threading.Thread(target=notify.send_private_repo_interest_alert,
+                         args=(row["email"], answers, row.get("notes", "")), daemon=True)
+    t.start()
+    return t
+
+
+def _priv_select(name, label):
+    opts = '<option value="">Choose one</option>' + "".join(
+        f'<option value="{k}">{_esc(v)}</option>' for k, v in _PRIV_CHOICES[name].items())
+    return f'<label for="{name}">{_esc(label)}</label><select id="{name}" name="{name}">{opts}</select>'
+
+
+@bp.route("/private-repos")
+def private_repo_interest_page():
+    thanks = request.args.get("thanks")
+    err = request.args.get("err", "")[:160]
+    banner = ""
+    if thanks:
+        banner = ('<div class="ok">Thank you, you are on the list. Nothing is built yet; we will email you once, '
+                  'when there is something to try, and only about that.</div>')
+    if err:
+        banner += f'<div class="err">{_esc(err)}</div>'
+    body = f"""
+  <div class="eyebrow">Interest list</div>
+  <h1>Want Verilay to check a private repository?</h1>
+  <p>Today, Verilay reads <strong>public</strong> GitHub repositories only, and it never reads private code from
+  GitHub. If your code is private, this page is to tell us you would like a way to connect it. Nothing is for sale and
+  nothing is built yet: this page exists to find out whether people want it, and how, before it is built.</p>
+  {banner}
+  <h2>What you can do today</h2>
+  <ul>
+    <li><strong>Upload a ZIP of your project</strong> on the <a href="/">homepage</a> for a free scan. Your code is read
+    in memory and never saved.</li>
+    <li>The deep scan needs a public GitHub repository, for now.</li>
+  </ul>
+  <h2>What it might look like</h2>
+  <p>If it is built, the aim is read-only access, only to the repositories you choose, that you can remove at any
+  time. Tell us which way would suit you. These are ideas, not promises.</p>
+  <div class="card" id="form">
+    <form method="POST" action="/private-repos/interest" id="priv-form">
+      <label for="email">Your email</label>
+      <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required maxlength="254">
+      <p class="note" style="margin:.35rem 0 1rem">Used only to tell you about private repository support. No spam.</p>
+      {_priv_select("host", "Where does your code live?")}
+      <div style="height:.9rem"></div>
+      {_priv_select("connect", "How would you want to connect it?")}
+      <div style="height:.9rem"></div>
+      {_priv_select("reason", "What keeps it private?")}
+      <div style="height:.9rem"></div>
+      {_priv_select("repos", "How many private repositories?")}
+      <div style="height:.9rem"></div>
+      <label for="notes">Anything else? <span style="font-weight:400;color:#6b6966">(optional)</span></label>
+      <textarea id="notes" name="notes" rows="3" maxlength="300"></textarea>
+      <div style="position:absolute;left:-9999px" aria-hidden="true">
+        <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <p style="margin-top:1rem"><button class="btn" type="submit">Register interest</button></p>
+    </form>
+  </div>
+  <p class="note">Questions? <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>. See the
+  <a href="/privacy">privacy policy</a>.</p>
+"""
+    script = ("<script>document.getElementById('priv-form').addEventListener('submit',function(){"
+              "try{if(window.plausible)plausible('Private Repo Interest Submit',{props:{connect:"
+              "document.getElementById('connect').value||'none',host:document.getElementById('host').value||'none'}})}"
+              "catch(e){}});</script>")
+    return _page("Private repositories", body + script)
+
+
+@bp.route("/private-repos/interest", methods=["POST"])
+def private_repo_interest_submit():
+    if request.form.get("website"):  # hidden field: only a bot fills it. Look like success, store nothing.
+        return redirect("/private-repos?thanks=1#form")
+    email = (request.form.get("email") or "").strip().lower()
+    if len(email) > 254 or not _MON_EMAIL.match(email):
+        return redirect("/private-repos?err=" + urllib.parse.quote("Please enter a valid email address.") + "#form")
+    if not _mon_rate_ok("private:" + _mon_ip()):
+        return redirect("/private-repos?err=" + urllib.parse.quote("Too many submissions from this connection. Please try again later.") + "#form")
+    row = {"email": email, "notes": (request.form.get("notes") or "").strip()[:300]}
+    for key, choices in _PRIV_CHOICES.items():
+        v = request.form.get(key, "")
+        row[key] = v if v in choices else ""
+    if _store_private_interest(row) in ("new", "fallback"):
+        _priv_notify_async(row)
+    return redirect("/private-repos?thanks=1#form")
+
+
 # ── Account ────────────────────────────────────────────────────────────────────
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 
@@ -1133,6 +1281,7 @@ def account():
     admin_note = ""
     monitor_note = ""
     interest_note = ""
+    private_note = ""
     clients_note = ""
     if is_admin:
         # Who has registered interest in monitoring (admin only: these are people's emails).
@@ -1163,6 +1312,32 @@ def account():
                              '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
                              'being saved as emails only (waitlist, source &ldquo;monitoring&rdquo;). Run '
                              'supabase_monitoring_interest.sql in Supabase to keep the full answers.</p></div></details>')
+        # Who has registered interest in a way to connect a PRIVATE repository (admin only: these are people's emails).
+        try:
+            _pr = _sb().table("private_repo_interest").select("*").order("created_at", desc=True).limit(50).execute().data or []
+            _plab = lambda k, v: _esc(_PRIV_CHOICES.get(k, {}).get(v, v or "-"))
+            _cell = 'style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0"'
+            _rows_p = "".join(
+                f'<tr><td {_cell}>{_esc(str(r.get("created_at", ""))[:10])}</td>'
+                f'<td {_cell}>{_esc(r.get("email"))}</td>'
+                f'<td {_cell}>{_plab("host", r.get("host"))}<br>{_plab("repos", r.get("repos"))}</td>'
+                f'<td {_cell}>{_plab("connect", r.get("connect"))}</td>'
+                f'<td {_cell}>{_plab("reason", r.get("reason"))}</td>'
+                f'<td {_cell}>{_esc(r.get("notes"))}</td></tr>'
+                for r in _pr)
+            _th = 'style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966"'
+            private_note = (
+                f'<details class="acc"><summary>\U0001F512 Private repo interest ({len(_pr)})</summary><div class="acc-body">'
+                + ('<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse">'
+                   f'<tr><th {_th}>When</th><th {_th}>Email</th><th {_th}>Where / how many</th><th {_th}>Wants</th>'
+                   f'<th {_th}>Why private</th><th {_th}>Notes</th></tr>'
+                   + _rows_p + '</table></div>' if _pr else '<p class="note" style="margin:0">No one has registered yet.</p>')
+                + '</div></details>')
+        except Exception:
+            private_note = ('<details class="acc"><summary>\U0001F512 Private repo interest</summary><div class="acc-body">'
+                            '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
+                            'being saved as emails only (waitlist, source &ldquo;private-repos&rdquo;). Run '
+                            'supabase_private_repo_interest.sql in Supabase to keep the full answers.</p></div></details>')
         # Who runs scans: browser / script / AI agent ... (a guess from the request's browser identity;
         # only the label is stored, see verilay_client_type.py).
         try:
@@ -1322,6 +1497,7 @@ def account():
   {admin_note}
   {monitor_note}
   {interest_note}
+  {private_note}
   {clients_note}
   <details class="acc"><summary>Deep scan reports ({len(deep_reports)})</summary>
     <div class="acc-body">{deep_reports_html}</div>

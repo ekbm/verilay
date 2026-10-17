@@ -147,6 +147,33 @@ def send_deep_scan_recommendation(app_name, repo, reasons, titles=None, last_dee
         return False
 
 
+def send_private_repo_interest_alert(email, answers, notes=""):
+    """Tell Moses someone registered interest in a way to connect a PRIVATE repository. Best-effort, returns True/False,
+    never raises. `answers` is an ordered {question: answer} dict of already-readable text."""
+    to = MONITORING_INTEREST_NOTIFY_EMAIL
+    if not configured() or not to:
+        print("[notify] ZEPTOMAIL_TOKEN or recipient not set, skipping private-repo interest alert", flush=True)
+        return False
+    lines = ["Someone registered interest in checking a private repository with Verilay.", "", f"Email: {_one_line(email, 254)}"]
+    for question, answer in (answers or {}).items():
+        lines.append(f"{_one_line(question, 80)}: {_one_line(answer, 160) or '(not answered)'}")
+    if notes:
+        lines += ["", "Notes:", str(notes)[:300]]
+    lines += ["", "All sign-ups: verilay.dev/account (Private repo interest).", "", "— Verilay"]
+    msg = MIMEText("\n".join(lines))
+    msg["Subject"] = _one_line(f"New private-repo interest: {email}", 120)
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = to
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [to], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[notify] private-repo interest alert failed: {type(e).__name__}", flush=True)
+        return False
+
+
 def send_monitoring_interest_alert(email, repo, answers, notes=""):
     """Tell Moses someone registered interest in monitoring. Best-effort, returns True/False, never raises.
     `answers` is an ordered {question: answer} dict of already-readable text."""
