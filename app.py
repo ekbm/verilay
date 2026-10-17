@@ -3478,8 +3478,8 @@ BLOG_POSTS = [
 
 <h2>Every fix says what it&rsquo;s about</h2>
 <p>For the bigger problems, Verilay gives you a prompt to paste into your AI builder. The prompt asks it to look, explain and advise before changing anything, because blindly applying a fix can break working code. Each one is labelled with the part of your app it concerns and, where it clearly applies, the technology involved. Here&rsquo;s one from that same Juice Shop scan:</p>
-<p><strong>Client-Side Security Logic Exposes Challenge Solutions</strong> &middot; <em>Frontend</em></p>
-<p>The area always matches the layer the report itself lists the problem under, so a label never contradicts the rest of the page. When a fix clearly depends on one technology, its name comes only from what Verilay found in your own app, so a label is never made up. This fix doesn&rsquo;t clearly point at one technology, so it shows just the area.</p>
+<p><strong>Client-Side Security Logic Exposes Challenge Solutions</strong> &middot; <em>Frontend &middot; Angular</em></p>
+<p>The area always matches the layer the report itself lists the problem under, so a label never contradicts the rest of the page. The technology name comes only from what Verilay found in your own app, so a label is never made up. When a fix doesn&rsquo;t clearly point at one technology, it shows just the area. You can see the whole thing in the <a href="https://verilay.dev/report/82d9ec98247f">full report</a>.</p>
 
 <h2>What I did about it</h2>
 <p>I tried to answer each of the three.</p>
