@@ -4985,11 +4985,19 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     </a>
   </div>
 
-  <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Why Verilay exists</h2>
+  <h2 id="why" style="font-size:18px;font-weight:700;margin-bottom:.75rem">Why Verilay exists</h2>
   <p>I built several apps using AI platforms — Evident, LogInsight, BuildStory. Real apps with real users, databases, payments, and login systems.</p>
   <p>One day I ran a security scan and found my database was publicly accessible. No authentication. Anyone with the URL could download everything.</p>
   <p>I went looking for tools to check my other apps. What I found were security scanners written for developers — full of terms like "JWT verification bypass" and "insufficient input sanitization." I understood the words but not the sentences. I had no idea what to actually do.</p>
   <p>So I built what I wished existed: a tool that reads your code and explains what it found in plain English — then helps you investigate safely with your AI builder before touching anything.</p>
+
+  <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">What I wanted from a scanner</h2>
+  <p>When I went looking for a way to check my apps, three things put me off.</p>
+  <p><strong>It was overwhelming.</strong> Pages of findings I couldn't make sense of, and no idea which one to fix first.</p>
+  <p><strong>I couldn't tell who was behind it.</strong> Many of the tools I found had no real name and no face. I was about to paste my own app into something I couldn't tell was genuine, and I was scared it might be a scam.</p>
+  <p><strong>Every click felt like a risk.</strong> At each step I wondered whether this was the one that would charge me.</p>
+  <p>So I built Verilay to be the opposite. The free scan needs no sign-up, no login and no card. Anything that costs money says so, with the price, before you click. Paid features cost money because they use much more AI to read your whole codebase, and I pay for that. I think you'll understand, and you'll always know the price first.</p>
+  <p>And there's a person behind it. I'm Moses. If something goes wrong or you have a question, <a href="#contact" style="color:#534AB7">email me</a>. It comes straight to me, not to a support queue.</p>
 
   <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">The philosophy</h2>
   <div class="card">
@@ -5006,7 +5014,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
   <div class="card">
     <div style="font-weight:600;margin-bottom:.35rem">&#x1F513; Free forever for non-developers</div>
-    <div style="font-size:13px;color:#4a4846;line-height:1.6">Verilay will always be free to analyse your app. No login required. Pro features for power users coming soon.</div>
+    <div style="font-size:13px;color:#4a4846;line-height:1.6">Verilay will always be free to analyse your app. No login required. Optional paid features say so up front, with the price.</div>
   </div>
   <div class="card">
     <div style="font-weight:600;margin-bottom:.35rem">&#x1F50D; Why not just ask your AI builder?</div>
@@ -5021,7 +5029,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <p style="font-size:13px">Python / Flask &nbsp;&middot;&nbsp; Claude AI (Anthropic) &nbsp;&middot;&nbsp; Supabase &nbsp;&middot;&nbsp; Railway &nbsp;&middot;&nbsp; Cloudflare</p>
   <p style="font-size:13px">Source code: <a href="https://github.com/ekbm/verilay" target="_blank" style="color:#534AB7">github.com/ekbm/verilay</a></p>
 
-  <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">Get in touch</h2>
+  <h2 id="contact" style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">Get in touch</h2>
   <div style="background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1.25rem;margin-bottom:.75rem">
     <div style="font-weight:600;margin-bottom:.35rem">&#x2709; General enquiries &amp; feedback</div>
     <div style="font-size:13px;color:#6b6966;margin-bottom:.5rem">Questions about Verilay, feature requests, or want to share what score your app got?</div>
@@ -7303,6 +7311,15 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <a href="/ask-verilay?q=Why%20is%20my%20app%20slow%3F" style="font-size:13.5px;color:var(--txt);background:var(--bg);border:0.5px solid var(--bdr);border-radius:20px;padding:7px 14px;text-decoration:none">Why is my app slow?</a>
     </div>
     <a href="/ask-verilay" style="display:inline-block;margin-top:1.1rem;font-size:14px;color:var(--pu);text-decoration:none;font-weight:500">Open Ask Verilay &rarr;</a>
+  </div>
+
+  <!-- Why Verilay exists (short version; the full story is on /about#why) -->
+  <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1.6rem 1.5rem;margin-bottom:2.5rem;text-align:center">
+    <div class="vl-display" style="font-size:22px;margin-bottom:.5rem">Why Verilay exists</div>
+    <p style="font-size:15px;color:var(--mut);max-width:620px;margin:0 auto 1rem;line-height:1.65">
+      Scanners felt overwhelming, anonymous, and a little scary to click. Verilay is the opposite: plain words, no sign-up for the free scan, prices shown before you click, and a real person you can email.
+    </p>
+    <a href="/about#why" style="font-size:14px;font-weight:600;color:var(--pu)">Read why I built it &rarr;</a>
   </div>
 
   <!-- Platforms -->
