@@ -3448,11 +3448,11 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
-        "slug": "a-scan-result-is-not-understanding",
-        "title": "A Scan Result Isn&rsquo;t the Same as Understanding It",
+        "slug": "is-your-lovable-or-replit-app-safe-free-check-no-sign-up",
+        "title": "Is Your Lovable or Replit App Safe? A Free Check, No Sign-Up",
         "date": "October 17, 2026",
         "category": "Story",
-        "excerpt": "Most advice about scanning AI-built apps is for developers. Here&rsquo;s what I wanted as someone who isn&rsquo;t one: plain words, no surprise charges, and a real person to email.",
+        "excerpt": "Is your Lovable, Replit or Bolt app safe to launch? Why I built a free check with no sign-up, no card and a real person to email.",
         "medium_url": None,
         "read_time": "5 min read",
         "featured": True,
@@ -3461,7 +3461,7 @@ BLOG_POSTS = [
 <p>But I want to talk about the person who isn&rsquo;t a developer, because that was me.</p>
 
 <h2>Where I was standing</h2>
-<p>I&rsquo;d built real apps with AI tools, apps with real users, logins and payments. Then one day a scan showed me my own database was open to anyone with the link. So I went looking for something to check the rest.</p>
+<p>I&rsquo;d built real apps with AI tools like Lovable and Replit, apps with real users, logins and payments. Then one day a scan showed me my own database was open to anyone with the link. So I went looking for something to check the rest.</p>
 
 <h2>What put me off</h2>
 <p>Three things.</p>
@@ -3481,29 +3481,31 @@ BLOG_POSTS = [
 <p><strong>Client-Side Security Logic Exposes Challenge Solutions</strong> &middot; <em>Frontend</em></p>
 <p>The area always matches the layer the report itself lists the problem under, so a label never contradicts the rest of the page. When a fix clearly depends on one technology, its name comes only from what Verilay found in your own app, so a label is never made up. This fix doesn&rsquo;t clearly point at one technology, so it shows just the area.</p>
 
-<h2>How it works with you</h2>
+<h2>What I did about it</h2>
+<p>I tried to answer each of the three.</p>
 <ul>
-<li>The free scan needs no sign-up, no login and no card. The report is free too: no sign-up to run it and none to read it. You see it as soon as it&rsquo;s done.</li>
-<li>Anything that costs money says so, with the price, before you click. Paid features cost money because they use far more AI to read your whole codebase, and I pay for that.</li>
-<li>There&rsquo;s a person behind it. I&rsquo;m Moses. If something goes wrong, email me and it comes straight to me.</li>
+<li><strong>Overwhelming:</strong> plain words, and a prompt you can paste for each big problem.</li>
+<li><strong>Who&rsquo;s behind it:</strong> a real name. I&rsquo;m Moses. If something goes wrong, email me and it comes straight to me, not to a support queue.</li>
+<li><strong>Surprise charges:</strong> the free scan needs no sign-up, no login and no card, and the report is free to read too. Anything paid shows its price before you click.</li>
 </ul>
+<p>Anything paid costs money because reading a whole codebase takes a lot more AI, and I&rsquo;m the one who pays for it. The longer version of this story is on <a href="/about#why">the About page</a>.</p>
 
 <h2>What&rsquo;s here now, and what I&rsquo;m exploring</h2>
-<p><strong>Here now: a confidence stamp.</strong> If your scan finds no critical issues and grades A or B, you can list your app in <a href="/apps">Checked apps</a> and put a dated &ldquo;Checked by Verilay&rdquo; stamp on your own site, so visitors can see it&rsquo;s been looked at. It fades after 90 days, so an old clean scan can&rsquo;t be shown forever. It&rsquo;s a confidence stamp, not a security guarantee, and it says so.</p>
-<p><strong>Exploring: monitoring.</strong> A scan is a snapshot. I&rsquo;m exploring a version that re-checks your app on a schedule, such as daily or weekly, and emails you when something new turns up: a newly published problem in a package you use, an exposed key, or a change in your grade. It would tell you what changed since the last check, naming the specific issues. I already run this on my own four apps. It isn&rsquo;t built for anyone else yet, nothing is for sale and there is nothing to pay. If you&rsquo;d use it, <a href="/monitoring">tell me on the monitoring page</a> how many apps you&rsquo;d want watched and what would feel fair. That&rsquo;s how I&rsquo;ll decide whether to build it.</p>
+<p><strong>Here now: a confidence stamp.</strong> If your scan finds no critical issues and gets an A or B, you can list your app in <a href="/apps">Checked apps</a>. You can then put a dated &ldquo;Checked by Verilay&rdquo; stamp on your own site, so visitors can see it&rsquo;s been looked at. It fades after 90 days, so an old clean scan can&rsquo;t be shown forever. It&rsquo;s a confidence stamp, not a security guarantee, and it says so.</p>
+<p><strong>Exploring: monitoring.</strong> A scan is a snapshot. I&rsquo;m exploring a way to re-check your app on a schedule, such as daily or weekly. It would email you when something new turns up: a newly found problem in a package you use, an exposed key, or a change in your grade. It would tell you what changed since the last check, naming the specific issues. I already run this on my own four apps. It isn&rsquo;t built for anyone else yet, nothing is for sale and there is nothing to pay. If you&rsquo;d use it, <a href="/monitoring">tell me on the monitoring page</a> how many apps you&rsquo;d want watched and what would feel fair. That&rsquo;s how I&rsquo;ll decide whether to build it.</p>
 
 <h2>What it doesn&rsquo;t do</h2>
 <p>I&rsquo;d rather say it plainly:</p>
 <ul>
 <li>It&rsquo;s a first check, not a watchdog yet. It doesn&rsquo;t re-scan on a schedule, it doesn&rsquo;t scan on every push, and it doesn&rsquo;t test how fast your site loads.</li>
-<li>It reads public repos, or a ZIP of your project. Private repos aren&rsquo;t connected yet.</li>
+<li>It reads public repos, or a ZIP of your project. Private repos aren&rsquo;t connected yet. If you&rsquo;d want that, <a href="/private-repos">tell me here</a>.</li>
 <li>It checks the packages you install directly, not the packages those depend on.</li>
 <li>It&rsquo;s AI-written, so findings can vary a little between runs, and it isn&rsquo;t a penetration test.</li>
 </ul>
 <p>If you&rsquo;re a developer, a tool built for continuous checking is worth having too, and it works well alongside this one. If you&rsquo;re not, or you work with people who aren&rsquo;t, start somewhere you can read.</p>
 
 <h2>Try it</h2>
-<p>Paste a public GitHub link into <a href="/">verilay.dev</a>. It usually takes one to three minutes. If anything in the report confuses you, that&rsquo;s useful to me. Tell me and I&rsquo;ll make it clearer.</p>
+<p>It works with apps built on Lovable, Replit, Bolt, v0, Cursor and others, as long as you can share the code as a public GitHub link or a ZIP. Paste the link into <a href="/">verilay.dev</a>. It usually takes one to three minutes. If anything in the report confuses you, that&rsquo;s useful to me. Tell me and I&rsquo;ll make it clearer.</p>
 """,
     },
     {
@@ -4706,6 +4708,7 @@ def render_post(post):
 # Old post addresses that were renamed. The old URL redirects permanently, so shared links keep working.
 BLOG_SLUG_ALIASES = {
     "app-chaos-what-happens-next": "vibe-coding-next-problem-apps-nobody-maintains",
+    "a-scan-result-is-not-understanding": "is-your-lovable-or-replit-app-safe-free-check-no-sign-up",
 }
 
 
