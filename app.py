@@ -3468,6 +3468,7 @@ BLOG_POSTS = [
 <p><strong>It was overwhelming.</strong> Pages of findings I couldn&rsquo;t make sense of, and no idea which one to fix first.</p>
 <p><strong>I couldn&rsquo;t tell who was behind it.</strong> Many of the tools I found had no real name and no face. I was about to paste my own app into something I couldn&rsquo;t tell was genuine, and I wasn&rsquo;t sure it was safe to trust.</p>
 <p><strong>Every click felt like a risk.</strong> At each step I wondered whether this was the one that would charge me.</p>
+<p>And the ones that called themselves free weren&rsquo;t always free to read. I tried several scanners for AI-built apps. Some showed me an overview and asked me to sign up for the rest. Others ran the whole analysis and then asked me to sign up before I could see the report. That&rsquo;s their choice, but after I&rsquo;d already spent my time on a scan, it felt like a wall.</p>
 <p>A number on a screen, even an accurate one, doesn&rsquo;t tell you what it means or what to do next. A scanner can be right and still leave you more worried than before.</p>
 
 <h2>So I built the one I wished existed</h2>
@@ -3482,7 +3483,7 @@ BLOG_POSTS = [
 
 <h2>How it works with you</h2>
 <ul>
-<li>The free scan needs no sign-up, no login and no card.</li>
+<li>The free scan needs no sign-up, no login and no card. The report is free too: no sign-up to run it and none to read it. You see it as soon as it&rsquo;s done.</li>
 <li>Anything that costs money says so, with the price, before you click. Paid features cost money because they use far more AI to read your whole codebase, and I pay for that.</li>
 <li>There&rsquo;s a person behind it. I&rsquo;m Moses. If something goes wrong, email me and it comes straight to me.</li>
 </ul>
