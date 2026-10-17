@@ -51,7 +51,7 @@ from verilay_client_type import classify as classify_client
 from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
-from verilay_glance import render_glance_html
+from verilay_glance import render_glance_html, sample_preview_html
 import verilay_report_expiry as report_expiry
 import verilay_layer_files as layer_files
 import verilay_appcount as appcount
@@ -6665,6 +6665,30 @@ def _sample_button_html():
             '<i class="ti ti-player-play" style="font-size:16px"></i> See a sample report</button>')
 
 
+
+_SAMPLE_PREVIEW_CACHE = {"at": 0.0, "key": None, "html": ""}
+
+
+def _sample_preview():
+    """The homepage's example-report card, built from the saved free sample report (VERILAY_SAMPLE_FREE_REPORT_ID) so it
+    always matches what 'See a sample report' opens. Cached for 10 minutes; any problem means no card, never an error."""
+    rid = os.getenv("VERILAY_SAMPLE_FREE_REPORT_ID", "").strip().lower()
+    if not _re.fullmatch(r"[0-9a-f]{12}", rid):
+        return ""
+    label = os.getenv("VERILAY_SAMPLE_FREE_LABEL", "").strip()[:200]
+    now = time.time()
+    c = _SAMPLE_PREVIEW_CACHE
+    if c["key"] == (rid, label) and now - c["at"] < (600 if c["html"] else 60):
+        return c["html"]
+    try:
+        html_out = sample_preview_html(get_report_data(rid), rid, label)
+    except Exception as e:
+        print(f"[home] sample preview skipped: {e}", flush=True)
+        html_out = ""
+    c.update(at=now, key=(rid, label), html=html_out)
+    return html_out
+
+
 @app.route("/")
 def index():
     count = get_analysis_count()
@@ -6686,7 +6710,8 @@ def index():
                 .replace("__SELFMONITOR_BADGE__", selfmon_badge)
                 .replace("__MONITORING_CTA__", monitoring_cta)
                 .replace("__SELFMONITOR_TABLE__", selfmon_table)
-                .replace("__SAMPLE_BUTTON__", _sample_button_html()))
+                .replace("__SAMPLE_BUTTON__", _sample_button_html())
+                .replace("__SAMPLE_PREVIEW__", _sample_preview()))
     return render_template_string(html, analysis_count=count if count > 0 else "")
 
 
@@ -6965,38 +6990,71 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
 <!-- ── Hero ────────────────────────────────────────────────── -->
 <div id="hero-section">
-  <div style="text-align:center;padding:2rem 0 1.5rem">
-    <div style="display:inline-flex;align-items:center;gap:6px;background:var(--pul);color:var(--put);font-size:12px;font-weight:500;padding:4px 12px;border-radius:20px;margin-bottom:1.25rem">
-      <i class="ti ti-sparkles" style="font-size:13px"></i>
-      Free &amp; open source — built for non-developers
-    </div>
-    <h1 style="font-size:clamp(1.75rem,4vw,3rem);font-weight:700;line-height:1.2;margin-bottom:.85rem;letter-spacing:-.02em">
-      Find out if your <span style="color:var(--pu)">AI-built app</span><br>
-      is safe to launch
-    </h1>
-    <p style="font-size:16px;color:var(--mut);max-width:580px;margin:0 auto 1.5rem;line-height:1.65">
-      You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English. It's free, with no sign-up and no login.
+  <style>
+  .hx{background:var(--pul);border-radius:20px;text-align:center;padding:2.6rem 1.25rem 2rem;margin-bottom:1.25rem}
+  .hx-pill{display:inline-flex;align-items:center;gap:6px;background:#fff;border:0.5px solid #d6d1f5;color:var(--put);font-size:12px;font-weight:600;padding:5px 13px;border-radius:999px;margin-bottom:1.1rem}
+  .hx h1{font-size:clamp(2.1rem,6.2vw,3.7rem);font-weight:900;line-height:1.02;letter-spacing:-.035em;text-transform:uppercase;max-width:720px;margin:0 auto .9rem}
+  .hx h1 em{font-style:normal;color:var(--pu)}
+  .hx-sub{font-size:16px;color:#4a4945;max-width:610px;margin:0 auto 1.4rem;line-height:1.6}
+  .hx-box{display:flex;gap:8px;background:#fff;border:1.5px solid #cfc9f3;border-radius:999px;padding:6px;max-width:620px;margin:0 auto;box-shadow:var(--shadow-sm)}
+  .hx-box:focus-within{border-color:var(--pu);box-shadow:var(--shadow-pu)}
+  .hx-box input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:15px;padding:0 16px;color:var(--txt)}
+  .hx-box button{background:var(--pu);color:#fff;border:none;border-radius:999px;padding:13px 24px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap}
+  .hx-ticks{display:flex;justify-content:center;flex-wrap:wrap;gap:6px 18px;margin-top:14px;font-size:13px;color:var(--put);font-weight:600}
+  .hx-alt{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:10px 14px;margin-top:1.1rem;font-size:14px;color:#4a4945}
+  .hx-link{background:none;border:none;color:var(--pu);font-size:14px;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0}
+  .hx-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;max-width:800px;margin:1.75rem auto 0}
+  .hx-st{background:#fff;border:0.5px solid #e1dcf7;border-radius:12px;padding:13px 14px;text-align:left}
+  .hx-st b{display:block;font-size:clamp(1.35rem,3.4vw,1.9rem);font-weight:900;letter-spacing:-.03em;color:var(--pu);line-height:1.1;margin-bottom:3px}
+  .hx-st span{font-size:12px;color:#5f5e5a;line-height:1.4}
+  .hx-fine{font-size:13px;color:#5f5e5a;max-width:520px;margin:1.1rem auto 0;line-height:1.55}
+  @media(max-width:560px){
+    .hx{padding:2rem 1rem 1.5rem}
+    .hx-box{flex-direction:column;border-radius:16px}
+    .hx-box input{padding:11px 12px}
+    .hx-box button{width:100%}
+  }
+  </style>
+  <div class="hx">
+    <div class="hx-pill"><i class="ti ti-shield-check" style="font-size:14px"></i> Free security check for AI-built apps</div>
+    <h1>Is your AI-built app <em>safe to launch?</em></h1>
+    <p class="hx-sub">
+      Paste a GitHub link. Verilay reads your code and explains every layer in plain English, with fix prompts you can paste straight into Lovable, Replit or Bolt. It's free, with no sign-up and no login.
     </p>
-    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
-      <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
-        <i class="ti ti-search" style="font-size:16px"></i> Analyse my app — it's free
-      </button>
+    <form id="hero-scan" class="hx-box" action="#" autocomplete="off">
+      <input id="hero-url" type="text" inputmode="url" aria-label="GitHub link or live app address" placeholder="Paste your GitHub link or live app address" spellcheck="false" autocapitalize="off">
+      <button type="submit" id="btn-hero-scan">Check my app, free</button>
+    </form>
+    <div class="hx-ticks">
+      <span>&#10003; No account or login</span>
+      <span>&#10003; Reads your code (GitHub link or ZIP)</span>
+      <span>&#10003; Usually one to three minutes</span>
+    </div>
+    <div class="hx-alt">
+      <span>Have a ZIP instead?</span>
+      <button id="btn-hero-analyse" type="button" class="hx-link">Open the full form &rarr;</button>
       __SAMPLE_BUTTON__
     </div>
-    <p style="font-size:14px;color:var(--mut);max-width:520px;margin:0 auto 1.75rem;line-height:1.6">
-      No account, nothing to install. Verilay reads your files only to build the report — and it's
-      <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:var(--pu);text-decoration:underline">open source</a>,
-      so you can see exactly what it does.
-    </p>
-    <!-- Proof widgets sit BELOW the main button (moved 2026-10-10): they used to
-         stand between the headline and the button, which pushed the button
-         to the bottom edge of a phone screen. -->
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
+    <div class="hx-stats">
       {% if analysis_count %}
-      <span style="font-size:13px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);padding:5px 16px;border-radius:20px;display:inline-block">
-        🔍 {{ analysis_count }} apps analysed so far
-      </span>
+      <div class="hx-st"><b>{{ analysis_count }}</b><span>apps analysed so far</span></div>
       {% endif %}
+      <div class="hx-st"><b>6 layers</b><span>explained: login, database, API, frontend, settings, libraries</span></div>
+      <div class="hx-st"><b>Every file</b><span>scanned for exposed keys and passwords</span></div>
+      <div class="hx-st"><b>Fix prompts</b><span>paste-ready, for your top fixes</span></div>
+    </div>
+    __SAMPLE_PREVIEW__
+    <p class="hx-fine">
+      No account, nothing to install. Verilay reads your files only to build the report, and the
+      <a href="https://github.com/ekbm/verilay" target="_blank" rel="noopener" style="color:var(--pu)">source code is on GitHub</a>
+      so you can see what it does.
+    </p>
+  </div>
+  <!-- Proof widgets sit BELOW the hero (moved 2026-10-10): they used to stand
+       between the headline and the button, which pushed the button to the
+       bottom edge of a phone screen. -->
+  <div style="text-align:center">
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
       __SELFMONITOR_BADGE__
     </div>
     __MONITORING_CTA__

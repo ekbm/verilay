@@ -497,6 +497,27 @@ function init() {
     if (el) el.addEventListener('click', showForm);
   });
 
+  // Hero scan box (2026-10-18). Fills the real form, picks the right method and presses the real Analyse
+  // button, so nothing about the scan itself changes.
+  var heroScan = document.getElementById('hero-scan');
+  if (heroScan) heroScan.addEventListener('submit', function(ev) {
+    ev.preventDefault();
+    var box = document.getElementById('hero-url');
+    var v = (box && box.value || '').trim();
+    if (!v) { if (box) box.focus(); return; }
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v) && v.split('/')[0].indexOf('.') === -1) v = 'https://github.com/' + v;
+    else if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+    var isRepo = /^https?:\/\/(www\.)?(github\.com|gitlab\.com|bitbucket\.org|dev\.azure\.com)\//i.test(v);
+    showForm();
+    var card = document.getElementById(isRepo ? 'mc-github' : 'mc-url');
+    if (card) card.click();
+    var field = document.getElementById(isRepo ? 'gh-url' : 'lu');
+    if (field) field.value = v;
+    try { if (window.plausible) plausible('Hero Scan Start', {props: {kind: isRepo ? 'repo' : 'live-url'}}); } catch (err) {}
+    var go = document.getElementById('btn-analyse');
+    if (go) go.click();
+  });
+
   var backBtn = document.getElementById('btn-back-hero');
   if (backBtn) backBtn.addEventListener('click', showHero);
 

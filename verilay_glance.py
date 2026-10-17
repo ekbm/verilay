@@ -8,6 +8,7 @@ data the report already holds; nothing here runs a new analysis and nothing is g
 the whole tree once), so strings are used as they are. It returns "" when there is nothing sensible to show
 (for example a website-only preview), so the caller can always append the result.
 """
+import html as _html
 import re
 
 _ACCENT = "#534AB7"
@@ -189,3 +190,63 @@ def render_glance_html(data):
                 'and package updates are extra.</div>') if est else ""
 
     return ('<div class="st">Scan At A Glance</div>' + checked_card + areas_card + grid + est_line)
+
+
+_GRADE_COLOUR = {"A": ("#085041", "#E1F5EE"), "B": ("#0C447C", "#E6F1FB"), "C": ("#633806", "#FAEEDA"),
+                 "D": ("#791F1F", "#FCEBEB"), "F": ("#791F1F", "#FCEBEB")}
+
+
+def sample_preview_html(data, report_id, label=""):
+    """The homepage's example-report card. Built from a SAVED free report (raw, un-escaped data: this function escapes
+    everything itself) so the numbers can never disagree with the report the 'See a sample report' button opens.
+    Returns "" when the report can't be shown (missing, website-only preview, incomplete)."""
+    data = data or {}
+    health = data.get("health") or {}
+    score = str(health.get("score") or "").strip().upper()[:1]
+    if score not in _GRADE_COLOUR or data.get("preview_only") or data.get("analysis_incomplete"):
+        return ""
+    if not re.fullmatch(r"[0-9a-f]{12}", str(report_id or "")):
+        return ""
+    esc = lambda s: _html.escape(str(s if s is not None else ""), quote=True)
+    fg, bg = _GRADE_COLOUR[score]
+
+    chips = ""
+    for layer in data.get("layers") or []:
+        if not isinstance(layer, dict):
+            continue
+        cfg, cbg, icon, word = _AREA_STYLE.get(layer.get("status"), _AREA_STYLE["not_checked"])
+        chips += (f'<span style="background:{cbg};color:{cfg};font-size:11px;font-weight:700;padding:4px 10px;'
+                  f'border-radius:8px;white-space:nowrap" title="{word}"><span aria-hidden="true">{icon}</span> '
+                  f'{esc(layer.get("name"))}<span style="position:absolute;left:-9999px"> {word}</span></span>')
+
+    read, total = _i(data.get("files_read")), _i(data.get("files_total"))
+    scanned = _i((data.get("secret_scan") or {}).get("files_scanned"))
+    cover = ""
+    if read and total:
+        cover = f"The AI read {_n(read)} of {_n(total)} files"
+        if scanned >= total:
+            cover += f"; the secret scan covered all {_n(total)}"
+        cover = f'<div style="font-size:12px;color:#6b6966;margin-top:8px">{cover}.</div>'
+
+    sub = esc(label) if label else "A real report from a Verilay free scan"
+    return (
+        '<div style="background:#fff;border:0.5px solid #d6d1f5;border-radius:14px;padding:14px 16px;max-width:680px;'
+        'margin:1.25rem auto 0;text-align:left">'
+        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+        f'<div style="background:{bg};color:{fg};font-size:38px;font-weight:900;border-radius:12px;width:64px;height:64px;'
+        f'display:flex;align-items:center;justify-content:center;flex-shrink:0" aria-label="Grade {score}">{score}</div>'
+        '<div style="flex:1;min-width:180px"><div style="font-weight:800;font-size:15px;color:#1a1917">'
+        f'Sample report: {esc(data.get("repo"))}</div>'
+        f'<div style="font-size:12px;color:#6b6966;line-height:1.45">{sub}</div></div>'
+        '<div style="display:flex;gap:16px;font-size:12px;color:#6b6966;text-align:center">'
+        f'<span><b style="font-size:22px;color:#A32D2D;display:block;line-height:1.1">{_n(health.get("critical"))}</b>critical</span>'
+        f'<span><b style="font-size:22px;color:#BA7517;display:block;line-height:1.1">{_n(health.get("warnings"))}</b>warnings</span>'
+        f'<span><b style="font-size:22px;color:#0F6E56;display:block;line-height:1.1">{_n(health.get("passing"))}</b>passing</span>'
+        '</div></div>'
+        + (f'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">{chips}</div>' if chips else "")
+        + cover
+        + f'<a href="/report/{report_id}" target="_blank" rel="noopener" '
+          'onclick="try{if(window.plausible)plausible(\'Homepage Sample Card Click\')}catch(e){}" '
+          'style="display:inline-block;font-size:13px;font-weight:700;color:#534AB7;margin-top:10px">'
+          'See the full sample report &rarr;</a></div>'
+    )
