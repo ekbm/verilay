@@ -6700,16 +6700,17 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Verilay - Understand your AI-built app</title>
+<title>Free AI App Security Check, No Sign-Up | Verilay</title>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/favicon.png">
 <meta name="theme-color" content="#534AB7">
-<meta name="description" content="Free, plain-English security and quality check for apps built with Lovable, Replit, Bolt, v0 and Cursor. Paste your GitHub link and get a graded report with what to fix first. No account, open source.">
+<meta name="description" content="Free security check for AI-built apps (Lovable, Replit, Bolt, v0, Cursor). No sign-up, no login. Paste a public GitHub link for a plain-English graded report.">
 <link rel="canonical" href="https://verilay.dev/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Verilay","url":"https://verilay.dev/","applicationCategory":"SecurityApplication","operatingSystem":"Web","description":"Free security check for AI-built apps (Lovable, Replit, Bolt, v0, Cursor). No sign-up, no login. Paste a public GitHub link for a plain-English graded report.","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"AUD","description":"Free analysis, no sign-up or login. A paid deep scan is optional."},"creator":{"@type":"Person","name":"Moses Ekbote"}}</script>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Verilay">
 <meta property="og:title" content="Verilay — is your AI-built app safe to launch?">
-<meta property="og:description" content="Free, plain-English security and quality check for apps built with Lovable, Replit, Bolt, v0 and Cursor. Paste your GitHub link and get a graded report with what to fix first. No account, open source.">
+<meta property="og:description" content="Free security check for AI-built apps (Lovable, Replit, Bolt, v0, Cursor). No sign-up, no login. Paste a public GitHub link for a plain-English graded report.">
 <meta property="og:url" content="https://verilay.dev/">
 <meta property="og:image" content="https://verilay.dev/og-image.png?v=1">
 <meta property="og:image:width" content="1200">
@@ -6717,7 +6718,7 @@ HTML = """<!DOCTYPE html>
 <meta property="og:image:alt" content="Verilay: a free, plain-English check for AI-built apps">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Verilay — is your AI-built app safe to launch?">
-<meta name="twitter:description" content="Free, plain-English security and quality check for apps built with Lovable, Replit, Bolt, v0 and Cursor. Paste your GitHub link and get a graded report with what to fix first. No account, open source.">
+<meta name="twitter:description" content="Free security check for AI-built apps (Lovable, Replit, Bolt, v0, Cursor). No sign-up, no login. Paste a public GitHub link for a plain-English graded report.">
 <meta name="twitter:image" content="https://verilay.dev/og-image.png?v=1">
 <!-- Privacy-friendly analytics by Plausible -->
 <script defer data-domain="verilay.dev" src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>
@@ -6966,7 +6967,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       is safe to launch
     </h1>
     <p style="font-size:16px;color:var(--mut);max-width:580px;margin:0 auto 1.5rem;line-height:1.65">
-      You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English.
+      You built something with Lovable, Replit, or Bolt. But do you know if it's secure? What libraries it uses? Whether it's ready to ship? Verilay tells you — in plain English. It's free, with no sign-up and no login.
     </p>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:.9rem">
       <button id="btn-hero-analyse" style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
@@ -7226,7 +7227,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   <!-- CTA -->
   <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
     <div style="font-size:17px;font-weight:600;margin-bottom:.4rem">Ready to see what's inside your app?</div>
-    <div style="font-size:14px;color:var(--mut);margin-bottom:1.1rem">Free. Usually one to three minutes. No account needed.</div>
+    <div style="font-size:14px;color:var(--mut);margin-bottom:1.1rem">Free. No sign-up, no login. Usually one to three minutes.</div>
     <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
       <i class="ti ti-search" style="font-size:16px"></i> Analyse my app
     </button>
