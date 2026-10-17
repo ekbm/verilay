@@ -3240,7 +3240,7 @@ def run_step4():
         result = analyse_step4(repo_name, built_with, findings)
         # Say which part of the app (and which detected technology) each fix is about. A separate small step,
         # checked against closed lists; on any failure the fixes are left exactly as written (verilay_fixtags.py).
-        fixtags.tag_fixes(result.get("top_fixes"), data.get("stack"), call_claude_text)
+        fixtags.tag_fixes(result.get("top_fixes"), data.get("stack"), call_claude_text, findings)
         if report_id and not _can_write_report(report_id):
             # The fix list is still returned to the person who asked for it, but it is only
             # stored on a report this browser (or signed-in account) created.
@@ -3448,6 +3448,64 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "a-scan-result-is-not-understanding",
+        "title": "A Scan Result Isn&rsquo;t the Same as Understanding It",
+        "date": "October 17, 2026",
+        "category": "Story",
+        "excerpt": "Most advice about scanning AI-built apps is for developers. Here&rsquo;s what I wanted as someone who isn&rsquo;t one: plain words, no surprise charges, and a real person to email.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": True,
+        "body": """
+<p>Most of what&rsquo;s said about scanning AI-built apps is aimed at developers: check every change, watch every push. If you write code for a living, that&rsquo;s sound advice. The same kinds of mistakes keep slipping in when an AI writes the code: keys left in files, routes anyone can call, packages with known holes. Catching them early matters.</p>
+<p>But I want to talk about the person who isn&rsquo;t a developer, because that was me.</p>
+
+<h2>Where I was standing</h2>
+<p>I&rsquo;d built real apps with AI tools, apps with real users, logins and payments. Then one day a scan showed me my own database was open to anyone with the link. So I went looking for something to check the rest.</p>
+
+<h2>What put me off</h2>
+<p>Three things.</p>
+<p><strong>It was overwhelming.</strong> Pages of findings I couldn&rsquo;t make sense of, and no idea which one to fix first.</p>
+<p><strong>I couldn&rsquo;t tell who was behind it.</strong> Many of the tools I found had no real name and no face. I was about to paste my own app into something I couldn&rsquo;t tell was genuine, and I wasn&rsquo;t sure it was safe to trust.</p>
+<p><strong>Every click felt like a risk.</strong> At each step I wondered whether this was the one that would charge me.</p>
+<p>A number on a screen, even an accurate one, doesn&rsquo;t tell you what it means or what to do next. A scanner can be right and still leave you more worried than before.</p>
+
+<h2>So I built the one I wished existed</h2>
+<p>Verilay reads your code and explains it layer by layer in plain English: login, database, API, frontend, settings and the libraries you depend on. Here&rsquo;s the kind of thing it says. I ran it on <a href="https://github.com/juice-shop/juice-shop" target="_blank" rel="noopener">OWASP Juice Shop</a>, a shop that is deliberately full of holes so people can practise on it. It found a private key written into the code and put it like this:</p>
+<p><em>A private key is stored in your code. This is the digital equivalent of committing your house keys.</em></p>
+<p>Then it tells you where (<code>lib/insecurity.ts</code>, line 21) and what to do: delete the key, generate a new one, and never keep keys in code.</p>
+
+<h2>Every fix says what it&rsquo;s about</h2>
+<p>For the bigger problems, Verilay gives you a prompt to paste into your AI builder. The prompt asks it to look, explain and advise before changing anything, because blindly applying a fix can break working code. Each one is labelled with the part of your app it concerns and, where it clearly applies, the technology involved. Here&rsquo;s one from that same Juice Shop scan:</p>
+<p><strong>Client-Side Security Logic Exposes Challenge Solutions</strong> &middot; <em>Frontend</em></p>
+<p>The area always matches the layer the report itself lists the problem under, so a label never contradicts the rest of the page. When a fix clearly depends on one technology, its name comes only from what Verilay found in your own app, so a label is never made up. This fix doesn&rsquo;t clearly point at one technology, so it shows just the area.</p>
+
+<h2>How it works with you</h2>
+<ul>
+<li>The free scan needs no sign-up, no login and no card.</li>
+<li>Anything that costs money says so, with the price, before you click. Paid features cost money because they use far more AI to read your whole codebase, and I pay for that.</li>
+<li>There&rsquo;s a person behind it. I&rsquo;m Moses. If something goes wrong, email me and it comes straight to me.</li>
+</ul>
+
+<h2>What&rsquo;s here now, and what I&rsquo;m exploring</h2>
+<p><strong>Here now: a confidence stamp.</strong> If your scan finds no critical issues and grades A or B, you can list your app in <a href="/apps">Checked apps</a> and put a dated &ldquo;Checked by Verilay&rdquo; stamp on your own site, so visitors can see it&rsquo;s been looked at. It fades after 90 days, so an old clean scan can&rsquo;t be shown forever. It&rsquo;s a confidence stamp, not a security guarantee, and it says so.</p>
+<p><strong>Exploring: monitoring.</strong> A scan is a snapshot. I&rsquo;m exploring a version that re-checks your app on a schedule, such as daily or weekly, and emails you when something new turns up: a newly published problem in a package you use, an exposed key, or a change in your grade. It would tell you what changed since the last check, naming the specific issues. I already run this on my own four apps. It isn&rsquo;t built for anyone else yet, nothing is for sale and there is nothing to pay. If you&rsquo;d use it, <a href="/monitoring">tell me on the monitoring page</a> how many apps you&rsquo;d want watched and what would feel fair. That&rsquo;s how I&rsquo;ll decide whether to build it.</p>
+
+<h2>What it doesn&rsquo;t do</h2>
+<p>I&rsquo;d rather say it plainly:</p>
+<ul>
+<li>It&rsquo;s a first check, not a watchdog yet. It doesn&rsquo;t re-scan on a schedule, it doesn&rsquo;t scan on every push, and it doesn&rsquo;t test how fast your site loads.</li>
+<li>It reads public repos, or a ZIP of your project. Private repos aren&rsquo;t connected yet.</li>
+<li>It checks the packages you install directly, not the packages those depend on.</li>
+<li>It&rsquo;s AI-written, so findings can vary a little between runs, and it isn&rsquo;t a penetration test.</li>
+</ul>
+<p>If you&rsquo;re a developer, a tool built for continuous checking is worth having too, and it works well alongside this one. If you&rsquo;re not, or you work with people who aren&rsquo;t, start somewhere you can read.</p>
+
+<h2>Try it</h2>
+<p>Paste a public GitHub link into <a href="/">verilay.dev</a>. It usually takes one to three minutes. If anything in the report confuses you, that&rsquo;s useful to me. Tell me and I&rsquo;ll make it clearer.</p>
+""",
+    },
+    {
         "slug": "560000-new-apps-how-yours-gets-noticed",
         "title": "560,000 New Apps in Six Months. How Does Yours Get Noticed?",
         "date": "October 16, 2026",
@@ -3455,7 +3513,7 @@ BLOG_POSTS = [
         "excerpt": "Twice as many new apps, almost the same number of downloads. Why getting noticed is now the hard part of building with AI, and what I built to help.",
         "medium_url": None,
         "read_time": "5 min read",
-        "featured": True,
+        "featured": False,
         "body": """
 <p>Last week I wrote that when anyone can build an app in a weekend, most new apps will find no one. I said it was a guess.</p>
 <p>It isn&rsquo;t really a guess any more.</p>

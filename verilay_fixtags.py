@@ -34,13 +34,19 @@ def clean_stack(raw):
     return out
 
 
-def build_prompt(fixes, stack_names):
+def build_prompt(fixes, stack_names, findings_summary=""):
     lines = []
     for i, f in enumerate(fixes[:MAX_FIXES], 1):
         title = re.sub(r"\s+", " ", str(f.get("title") or ""))[:140]
         why = re.sub(r"\s+", " ", str(f.get("why_it_matters") or ""))[:240]
         lines.append(f"{i}. {title} - {why}")
     stack = ", ".join(stack_names) if stack_names else "(none detected)"
+    listed = re.sub(r"[ \t]+", " ", str(findings_summary or "")).strip()[:1500]
+    listed_block = (
+        "How the report listed its findings, layer by layer:\n" + listed + "\n"
+        "If a fix is the same problem as one listed there, its AREA is the layer it is listed under. Never choose a "
+        "layer the report shows as having no issues.\n\n"
+    ) if listed else ""
     return (
         "You label security fixes in a report for a non-developer. For each numbered fix below give two labels.\n"
         "AREA: exactly one of " + ", ".join(AREAS) + " - the part of the app the fix is about "
@@ -49,7 +55,7 @@ def build_prompt(fixes, stack_names):
         "TECH: zero to three names copied EXACTLY from the detected stack below that the fix is directly about. "
         "Choose a name only if the fix clearly names or depends on that technology. If none fits, write none. "
         "Never write a name that is not in the list.\n\n"
-        f"Detected stack: {stack}\n\nFixes:\n" + "\n".join(lines) + "\n\n"
+        f"Detected stack: {stack}\n\n" + listed_block + "Fixes:\n" + "\n".join(lines) + "\n\n"
         "Respond ONLY with lines in this exact form, no other text:\n"
         "FIX_1_AREA: <one area>\nFIX_1_TECH: <names separated by commas, or none>\n"
         "FIX_2_AREA: ...\nFIX_2_TECH: ...\n(and so on for every fix)"
@@ -78,21 +84,23 @@ def parse(text, count, stack_names):
     return out
 
 
-def tag_fixes(fixes, stack_names, call):
+def tag_fixes(fixes, stack_names, call, findings_summary=""):
     """Adds "area" and "tech" to each fix (in place) and returns the list. `call(prompt, max_tokens)` is the AI helper.
-    Never raises: on any failure the fixes are returned unchanged."""
+    `findings_summary` is the layer-by-layer text the fixes were written from; it keeps each area consistent with the
+    report's own layer list (see align_areas). Never raises: on any failure the fixes are returned unchanged."""
     try:
         fixes = fixes if isinstance(fixes, list) else []
         real = [f for f in fixes if isinstance(f, dict)]
         if not real:
             return fixes
         stack = clean_stack(stack_names)
-        tags = parse(call(build_prompt(real, stack), 400), len(real), stack)
+        tags = parse(call(build_prompt(real, stack, findings_summary), 400), len(real), stack)
         for f, t in zip(real, tags):
             if t["area"]:
                 f["area"] = t["area"]
             if t["tech"]:
                 f["tech"] = t["tech"]
+        align_areas(real, findings_summary)
     except Exception as e:  # labels are a nicety; they must never be able to break a scan
         print(f"[fixtags] skipped: {type(e).__name__}", flush=True)
     return fixes
@@ -123,3 +131,72 @@ def dependency_fix_anchor(fixes):
         if isinstance(f, dict) and re.search(r"dependenc|vulnerable (package|librar)|outdated (package|librar)", str(f.get("title") or ""), re.I):
             return anchor(f, i), str(f.get("title") or "")
     return None
+
+
+# ── Keeping a fix's area consistent with the report's own layer list ───────────────────────────────────────────
+# The layer analysis files each problem under ONE layer (e.g. a JWT bypass under API, with Auth shown as passing).
+# A label that says "Auth" for that same fix would contradict the page. So a fix may only be labelled with a layer
+# the report itself shows a problem in, and when a fix clearly matches a listed finding, that finding's layer wins.
+
+_STOP = frozenset("the and for with via from into that this not are can all any your you its has have how why use using "
+                  "across without over per only but out off was were been being more most some such than then them "
+                  "these those their there what when where which while who whom will would should could may might "
+                  "also very just like each every both either neither other another".split())
+_NO_PROBLEM = re.compile(r"^\s*(no issues found|no known dependency vulnerabilit)", re.I)
+_LAYER_LINE = re.compile(r"^\s*-\s*(Auth|Config|Database|API|Frontend|Libraries)\s*(?:\[[^\]]*\])?\s*:\s*(.*)$", re.I)
+
+
+def _stems(text):
+    return {w[:5] for w in re.findall(r"[a-z0-9]{3,}", str(text or "").lower()) if w not in _STOP}
+
+
+def problem_layers(findings_summary):
+    """{layer name: its findings text} for layers the summary lists a PROBLEM in (not 'no issues found')."""
+    out = {}
+    names = {a.lower(): a for a in AREAS}
+    for line in str(findings_summary or "").splitlines():
+        m = _LAYER_LINE.match(line)
+        if not m:
+            continue
+        body = m.group(2).strip()
+        if body and not _NO_PROBLEM.match(body):
+            layer = names[m.group(1).lower()]
+            out[layer] = (out.get(layer, "") + " " + body).strip()
+    return out
+
+
+def align_areas(fixes, findings_summary):
+    """Makes each fix's area agree with the report's layer list. In place; never raises. With no usable summary it
+    changes nothing."""
+    try:
+        layers = problem_layers(findings_summary)
+        if not layers:
+            return fixes
+        layer_stems = {name: _stems(text) for name, text in layers.items()}
+        for f in fixes:
+            if not isinstance(f, dict):
+                continue
+            title = _stems(f.get("title"))
+            why = _stems(f.get("why_it_matters"))
+            if not title:
+                continue
+            scored = []
+            for name, st in layer_stems.items():
+                shared = len(title & st)
+                scored.append((shared / len(title), len(why & st), shared, name))
+            scored.sort(reverse=True)
+            best_score, _w, best_shared, best = scored[0]
+            ai = f.get("area")
+            ai_score = next((s for s, _w2, _sh, n in scored if n == ai), 0.0)
+            tie = len(scored) > 1 and scored[1][0] == best_score and scored[1][1] == scored[0][1]
+            if best_shared >= 2 and best_score >= 0.5 and not tie and (ai not in layers or best_score > ai_score + 0.2):
+                f["area"] = best            # the report files this problem under that layer
+            elif ai in layers:
+                pass                         # the AI's choice is a layer the report shows a problem in: keep it
+            elif best_shared >= 1 and best_score >= 0.25 and not tie:
+                f["area"] = best            # the AI chose a layer with no problem listed: use the closest one that has
+            else:
+                f.pop("area", None)          # no honest area to show: show none rather than a contradiction
+    except Exception as e:
+        print(f"[fixtags] align skipped: {type(e).__name__}", flush=True)
+    return fixes
