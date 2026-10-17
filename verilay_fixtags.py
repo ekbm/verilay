@@ -147,7 +147,15 @@ _LAYER_LINE = re.compile(r"^\s*-\s*(Auth|Config|Database|API|Frontend|Libraries)
 
 
 def _stems(text):
-    return {w[:5] for w in re.findall(r"[a-z0-9]{3,}", str(text or "").lower()) if w not in _STOP}
+    """The first five letters of each meaningful word, with a plural 's' dropped (user / users match)."""
+    out = set()
+    for w in re.findall(r"[a-z0-9]{3,}", str(text or "").lower()):
+        if w in _STOP:
+            continue
+        if len(w) > 4 and w.endswith("s") and not w.endswith("ss"):
+            w = w[:-1]
+        out.add(w[:5])
+    return out
 
 
 def problem_layers(findings_summary):
@@ -158,7 +166,9 @@ def problem_layers(findings_summary):
         m = _LAYER_LINE.match(line)
         if not m:
             continue
-        body = m.group(2).strip()
+        # The deep scan adds an instruction after the Libraries count ("Verilay lists these and writes the package-update
+        # fixes itself, so do NOT write fixes for dependencies..."). That is a note to the AI, not a finding: leave it out.
+        body = re.split(r"\bVerilay lists these\b", m.group(2))[0].strip()
         if body and not _NO_PROBLEM.match(body):
             layer = names[m.group(1).lower()]
             out[layer] = (out.get(layer, "") + " " + body).strip()
