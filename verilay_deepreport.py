@@ -18,6 +18,8 @@ Supabase or Claude.
 import html as _html
 import re
 
+from verilay_fixtags import label as _fix_label, anchor as _fix_anchor
+
 _SEV_RANK = {"critical": 0, "high": 1, "moderate": 2, "low": 3, "unknown": 4}
 
 
@@ -489,8 +491,11 @@ def render_fixes_html(data):
     for i, f in enumerate(fixes):
         prompt = f.get("lovable_prompt") or f.get("general_prompt") or ""
         sev = (f.get("severity") or "warning").lower()
-        ai_html += (f'<details class="fix"><summary style="cursor:pointer;font-weight:600">{_esc(f.get("priority", ""))}. '
-                    f'{_esc(f.get("title", ""))}{_pill(sev, sev)}</summary>'
+        tag = _fix_label(f)
+        tag_html = (f'<span style="display:block;font-size:11px;font-weight:400;color:#6b6966;margin-top:2px">'
+                    f'{_esc(tag)}</span>') if tag else ""
+        ai_html += (f'<details class="fix" id="{_fix_anchor(f, i)}"><summary style="cursor:pointer;font-weight:600">{_esc(f.get("priority", ""))}. '
+                    f'{_esc(f.get("title", ""))}{_pill(sev, sev)}{tag_html}</summary>'
                     f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{_esc(f.get("why_it_matters", ""))}</div>'
                     f'<div style="font-size:13px;color:#444"><strong>How:</strong> {_esc(f.get("how_to_fix", ""))}</div>'
                     f'<div style="font-size:12px;color:#888">Effort: {_esc(f.get("estimated_effort", ""))}</div>'

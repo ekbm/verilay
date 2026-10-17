@@ -53,6 +53,7 @@ from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 from verilay_glance import render_glance_html, sample_preview_html
 import verilay_fonts as vl_fonts
+import verilay_fixtags as fixtags
 import verilay_report_expiry as report_expiry
 import verilay_layer_files as layer_files
 import verilay_appcount as appcount
@@ -146,7 +147,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-17.1"
+ANALYSIS_VERSION = "2026-10-17.2"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -3237,6 +3238,9 @@ def run_step4():
         if len(findings) > 3000:
             findings = findings[:3000] + '...'
         result = analyse_step4(repo_name, built_with, findings)
+        # Say which part of the app (and which detected technology) each fix is about. A separate small step,
+        # checked against closed lists; on any failure the fixes are left exactly as written (verilay_fixtags.py).
+        fixtags.tag_fixes(result.get("top_fixes"), data.get("stack"), call_claude_text)
         if report_id and not _can_write_report(report_id):
             # The fix list is still returned to the person who asked for it, but it is only
             # stored on a report this browser (or signed-in account) created.
@@ -5658,6 +5662,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgro
 @media (hover: hover) and (pointer: fine){{.layer summary:hover,.fix summary:hover{{color:#534AB7}}}}
 .finding{{border-radius:8px;padding:.65rem .85rem;margin-bottom:6px;font-size:13px}}
 .fix{{background:#f8f8fc;border-radius:10px;padding:1rem;margin-bottom:8px;border-left:3px solid #534AB7;transition:box-shadow var(--dur-base) var(--ease-out)}}
+details.fix{{scroll-margin-top:16px}}
+details.fix:target{{box-shadow:0 0 0 2px #534AB7}}
 @media (hover: hover) and (pointer: fine){{.fix:hover{{box-shadow:var(--shadow-sm)}}}}
 .pb{{background:#f0f0f8;border-radius:8px;padding:.65rem .85rem;font-size:12px;font-family:monospace;margin-top:.5rem;white-space:pre-wrap;word-break:break-word}}
 .footer{{text-align:center;padding:2rem;font-size:12px;color:#aaa}}
@@ -5735,7 +5741,14 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 
     # Stack
     if stack:
-        tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}</span>' for s in stack)
+        # How many of the "Fix these first" prompts point at each technology (only when fixes carry labels)
+        _fx_tech = [t.lower() for fx in (data.get("top_fixes") or []) if isinstance(fx, dict)
+                    for t in (fx.get("tech") or []) if isinstance(t, str)]
+        def _fix_badge(name):
+            n = _fx_tech.count(str(name).lower())
+            return (f' <span style="color:#534AB7;font-weight:600" title="Prompts under Fix these first that point at this">'
+                    f'&middot; {n} fix{"" if n == 1 else "es"}</span>') if n else ""
+        tags = "".join(f'<span class="tag">{s.get("name","")} {s.get("version","")}{_fix_badge(s.get("name",""))}</span>' for s in stack)
         out.append(f'<div class="st">Tech Stack</div><div class="card">{tags}</div>')
 
     # Architecture diagram — pre-built server-side (build_architecture_diagram),
@@ -5874,14 +5887,24 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             out.append(f'<div class="st">Dependency Vulnerabilities</div><div class="card">'
                        f'{_collapsible(items, len(vulns))}</div>')
         else:
+            # Point at the prompt that really exists ("Fix these first", higher up the page), by name and with a
+            # link. The old text said "the free advice prompt below", but that prompt is above this card.
+            _dep_fix = fixtags.dependency_fix_anchor(data.get("top_fixes"))  # data is already escaped
+            if _dep_fix:
+                _dep_ask = ('open <a href="#' + _dep_fix[0] + '" style="color:#534AB7">fix ' + _dep_fix[0].split("-")[1]
+                            + ', &ldquo;' + _dep_fix[1] + '&rdquo;</a>, under <em>Fix these first</em> near the top of this '
+                            'page, and give its prompt to your AI builder')
+            else:
+                _dep_ask = ('ask your AI builder to investigate (the &ldquo;Ask AI&rdquo; box just below can explain '
+                            'it in plain English)')
+            _dep_advice = ('<div style="font-size:13px;color:#666;margin-top:.5rem">Two ways to fix this: ' + _dep_ask
+                           + ', or skip the investigation: the <a href="/deep-scan" style="color:#534AB7">deep scan</a> '
+                           'hands you the exact package names, versions, and fixes already found.</div>')
             out.append(
                 f'<div class="card"><strong style="color:#EF9F27">{found} {"dependency has" if found==1 else "dependencies have"} '
                 f'known vulnerabilities</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
                 f'Checked {_cov_sum} against OSV.dev.</div>{_cov_note_html}'
-                '<div style="font-size:13px;color:#666;margin-top:.5rem">Two ways to fix this: ask your AI '
-                'builder to investigate using the free advice prompt below, or skip the investigation — the '
-                '<a href="/deep-scan" style="color:#534AB7">deep scan</a> hands you the exact package names, '
-                'versions, and fixes already found.</div></div>'
+                + _dep_advice + '</div>'
             )
 
     # Ask AI button

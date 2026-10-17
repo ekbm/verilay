@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 import verilay_deepreport as deepreport
 import verilay_deepwatch as deepwatch
 import verilay_discovery as discovery
+import verilay_fixtags as fixtags
 
 MAX_DEEP_FILES = 150
 BATCH_SIZE = 25
@@ -522,6 +523,9 @@ def _run_job(job_id, user_id=None):
             step4 = _deps["analyse_step4"](repo, report.get("built_with", ""), findings_summary)
             report["top_fixes"] = deepreport.drop_dependency_fixes(step4.get("top_fixes", []), osv_vuln_dicts)
             report["second_opinion"] = step4.get("second_opinion", {})
+            # Same area/tech labels as the free report (never raises; leaves the fixes untouched on any failure)
+            fixtags.tag_fixes(report["top_fixes"], [s.get("name") for s in report.get("stack", []) if isinstance(s, dict)],
+                              _deps["call_claude_text"])
         except Exception as e:
             print(f"[deepscan] advice prompts failed, report still valid without them: {e}", flush=True)
 

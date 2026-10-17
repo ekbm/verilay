@@ -2250,6 +2250,7 @@ async function runPart2() {
         repo_name:  currentReport ? currentReport.repo : '',
         built_with: currentReport ? (currentReport.built_with||'') : '',
         findings_summary: findings,
+        stack: currentReport ? (currentReport.stack||[]).map(function(s) { return s && s.name; }).filter(Boolean) : [],
         report_id: savedReportId || ''
       })
     });
@@ -2448,7 +2449,9 @@ function renderPart2(data) {
     // (priority + title) to decide whether to open it.
     html += '<details class="fc"><summary style="cursor:pointer;display:flex;gap:12px;align-items:center">';
     html += '<div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
-    html += '<div style="flex:1;font-size:14px;font-weight:500">' + esc(f.title||'') + '</div>';
+    var fixLabel = [f.area || '', (f.tech && f.tech.length) ? f.tech.join(', ') : ''].filter(Boolean).join(' · ');
+    html += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + esc(f.title||'') + '</div>' +
+            (fixLabel ? '<div style="font-size:11px;color:var(--mut);margin-top:2px">' + esc(fixLabel) + '</div>' : '') + '</div>';
     html += '</summary><div style="padding-top:.5rem">';
     html += '<div style="font-size:13px;color:var(--mut);margin-bottom:4px;line-height:1.4">' + esc(f.why_it_matters||'') + '</div>';
     html += '<div style="font-size:12px;background:var(--bg);border-radius:6px;padding:5px 8px;color:var(--mut);line-height:1.5;margin-bottom:.5rem">' + esc(f.how_to_fix||'') + '</div>';
