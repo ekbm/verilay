@@ -4994,7 +4994,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <h2 style="font-size:18px;font-weight:700;margin:.75rem 0 .75rem">What I wanted from a scanner</h2>
   <p>When I went looking for a way to check my apps, three things put me off.</p>
   <p><strong>It was overwhelming.</strong> Pages of findings I couldn't make sense of, and no idea which one to fix first.</p>
-  <p><strong>I couldn't tell who was behind it.</strong> Many of the tools I found had no real name and no face. I was about to paste my own app into something I couldn't tell was genuine, and I was scared it might be a scam.</p>
+  <p><strong>I couldn't tell who was behind it.</strong> Many of the tools I found had no real name and no face. I was about to paste my own app into something I couldn't tell was genuine, and I wasn't sure it was safe to trust.</p>
   <p><strong>Every click felt like a risk.</strong> At each step I wondered whether this was the one that would charge me.</p>
   <p>So I built Verilay to be the opposite. The free scan needs no sign-up, no login and no card. Anything that costs money says so, with the price, before you click. Paid features cost money because they use much more AI to read your whole codebase, and I pay for that. I think you'll understand, and you'll always know the price first.</p>
   <p>And there's a person behind it. I'm Moses. If something goes wrong or you have a question, <a href="#contact" style="color:#534AB7">email me</a>. It comes straight to me, not to a support queue.</p>
