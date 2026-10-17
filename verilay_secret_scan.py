@@ -49,7 +49,9 @@ SKIP_SUFFIXES = (
 # Files that legitimately contain fake secrets
 EXAMPLE_FILES = (".env.example", ".env.sample", ".env.template", "env.example")
 
-MAX_SCAN_BYTES = 2_000_000   # skip anything bigger; secrets don't live in 2MB files
+_DOC_SUFFIXES = (".md", ".mdx", ".markdown", ".rst", ".txt", ".html", ".htm")
+
+MAX_SCAN_BYTES = 2_000_000  # skip anything bigger; secrets don't live in 2MB files
 MAX_LINE_LEN = 3_000         # skip minified megalines
 
 
@@ -298,13 +300,25 @@ def scan_file(path: str, content: str) -> List[Finding]:
                 # Skip the match when it's clearly displayed text, not an actual key.
                 if rule.rule_id == "PK001":
                     stripped = line.lstrip()
-                    # (a) wrapped in HTML/markdown tags on the same line → it's shown, not stored
-                    if ("<code>" in line or "</code>" in line or "<pre>" in line
-                            or "`" in line or "</p>" in line or "<p>" in line):
+                    # (a) wrapped in HTML tags on the same line → it's shown, not stored
+                    if "<code>" in line or "</code>" in line or "<pre>" in line or "</p>" in line or "<p>" in line:
                         continue
-                    # (b) header not at the start of the line → embedded in prose, not a real key block
-                    if not stripped.startswith("-----BEGIN"):
-                        continue
+                    # A key pasted into a code string: const privateKey = '-----BEGIN RSA PRIVATE KEY-----\r\nMIIC...'
+                    # The header sits right after an opening quote and key material follows on the same
+                    # line (or the line ends there and the string carries on below). A bare constant like
+                    # "-----BEGIN PRIVATE KEY-----" with nothing after it is a key PARSER, not a key.
+                    before, after = line[:m.start()], line[m.end():]
+                    after_clean = re.sub(r"^(?:\\r|\\n|\s)+", "", after)
+                    is_string_key = (
+                        before[-1:] in ("'", '"', "`")
+                        and not path.lower().endswith(_DOC_SUFFIXES)
+                        and (not after.strip() or re.match(r"[A-Za-z0-9+/=]{20,}", after_clean))
+                    )
+                    if not is_string_key:
+                        # (b) backticks → inline code in prose; header not at the start of the line →
+                        # embedded in prose, not a real key block
+                        if "`" in line or not stripped.startswith("-----BEGIN"):
+                            continue
                 if rule.needs_entropy and _shannon(value) < 3.5:
                     continue
                 # Supabase keys are JWTs. The anon key is correct by design, and the
