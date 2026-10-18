@@ -2377,7 +2377,7 @@ function renderSelfCheck(items) {
   var when = mins ? ' &middot; about ' + mins + ' minute' + (mins === 1 ? '' : 's') : '';
   return '<details class="selfcheck" style="margin:.6rem 0 0;background:#F8F8FC;border-radius:8px;padding:.6rem .8rem">' +
     '<summary style="cursor:pointer;font-size:13px;font-weight:600;color:#534AB7">Check it yourself' + when + '</summary>' + body +
-    '<div style="font-size:12px;color:#6b6966;border-top:0.5px solid #e5e5f0;padding-top:.4rem">Only try this on your own app, with test accounts. Never on someone else's app.</div></details>';
+    '<div style="font-size:12px;color:#6b6966;border-top:0.5px solid #e5e5f0;padding-top:.4rem">Only try this on your own app, with test accounts. Never on someone else\'s app.</div></details>';
 }
 
 function renderPart2(data) {
