@@ -148,7 +148,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-18.2"
+ANALYSIS_VERSION = "2026-10-18.3"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -847,10 +847,10 @@ def categorise_files(paths):
             buckets["other"] += 1
     order = ["visual", "data", "config", "libs", "other"]
     return [{"key": k, "count": buckets[k]} for k in order if buckets[k] > 0]
-# A URL scan only sees what the site serves to a browser (built/minified output),
-# never source. When it returns this few files, a full layer analysis is wasted work
-# and would grade from near-nothing — so we return an honest, ungraded preview instead.
-THIN_URL_FILES = 3
+# A URL scan only sees what the site serves to a browser (built/minified output), never source, login rules
+# or database settings. However many files it returns, a letter grade would read as "the app is fine" for a
+# non-developer, so EVERY live-address scan returns an honest, ungraded preview (it used to be only the ones
+# with 3 files or fewer). Changed 2026-10-18 after a tester pointed out a frontend scan cannot judge a backend.
 
 def grade_from_counts(critical, warnings):
     """Derive the letter grade from actual finding counts.
@@ -2995,12 +2995,11 @@ def analyse_stream():
             count = get_analysis_count()
             s1["analysis_count"] = count
 
-            # Thin URL scan → ungraded preview. A URL exposes almost no real code,
-            # so running the full layer analysis is wasted time and money, and grading
-            # from near-zero findings would produce a misleading "A". Stop here with an
-            # honest, explicitly ungraded preview that points the user to GitHub/ZIP.
-            is_thin_url = (method == "url" and len(files) <= THIN_URL_FILES)
-            if is_thin_url:
+            # Live-address scan → ungraded preview. A URL exposes only what a browser is sent, so the full layer
+            # analysis is wasted time and money, and a grade would be misleading whatever the file count.
+            # Stop here with an honest, explicitly ungraded preview that points the user to GitHub/ZIP.
+            is_url_preview = (method == "url")
+            if is_url_preview:
                 s1["preview_only"] = True
                 s1.setdefault("health", {})
                 s1["health"]["score"] = None
@@ -3013,7 +3012,7 @@ def analyse_stream():
             # health is recomputed in place), so a reused analysis must replay this copy, not the final state.
             _s1_event = _copy.deepcopy(s1)
 
-            if is_thin_url:
+            if is_url_preview:
                 preview = dict(s1)
                 preview["client_type"] = client_type
                 preview["layers"] = []
@@ -7509,7 +7508,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <div class="mc" id="mc-url">
       <div class="mc-icon"><i class="ti ti-world"></i></div>
       <div class="mc-title">Live URL</div>
-      <div class="mc-desc">Paste your published app link. Surface scan only.</div>
+      <div class="mc-desc">Paste your published app link. Surface scan only, not graded.</div>
       <span class="mbadge" style="background:var(--orl);color:var(--ort)">Quick scan</span>
     </div>
   </div>
