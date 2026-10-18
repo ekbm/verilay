@@ -219,6 +219,10 @@ class FindingList(list):
 _TEST_PATH = re.compile(r"(?i)(?:^|/)(?:tests?|__tests__|spec|specs|e2e|cypress|fixtures?|mocks?|__mocks__|stories)(?:/|$)"
                         r"|\.(?:test|spec|stories)\.[a-z]+$|(?:^|/)test_[^/]*$|_test\.[a-z]+$")
 _CODE_EXT = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".php", ".rb", ".java", ".go", ".cs", ".kt", ".swift")
+# Teaching material, samples and docs are not the app's own password code (e.g. Juice Shop's data/static/codefixes).
+_NOT_APP_PATH = re.compile(r"(?i)(?:^|/)(?:examples?|samples?|demos?|fixtures?|codefix\w*|snippets?|templates?|docs?|documentation|data/static)(?:/|$)")
+# Where an app's real password handling lives: used to pick the most convincing file to point at.
+_LOGIN_PATH = re.compile(r"(?i)user|auth|login|account|member|model|password|session|credential|signup|register")
 _PASSWORD_HASHING = re.compile(r"(?i)\bpass(?:word|wd)\w*\b[^\n]{0,80}?\b(?:hash|crypt|digest|compare|verify)\w*"
                                r"|\b(?:hash|crypt|digest|compare|verify)\w*\b[^\n]{0,80}?\bpass(?:word|wd)")
 _STRONG_PASSWORD_METHOD = re.compile(
@@ -234,10 +238,11 @@ def cross_file_notes(files: Dict[str, str], findings=()) -> List[dict]:
         if any(f.rule_id == "CRYPTO001" for f in findings):
             return []                                   # the real check already fired; no hint needed
         weak = None                                     # (path, line) of the first MD5/SHA-1 call in app code
-        pw_hash = None                                  # (path, line) of the first line that hashes/compares a password
+        pw_hash = None                                  # (path, line) of the most convincing line that hashes/compares a password
+        pw_first = None                                 # ...or, failing that, the first such line
         strong = False
         for path, content in files.items():
-            if (not isinstance(content, str) or _should_skip(path) or _TEST_PATH.search(path)
+            if (not isinstance(content, str) or _should_skip(path) or _TEST_PATH.search(path) or _NOT_APP_PATH.search(path)
                     or not path.lower().endswith(_CODE_EXT) or len(content) > MAX_SCAN_BYTES):
                 continue
             for lineno, line in enumerate(content.splitlines(), start=1):
@@ -248,8 +253,12 @@ def cross_file_notes(files: Dict[str, str], findings=()) -> List[dict]:
                 if _PASSWORD_WORD.search(line):
                     if _STRONG_PASSWORD_METHOD.search(line):
                         strong = True
-                    if pw_hash is None and _PASSWORD_HASHING.search(line):
-                        pw_hash = (path, lineno)
+                    if _PASSWORD_HASHING.search(line):
+                        if pw_first is None:
+                            pw_first = (path, lineno)
+                        if pw_hash is None and _LOGIN_PATH.search(path):
+                            pw_hash = (path, lineno)    # a user / login / auth / model file beats any other
+        pw_hash = pw_hash or pw_first
         if not weak or not pw_hash or strong:
             return []
         return [{
