@@ -39,6 +39,20 @@ _STATUS_STYLE = {
     "unknown": ("Not checked", "#4a4846", "#f0f0f0"),
 }
 
+# Why a check says "Pass", in one line. A Pass only ever means "this check found nothing in what it looked at",
+# so each rule row says exactly that (shown under the result, only when the row passes).
+_PASS_WHY = {
+    "secrets": ("Pass: no key, password or token-shaped value was found in any file read. Secrets kept outside "
+                "the code (for example in a hosting dashboard) can't be seen."),
+    "libraries": ("Pass: none of the packages checked has a published advisory on OSV.dev. Packages that these "
+                  "depend on may not be covered (see section 4)."),
+    "crypto": ("Pass: four specific patterns were not found: MD5 or SHA-1 next to a password or token word, AES in "
+               "ECB mode, a hardcoded encryption key, or an RSA key under 2048 bits. It does not review other "
+               "cryptography, and it does not say whether the app uses any."),
+    "access": ("Pass: no serious problems in the database rules and backend functions that were read. Settings "
+               "made in a dashboard can't be seen."),
+}
+
 # What each AI-review layer covers, and the standards it relates to.
 _LAYER_INFO = {
     "Auth":      ("Login, sessions and who can do what",
@@ -99,7 +113,8 @@ def _rule_rows(data):
     rows.append(("Exposed secrets",
                  "API keys, passwords and tokens written into the code",
                  ss_result, ss_status,
-                 "ASVS 4.0.3 V6.4 Secret Management · CWE-798"))
+                 "ASVS 4.0.3 V6.4 Secret Management · CWE-798",
+                 _PASS_WHY["secrets"] if ss_status == "pass" else ""))
     statuses.append(ss_status)
 
     osv = data.get("osv_scan") or {}
@@ -116,7 +131,8 @@ def _rule_rows(data):
     rows.append(("Known-vulnerable libraries",
                  "Packages checked against the OSV.dev vulnerability database",
                  osv_result, osv_status,
-                 "ASVS 4.0.3 V14.2 Dependency · Top 10 2021 A06"))
+                 "ASVS 4.0.3 V14.2 Dependency · Top 10 2021 A06",
+                 _PASS_WHY["libraries"] if osv_status == "pass" else ""))
     statuses.append(osv_status)
 
     cs = data.get("crypto_scan") or {}
@@ -128,10 +144,18 @@ def _rule_rows(data):
                      f'across {_n(cs.get("files_scanned"))} files')
     else:
         cs_result = "Not run for this report"
+    cs_why = _PASS_WHY["crypto"] if cs_status == "pass" else ""
+    # A hint is not a finding (it never changes the status), but a reviewer should see it next to the Pass.
+    for note in ((cs.get("notes") or []) if isinstance(cs.get("notes"), list) else [])[:1]:
+        if isinstance(note, dict) and note.get("name"):
+            where = f'{note.get("file", "")}' + (f' line {note.get("line")}' if note.get("line") else "")
+            cs_why = (cs_why + " " if cs_why else "") + (f'Worth a look: {note.get("name")} ({where}). '
+                                                        'It may or may not be connected: check what that hash protects.')
     rows.append(("Weak cryptography",
                  "Outdated hashes, broken cipher modes, hardcoded keys, small RSA keys",
                  cs_result, cs_status,
-                 "ASVS 4.0.3 V6.2 Algorithms · Top 10 2021 A02"))
+                 "ASVS 4.0.3 V6.2 Algorithms · Top 10 2021 A02",
+                 cs_why))
     statuses.append(cs_status)
 
     az = data.get("authz_scan") or {}
@@ -145,14 +169,15 @@ def _rule_rows(data):
     rows.append(("Who can do what",
                  "Database access rules and login checks on backend functions (Supabase apps)",
                  az_result, az_status,
-                 "ASVS 4.0.3 V4 Access Control · Top 10 2021 A01"))
+                 "ASVS 4.0.3 V4 Access Control · Top 10 2021 A01",
+                 _PASS_WHY["access"] if az_status == "pass" else ""))
     statuses.append(az_status)
 
     html = "".join(
         f'<tr><td><strong>{escape(name)}</strong><div class="sub">{escape(what)}</div></td>'
-        f'<td>{escape(result)}</td><td>{_badge(status)}</td>'
+        f'<td>{escape(result)}' + (f'<div class="sub">{escape(why)}</div>' if why else "") + f'</td><td>{_badge(status)}</td>'
         f'<td class="ref">{escape(ref)}</td></tr>'
-        for name, what, result, status, ref in rows
+        for name, what, result, status, ref, why in rows
     )
     return html, statuses
 
@@ -182,7 +207,11 @@ def _ai_rows(data):
             elif (layer.get("status") or "").lower() == "not_checked":
                 note = "Not checked: the AI saw no code for this layer in the files it read"
             else:
-                note = "No issues found in the files the AI read"
+                read, total = _n(data.get("files_read")), _n(data.get("files_total"))
+                # A Pass here rests on what the AI actually read, so say how much that was.
+                note = ((f"No issues seen in the {read} file{'' if read == 1 else 's'} the AI read"
+                         + (f", out of {total}" if total else "") + ". That is not proof this area is secure.")
+                        if read else "No issues found in the files the AI read")
         statuses.append(status)
         rows.append(
             f'<tr><td><strong>{escape(name)}</strong><div class="sub">{escape(what)}</div></td>'
@@ -418,6 +447,7 @@ ul.plain li{{margin-bottom:.35rem}}
     <li><strong>Where company data goes:</strong> which outside services, AI providers and countries receive it.</li>
     <li><strong>Sign-in requirements:</strong> whether it supports company single sign-on (SSO) or enforces two-factor login.</li>
     {pkg_gap}
+    <li><strong>Cryptography beyond four specific patterns.</strong> The weak-cryptography check looks line by line for MD5 or SHA-1 next to a password or token word, AES in ECB mode, hardcoded encryption keys and small RSA keys. It can miss a weak hash used in a different file from the password, and other weak methods.</li>
     <li><strong>Software licences</strong> of the libraries used.</li>
     <li><strong>Business logic:</strong> whether the app does the right thing for your processes.</li>
     <li><strong>AI-specific risks</strong> if the app itself calls an AI model, such as prompt injection.</li>

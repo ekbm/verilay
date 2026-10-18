@@ -147,7 +147,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-17.2"
+ANALYSIS_VERSION = "2026-10-18.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -5901,6 +5901,18 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         )
         out.append(f'<div class="st">Crypto Hygiene</div><div class="card">'
                    f'{_collapsible(items, len(crypto_findings))}</div>')
+    # A pointer, kept apart from the findings above: it is never counted and never changes the grade
+    # (verilay_crypto_hygiene.cross_file_notes). `data` is already escaped.
+    crypto_notes = [n for n in (crypto.get("notes") or []) if isinstance(n, dict) and n.get("name")]
+    if crypto_notes:
+        hint_html = "".join(
+            f'<div class="finding" style="background:#F1EFE8;color:#444441"><strong>Worth a look:</strong> {n.get("name","")}'
+            f'<div style="margin-top:.25rem">{n.get("plain","")}</div>'
+            f'<div style="margin-top:.25rem"><strong>What to do:</strong> {n.get("action","")}</div></div>'
+            for n in crypto_notes[:3])
+        out.append('<div class="st">Worth A Look</div><div class="card">'
+                   '<div style="font-size:13px;color:#666;margin-bottom:.5rem">A pointer, not a confirmed problem. '
+                   f'It does not change your grade.</div>{hint_html}</div>')
 
     # Who can do what (Supabase apps). A free report carries counts and one example; a deep scan
     # carries every finding with a ready-to-paste fix. Built from the unescaped copy: the renderer

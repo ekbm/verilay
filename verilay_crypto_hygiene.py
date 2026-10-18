@@ -96,14 +96,23 @@ class Rule:
     compiled: Optional[re.Pattern] = field(default=None, repr=False)
 
 
-CONTEXT_WORDS = re.compile(r"(?i)password|passwd|token|secret|auth")
+# "auth" must be a whole word or start an authentication word: "author" (md5 of an author's email for an avatar image)
+# is not a login context.
+CONTEXT_WORDS = re.compile(r"(?i)password|passwd|token|secret|\bo?auth(?:entic\w*|oriz\w*)?\b")
 
 
 # ── The rule set — kept small on purpose ───────────────────────────────────────
 
 RULES: List[Rule] = [
     Rule("CRYPTO001", "Weak hash (MD5/SHA-1) used near a password or token",
-         r"(?i)(?:hashlib\.(?:md5|sha1)\s*\(|crypto\.createHash\(\s*[\"'](?:md5|sha1)[\"']|CryptoJS\.(?:MD5|SHA1)\s*\()",
+         r"(?i)(?:hashlib\.(?:md5|sha1)\s*\(|hashlib\.new\(\s*[\"'](?:md5|sha1)[\"']"              # Python
+         r"|createHash\(\s*[\"'](?:md5|sha1)[\"']|CryptoJS\.(?:MD5|SHA1)\s*\(|subtle\.digest\(\s*[\"']sha-?1[\"']"  # Node, browser JS
+         r"|(?<![\w.])(?:md5|sha1)\s*\("                                                              # PHP built-ins, helper functions
+         r"|MessageDigest\.getInstance\(\s*[\"'](?:md5|sha-?1)[\"']|DigestUtils\.(?:md5|sha1)\w*\("   # Java
+         r"|Digest::(?:MD5|SHA1)\b"                                                                   # Ruby
+         r"|\b(?:md5|sha1)\.(?:New|Sum)\("                                                            # Go
+         r"|\b(?:MD5|SHA1)(?:CryptoServiceProvider|Managed)?\.Create\(|new\s+(?:MD5|SHA1)(?:CryptoServiceProvider|Managed)\b"  # C#
+         r"|\b(?:Md5|Sha1)::(?:new|digest)\b)",                                                       # Rust
          "warning",
          "This hashes something with MD5 or SHA-1, both of which are broken for "
          "protecting passwords or tokens — they can be reversed with commodity "
@@ -191,8 +200,74 @@ def scan_file(path: str, content: str) -> List[Finding]:
     return findings
 
 
+# ── The cross-file hint ────────────────────────────────────────────────────────
+# CRYPTO001 only fires when a password/token word sits within two lines of an MD5/SHA-1 call. An app can hash passwords
+# through a small helper that wraps the old hash, defined in one file, and call that helper from another file where the
+# password is saved; the line-by-line check cannot join the two. Flagging every MD5 call would
+# bury cache-key hashing in noise, so this adds only a HINT: "an old hash is used somewhere, and this app also handles
+# passwords. Check they are not connected." A hint is not a finding: it is kept apart, never counted as a warning, and
+# never changes a grade. It stays silent when the app clearly uses a proper password method (bcrypt, argon2...).
+
+class FindingList(list):
+    """The findings, plus `.notes`: 'worth a look' hints that are not findings and are never counted."""
+
+    def __init__(self, items=(), notes=None):
+        super().__init__(items)
+        self.notes = list(notes or [])
+
+
+_TEST_PATH = re.compile(r"(?i)(?:^|/)(?:tests?|__tests__|spec|specs|e2e|cypress|fixtures?|mocks?|__mocks__|stories)(?:/|$)"
+                        r"|\.(?:test|spec|stories)\.[a-z]+$|(?:^|/)test_[^/]*$|_test\.[a-z]+$")
+_CODE_EXT = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".php", ".rb", ".java", ".go", ".cs", ".kt", ".swift")
+_PASSWORD_HASHING = re.compile(r"(?i)\bpass(?:word|wd)\w*\b[^\n]{0,80}?\b(?:hash|crypt|digest|compare|verify)\w*"
+                               r"|\b(?:hash|crypt|digest|compare|verify)\w*\b[^\n]{0,80}?\bpass(?:word|wd)")
+_STRONG_PASSWORD_METHOD = re.compile(
+    r"(?i)\b(?:bcrypt\w*|scrypt\w*|argon2\w*|pbkdf2\w*|hashpw|passlib|generate_password_hash|check_password_hash"
+    r"|password_hash|password_verify|make_password|check_password|has_secure_password|\w*PasswordEncoder|PasswordHasher"
+    r"|Rfc2898DeriveBytes)\b|Hash::make")
+_PASSWORD_WORD = re.compile(r"(?i)\bpass(?:word|wd)")
+
+
+def cross_file_notes(files: Dict[str, str], findings=()) -> List[dict]:
+    """At most one hint for the whole repo (see the block comment above). Never raises."""
+    try:
+        if any(f.rule_id == "CRYPTO001" for f in findings):
+            return []                                   # the real check already fired; no hint needed
+        weak = None                                     # (path, line) of the first MD5/SHA-1 call in app code
+        pw_hash = None                                  # (path, line) of the first line that hashes/compares a password
+        strong = False
+        for path, content in files.items():
+            if (not isinstance(content, str) or _should_skip(path) or _TEST_PATH.search(path)
+                    or not path.lower().endswith(_CODE_EXT) or len(content) > MAX_SCAN_BYTES):
+                continue
+            for lineno, line in enumerate(content.splitlines(), start=1):
+                if len(line) > MAX_LINE_LEN:
+                    continue
+                if weak is None and RULES[0].compiled.search(line):
+                    weak = (path, lineno)
+                if _PASSWORD_WORD.search(line):
+                    if _STRONG_PASSWORD_METHOD.search(line):
+                        strong = True
+                    if pw_hash is None and _PASSWORD_HASHING.search(line):
+                        pw_hash = (path, lineno)
+        if not weak or not pw_hash or strong:
+            return []
+        return [{
+            "rule_id": "CRYPTO001-HINT", "severity": "note",
+            "name": "An old hash (MD5 or SHA-1) is used, and this app also handles passwords",
+            "file": weak[0], "line": weak[1], "preview": "",
+            "plain": (f"{weak[0]} line {weak[1]} hashes with MD5 or SHA-1, which are broken for protecting passwords. "
+                      f"The app also appears to hash or check passwords ({pw_hash[0]} line {pw_hash[1]}). Verilay "
+                      "can't tell whether the two are connected, so this is a pointer to check, not a confirmed problem."),
+            "action": ("Check what that hash is used for. If it protects passwords or login tokens, replace it with "
+                       "bcrypt, scrypt or argon2. If it is only a cache label, you can ignore this."),
+        }]
+    except Exception:
+        return []
+
+
 def scan_repo(files: Dict[str, str]) -> List[Finding]:
-    """Scan every file. Criticals first, then by file."""
+    """Scan every file. Criticals first, then by file. The returned list also carries `.notes` (see cross_file_notes)."""
     out: List[Finding] = []
     for path, content in files.items():
         if not isinstance(content, str):
@@ -200,7 +275,7 @@ def scan_repo(files: Dict[str, str]) -> List[Finding]:
         out.extend(scan_file(path, content))
     order = {"critical": 0, "warning": 1}
     out.sort(key=lambda f: (order.get(f.severity, 2), f.file, f.line))
-    return out
+    return FindingList(out, cross_file_notes(files, out))
 
 
 # ── Handing findings to Claude ─────────────────────────────────────────────────
@@ -232,6 +307,7 @@ def to_report_dict(findings: List[Finding], files_scanned: int) -> dict:
     """Shape for the UI and the saved report — same contract as the secret scanner."""
     return {
         "files_scanned": files_scanned,
+        "notes": [dict(n) for n in (getattr(findings, "notes", None) or [])],   # hints only: never counted below
         "critical": sum(1 for f in findings if f.severity == "critical"),
         "warnings": sum(1 for f in findings if f.severity == "warning"),
         "findings": [
