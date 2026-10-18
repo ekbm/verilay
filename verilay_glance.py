@@ -115,8 +115,14 @@ def render_glance_html(data):
         scanned = _i((block or {}).get("files_scanned"))
         if scanned:
             every = total and scanned >= total
-            rows.append(_row(label, 100 if every else _pct(scanned, total or scanned),
-                             f"All {_n(scanned)} files" if every else f"{_n(scanned)} of {_n(total)} files"))
+            value = f"All {_n(scanned)} files" if every else f"{_n(scanned)} of {_n(total)} files"
+            colour = _ACCENT
+            # A hint that needs a person to look: never show the row as a clean, complete pass.
+            to_check = len([n for n in ((block or {}).get("notes") or []) if isinstance(n, dict)])
+            if to_check:
+                value += f" &middot; {to_check} to check"
+                colour = "#BA7517"
+            rows.append(_row(label, 100 if every else _pct(scanned, total or scanned), value, colour))
 
     osv = data.get("osv_scan") or {}
     checked = _i(osv.get("packages_checked"))

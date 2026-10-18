@@ -33,7 +33,10 @@ from html import escape
 # ── Status vocabulary ──────────────────────────────────────────────────────────
 
 _STATUS_STYLE = {
-    "pass":    ("Pass",        "#27500A", "#EAF3DE"),
+    # Not "Pass": to a non-developer that word means "everything is fine". A check can only say it found nothing.
+    "pass":    ("Nothing found", "#27500A", "#EAF3DE"),
+    # Nothing was confirmed as broken, but a person still has to look. Never shown as a Pass.
+    "review":  ("Check required", "#3C3489", "#EEEDFE"),
     "warn":    ("Needs fixes", "#92400E", "#FEF3C7"),
     "fail":    ("Fail",        "#A32D2D", "#FCEBEB"),
     "unknown": ("Not checked", "#4a4846", "#f0f0f0"),
@@ -42,15 +45,15 @@ _STATUS_STYLE = {
 # Why a check says "Pass", in one line. A Pass only ever means "this check found nothing in what it looked at",
 # so each rule row says exactly that (shown under the result, only when the row passes).
 _PASS_WHY = {
-    "secrets": ("Pass: no key, password or token-shaped value was found in any file read. Secrets kept outside "
-                "the code (for example in a hosting dashboard) can't be seen."),
-    "libraries": ("Pass: none of the packages checked has a published advisory on OSV.dev. Packages that these "
-                  "depend on may not be covered (see section 4)."),
-    "crypto": ("Pass: four specific patterns were not found: MD5 or SHA-1 next to a password or token word, AES in "
-               "ECB mode, a hardcoded encryption key, or an RSA key under 2048 bits. It does not review other "
-               "cryptography, and it does not say whether the app uses any."),
-    "access": ("Pass: no serious problems in the database rules and backend functions that were read. Settings "
-               "made in a dashboard can't be seen."),
+    "secrets": ("Nothing found: no key, password or token-shaped value was found in any file read. That is not a "
+                "guarantee: secrets kept outside the code (for example in a hosting dashboard) can't be seen."),
+    "libraries": ("Nothing found: none of the packages checked has a published advisory on OSV.dev. That is not a "
+                  "guarantee: packages that these depend on may not be covered (see section 4)."),
+    "crypto": ("Nothing found: four specific patterns were not found: MD5 or SHA-1 next to a password or token word, "
+               "AES in ECB mode, a hardcoded encryption key, or an RSA key under 2048 bits. That is not a review of "
+               "the app's cryptography, and it does not say whether the app uses any."),
+    "access": ("Nothing found: no serious problems in the database rules and backend functions that were read. That "
+               "is not a guarantee: settings made in a dashboard can't be seen."),
 }
 
 # What each AI-review layer covers, and the standards it relates to.
@@ -145,12 +148,18 @@ def _rule_rows(data):
     else:
         cs_result = "Not run for this report"
     cs_why = _PASS_WHY["crypto"] if cs_status == "pass" else ""
-    # A hint is not a finding (it never changes the status), but a reviewer should see it next to the Pass.
-    for note in ((cs.get("notes") or []) if isinstance(cs.get("notes"), list) else [])[:1]:
-        if isinstance(note, dict) and note.get("name"):
-            where = f'{note.get("file", "")}' + (f' line {note.get("line")}' if note.get("line") else "")
-            cs_why = (cs_why + " " if cs_why else "") + (f'Worth a look: {note.get("name")} ({where}). '
-                                                        'It may or may not be connected: check what that hash protects.')
+    cs_notes = [n for n in (cs.get("notes") if isinstance(cs.get("notes"), list) else []) if isinstance(n, dict) and n.get("name")]
+    if cs_notes:
+        note = cs_notes[0]
+        where = f'{note.get("file", "")}' + (f' line {note.get("line")}' if note.get("line") else "")
+        if cs_status == "pass":
+            # No weak pattern matched, but something needs a person to look: that is not a Pass.
+            cs_status = "review"
+            cs_why = (f'Check required: no weak pattern was confirmed, but one thing needs a person to look: '
+                      f'{note.get("name")} ({where}). It may or may not be connected, so check what that hash protects. '
+                      'This check only covers four specific patterns and does not review other cryptography.')
+        else:
+            cs_why = (cs_why + " " if cs_why else "") + f'Also worth a look: {note.get("name")} ({where}).'
     rows.append(("Weak cryptography",
                  "Outdated hashes, broken cipher modes, hardcoded keys, small RSA keys",
                  cs_result, cs_status,
@@ -166,11 +175,18 @@ def _rule_rows(data):
         az_result = f'{_n(az.get("critical"))} serious, {_n(az.get("review"))} to check'
     else:
         az_result = "Not applicable (no Supabase database or function files found), or not run for this report"
+    az_why = _PASS_WHY["access"] if az_status == "pass" else ""
+    if az_status == "pass" and _n(az.get("review")):
+        # Nothing serious was confirmed, but items could not be settled either way: a person has to look.
+        az_status = "review"
+        az_why = (f'Check required: no serious problem was confirmed, but {_n(az.get("review"))} item'
+                  f'{"" if _n(az.get("review")) == 1 else "s"} could not be settled either way. '
+                  'They are listed in the full report. Settings made in a dashboard can\'t be seen.')
     rows.append(("Who can do what",
                  "Database access rules and login checks on backend functions (Supabase apps)",
                  az_result, az_status,
                  "ASVS 4.0.3 V4 Access Control · Top 10 2021 A01",
-                 _PASS_WHY["access"] if az_status == "pass" else ""))
+                 az_why))
     statuses.append(az_status)
 
     html = "".join(
@@ -308,6 +324,11 @@ def render_it_review(data, report_id):
         risk, decision, colour = ("Medium", "Approve with fixes", "#92400E")
         why = ("No critical issues. Fix the issues listed below, ideally before real or "
                "sensitive data is used.")
+    elif "review" in all_statuses:
+        # Nothing is confirmed as broken, but something needs a person to look: never suggest a plain approval.
+        risk, decision, colour = ("Medium", "Check before approving", "#3C3489")
+        why = ("No problem was confirmed, but at least one check needs a person to look. See the rows marked "
+               "'Check required' before approving.")
     else:
         risk, decision, colour = ("Low", "Approve, within the limits below", "#27500A")
         why = ("No issues found by these checks. Read 'What this review did not check' before "
