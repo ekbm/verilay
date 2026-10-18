@@ -1279,7 +1279,8 @@ function healthFromLayers(layers, data) {
 }
 
 function healthCardsHTML(h, hasLayers, isPreview) {
-  var hlbls = ['critical', 'warnings', 'passing', 'score'];
+  // The third label is what readers see. "passing" would read as "everything is fine"; the scan only knows it saw no issues.
+  var hlbls = ['critical', 'warnings', 'no issues seen', 'score'];
   if (isPreview) {
     return hlbls.map(function(lbl) {
       var val = lbl === 'score' ? 'n/a' : '–';
@@ -1723,7 +1724,7 @@ function secHtml(id, title, meta, body, open) {
 
 function layersSummaryText(h, incomplete) {
   if (incomplete && incomplete.length) return 'Incomplete: ' + incomplete.join(', ') + ' not checked';
-  return (h.critical || 0) + ' critical · ' + (h.warnings || 0) + ' warnings · ' + (h.passing || 0) + ' passing';
+  return (h.critical || 0) + ' critical · ' + (h.warnings || 0) + ' warnings · ' + (h.passing || 0) + ' with no issues seen';
 }
 
 function checksSummaryText(data) {

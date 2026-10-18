@@ -15,7 +15,7 @@ _ACCENT = "#534AB7"
 _TRACK = "#F1EFE8"
 
 _AREA_STYLE = {
-    "passing":     ("#085041", "#E1F5EE", "&#10003;", "passing"),
+    "passing":     ("#085041", "#E1F5EE", "&#10003;", "no issues seen"),   # "passing" would read as "all fine"
     "warning":     ("#633806", "#FAEEDA", "&#9650;", "warning"),
     "critical":    ("#791F1F", "#FCEBEB", "&#9632;", "critical"),
     "not_checked": ("#444441", "#F1EFE8", "&ndash;", "not checked"),
@@ -247,7 +247,7 @@ def sample_preview_html(data, report_id, label=""):
         '<div style="display:flex;gap:16px;font-size:12px;color:#6b6966;text-align:center">'
         f'<span><b style="font-size:22px;color:#A32D2D;display:block;line-height:1.1">{_n(health.get("critical"))}</b>critical</span>'
         f'<span><b style="font-size:22px;color:#BA7517;display:block;line-height:1.1">{_n(health.get("warnings"))}</b>warnings</span>'
-        f'<span><b style="font-size:22px;color:#0F6E56;display:block;line-height:1.1">{_n(health.get("passing"))}</b>passing</span>'
+        f'<span><b style="font-size:22px;color:#0F6E56;display:block;line-height:1.1">{_n(health.get("passing"))}</b>no issues seen</span>'
         '</div></div>'
         + (f'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">{chips}</div>' if chips else "")
         + cover

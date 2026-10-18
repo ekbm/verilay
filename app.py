@@ -5623,6 +5623,11 @@ def _collapsible(items_html, count):
     )
 
 
+# The words a reader sees for an area's status. "Passing" is only the internal name: to a non-developer it means
+# "everything is fine", which a scan that read a sample of the files cannot promise.
+_STATUS_WORDS = {"passing": "no issues seen"}
+
+
 @app.route("/report/<report_id>")
 def view_report(report_id):
     data = get_report_data(report_id)
@@ -5771,7 +5776,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
   <div class="sb"><div class="sn" style="color:{score_color}">{score_display}</div><div class="sl">Score</div></div>
   <div class="sb"><div class="sn" style="color:#E24B4A">{h.get('critical',0)}</div><div class="sl">Critical</div></div>
   <div class="sb"><div class="sn" style="color:#EF9F27">{h.get('warnings',0)}</div><div class="sl">Warnings</div></div>
-  <div class="sb"><div class="sn" style="color:#1D9E75">{h.get('passing',0)}</div><div class="sl">Passing</div></div>
+  <div class="sb"><div class="sn" style="color:#1D9E75">{h.get('passing',0)}</div><div class="sl">No issues seen</div></div>
 </div>""")
 
     # "Fix these first" -- moved from the very bottom of the page (2026-10-10). On a
@@ -6009,7 +6014,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             out.append(
                 f'<details class="layer"><summary style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem">'
                 f'<span style="font-weight:600;font-size:14px">{layer.get("name","")}</span>'
-                f'<span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{str(status).replace("_"," ")}</span>'
+                f'<span style="color:{sc};font-size:12px;font-weight:600;text-transform:uppercase">{_STATUS_WORDS.get(str(status), str(status).replace("_"," "))}</span>'
                 f'</summary>{analogy}<div style="font-size:13px;color:#555;margin-bottom:.5rem">{ex.get("summary","")}</div>{findings_html}{concept}</details>'
             )
 
@@ -6098,7 +6103,7 @@ def build_markdown(data):
              "## Production Verdict",
              f"**{md_label}**",
              md_reason,"",
-             f"## Health: {h.get('score','?')} — Critical: {h.get('critical',0)}, Warnings: {h.get('warnings',0)}, Passing: {h.get('passing',0)}","",
+             f"## Health: {h.get('score','?')} — Critical: {h.get('critical',0)}, Warnings: {h.get('warnings',0)}, No issues seen: {h.get('passing',0)}","",
              "## Stack"]
     for s in data.get("stack",[]): lines.append(f"- **{s.get('name','')} {s.get('version','')}** ({s.get('category','')}) — {s.get('plain_english','')}")
     lines += ["","## Layers"]
@@ -7238,7 +7243,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">2</div>
         <div style="font-size:14px;font-weight:500;margin-bottom:.3rem">Check issues</div>
-        <div style="font-size:13px;color:var(--mut);line-height:1.55">See what was found across 6 layers — Auth, Database, API, Frontend, Config, Libraries. Each issue rated critical, warning, or passing.</div>
+        <div style="font-size:13px;color:var(--mut);line-height:1.55">See what was found across 6 layers — Auth, Database, API, Frontend, Config, Libraries. Each area is rated critical, warning, or no issues seen.</div>
       </div>
 
       <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
@@ -7852,7 +7857,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:.65rem">
         <div style="background:var(--rdl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--rdt)">2</div><div style="font-size:12px;color:var(--rdt)">critical</div></div>
         <div style="background:var(--orl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--ort)">3</div><div style="font-size:12px;color:var(--ort)">warnings</div></div>
-        <div style="background:var(--grl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--grt)">6</div><div style="font-size:12px;color:var(--grt)">passing</div></div>
+        <div style="background:var(--grl);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--grt)">6</div><div style="font-size:12px;color:var(--grt)">no issues seen</div></div>
         <div style="background:var(--bll);border-radius:8px;padding:.55rem;text-align:center"><div style="font-size:18px;font-weight:600;color:var(--blt)">C</div><div style="font-size:12px;color:var(--blt)">score</div></div>
       </div>
     </div>
