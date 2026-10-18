@@ -2357,6 +2357,29 @@ function appendLayers(newLayers) {
   }
 }
 
+// "Check it yourself": static steps written by hand on the server (verilay_selfcheck.py); everything is escaped here.
+function renderSelfCheck(items) {
+  if (!items || !items.length) return '';
+  var mins = 0, body = '';
+  items.forEach(function(it) {
+    if (it.id === 'needs_person') {
+      body += '<div style="font-size:13px;color:#444;margin:.5rem 0"><strong>' + esc(it.title) + '.</strong> ' + esc(it.note) + '</div>';
+      return;
+    }
+    mins += it.minutes || 0;
+    body += '<div style="margin:.5rem 0 .75rem"><div style="font-size:13px;font-weight:600">' + esc(it.title) + '</div>' +
+      '<ol style="font-size:13px;color:#444;line-height:1.55;margin:.3rem 0 .3rem 1.2rem">' +
+      (it.steps || []).map(function(st) { return '<li>' + esc(st) + '</li>'; }).join('') + '</ol>' +
+      '<div style="font-size:13px;color:#27500A">&#10003; ' + esc(it.good) + '</div>' +
+      '<div style="font-size:13px;color:#791F1F">&#9888; ' + esc(it.bad) + '</div>' +
+      '<div style="font-size:12px;color:#6b6966;margin-top:.2rem">' + esc(it.limit) + '</div></div>';
+  });
+  var when = mins ? ' &middot; about ' + mins + ' minute' + (mins === 1 ? '' : 's') : '';
+  return '<details class="selfcheck" style="margin:.6rem 0 0;background:#F8F8FC;border-radius:8px;padding:.6rem .8rem">' +
+    '<summary style="cursor:pointer;font-size:13px;font-weight:600;color:#534AB7">Check it yourself' + when + '</summary>' + body +
+    '<div style="font-size:12px;color:#6b6966;border-top:0.5px solid #e5e5f0;padding-top:.4rem">Only try this on your own app, with test accounts. Never on someone else's app.</div></details>';
+}
+
 function renderPart2(data) {
   var html = '<div style="margin-top:1rem">';
   var sec = data.security_score || {};
@@ -2468,6 +2491,7 @@ function renderPart2(data) {
     if (platformPrompt) {
       html += '<div style="margin-top:.5rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:12px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;line-height:1.5" id="fix-prompt-' + fi + '">' + esc(platformPrompt) + '</div>';
     }
+    html += renderSelfCheck(f.check_detail);
     html += '</div></details>';
   });
 

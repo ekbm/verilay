@@ -51,6 +51,7 @@ from verilay_client_type import classify as classify_client
 from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
+import verilay_selfcheck as selfcheck
 from verilay_glance import render_glance_html, sample_preview_html
 import verilay_fonts as vl_fonts
 import verilay_fixtags as fixtags
@@ -3274,10 +3275,26 @@ def run_step4():
             if report_id in _reports:
                 _reports[report_id]["data"].update(p2_data)
 
+        result = dict(result)   # a copy: the "Check it yourself" steps below are drawn fresh and never saved
+        result["top_fixes"] = _fixes_with_checks(result.get("top_fixes"))
         result["part2_loaded"] = True
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _fixes_with_checks(fixes):
+    """Copies of the fixes with their static "Check it yourself" steps attached (verilay_selfcheck.py). Not stored anywhere."""
+    out = []
+    for f in fixes or []:
+        if isinstance(f, dict):
+            f = dict(f)
+            try:
+                f["check_detail"] = selfcheck.detail(selfcheck.checks_for_fix(f))
+            except Exception:
+                f["check_detail"] = []
+        out.append(f)
+    return out
 
 
 @app.route("/report-data/<report_id>")
@@ -3289,6 +3306,8 @@ def report_data(report_id):
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful")}
+    if isinstance(data.get("top_fixes"), list):
+        data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     return jsonify(data)
 
 
@@ -5887,7 +5906,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                 for f2 in scan_findings
             )
             out.append(f'<div class="st">Verified Findings</div><div class="card">'
-                       f'{_collapsible(items, len(scan_findings))}</div>')
+                       f'{_collapsible(items, len(scan_findings))}'
+                       f'{selfcheck.render_for_rules([x.get("rule_id") for x in scan_findings])}</div>')
 
     # Crypto hygiene — weak hashes, broken cipher modes, hardcoded keys,
     # undersized RSA keys. Unlike secret_scan and osv above, this section is
@@ -5905,7 +5925,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             for f2 in crypto_findings
         )
         out.append(f'<div class="st">Crypto Hygiene</div><div class="card">'
-                   f'{_collapsible(items, len(crypto_findings))}</div>')
+                   f'{_collapsible(items, len(crypto_findings))}'
+                   f'{selfcheck.render_for_rules([x.get("rule_id") for x in crypto_findings])}</div>')
     # A pointer, kept apart from the findings above: it is never counted and never changes the grade
     # (verilay_crypto_hygiene.cross_file_notes). `data` is already escaped.
     crypto_notes = [n for n in (crypto.get("notes") or []) if isinstance(n, dict) and n.get("name")]
@@ -5917,7 +5938,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             for n in crypto_notes[:3])
         out.append('<div class="st">Worth A Look</div><div class="card">'
                    '<div style="font-size:13px;color:#666;margin-bottom:.5rem">A pointer, not a confirmed problem. '
-                   f'It does not change your grade.</div>{hint_html}</div>')
+                   f'It does not change your grade.</div>{hint_html}{selfcheck.render_for_rules(["CRYPTO001-HINT"])}</div>')
 
     # Who can do what (Supabase apps). A free report carries counts and one example; a deep scan
     # carries every finding with a ready-to-paste fix. Built from the unescaped copy: the renderer
@@ -5983,7 +6004,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                 f'<div class="card"><strong style="color:#EF9F27">{found} {"dependency has" if found==1 else "dependencies have"} '
                 f'known vulnerabilities</strong><div style="font-size:13px;color:#666;margin-top:.35rem">'
                 f'Checked {_cov_sum} against OSV.dev.</div>{_cov_note_html}'
-                + _dep_advice + '</div>'
+                + _dep_advice + selfcheck.render(["old_packages"]) + '</div>'
             )
 
     # Ask AI button

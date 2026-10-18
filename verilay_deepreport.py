@@ -19,6 +19,7 @@ import html as _html
 import re
 
 from verilay_fixtags import label as _fix_label, anchor as _fix_anchor
+import verilay_selfcheck as _selfcheck
 
 _SEV_RANK = {"critical": 0, "high": 1, "moderate": 2, "low": 3, "unknown": 4}
 
@@ -499,7 +500,7 @@ def render_fixes_html(data):
                     f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{_esc(f.get("why_it_matters", ""))}</div>'
                     f'<div style="font-size:13px;color:#444"><strong>How:</strong> {_esc(f.get("how_to_fix", ""))}</div>'
                     f'<div style="font-size:12px;color:#888">Effort: {_esc(f.get("estimated_effort", ""))}</div>'
-                    f'{_prompt_block(f"fp{i}", prompt) if prompt else ""}</details>')
+                    f'{_prompt_block(f"fp{i}", prompt) if prompt else ""}{_selfcheck.render_for_fix(f)}</details>')
 
     dep_html = ""
     if groups:
@@ -512,6 +513,7 @@ def render_fixes_html(data):
                          'one prompt</summary><div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">The quickest '
                          'route: one prompt that lists every package below, live-app packages first.</div>'
                          f'{_prompt_block("dpall", dep.get("all_prompt", ""))}</details>')
+        dep_html += _selfcheck.render(["old_packages"])
         idx = 0
         for g in runtime:
             dep_html += _dep_group_html(g, idx)
