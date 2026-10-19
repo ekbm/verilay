@@ -4814,7 +4814,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <ul>
     <li>The GitHub link, live address, or ZIP file you submit for analysis. We read your code to run the analysis. We do not keep your project's files (see &ldquo;How your data is stored&rdquo;)</li>
     <li>The analysis results — findings, score, and layer breakdown</li>
-    <li>Your IP address for rate limiting (not stored permanently)</li>
+    <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter tied to your IP address and the hour is stored in our database</li>
     <li>If you join the waitlist — your email address</li>
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
