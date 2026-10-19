@@ -7600,6 +7600,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <div style="font-size:14px;color:var(--mut)">Drop ZIP here or click to browse</div>
       <div id="fn" style="font-size:13px;color:var(--gr);margin-top:.4rem;font-weight:500"></div>
     </div>
+    <div id="zip-keep" style="margin-top:.65rem;font-size:12px;color:var(--mut);line-height:1.55">
+      <strong style="color:var(--txt)">What we keep:</strong> Your ZIP is read while the scan runs and is not saved. We keep the report (findings, score, file names, and sometimes a short piece of code a finding mentions), not your project's files. The code is sent to Claude, an AI service made by Anthropic, to be analysed; under Anthropic's business terms it is not used to train its models. A report's link works for 90 days, and you can delete yours from the report page. <a href="/privacy" style="color:var(--pu)">Privacy policy</a>
+    </div>
     <div class="hint" style="background:var(--bg);border:0.5px solid var(--bdr);margin-top:.75rem">
       <div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.5rem">How to export a ZIP from your builder</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12px;color:var(--mut)">
