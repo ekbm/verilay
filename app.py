@@ -4805,14 +4805,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 </nav>
 <div class="wrap">
   <div style="margin-bottom:2rem">
-    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Last updated August 2026</div>
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Last updated October 2026</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Privacy Policy</h1>
     <p>Verilay is a security analysis tool built by Moses Ekbote, free to use with an optional paid deep scan. This policy explains what we collect, why, and how you can delete it — for both the free tool and the paid tier.</p>
   </div>
 
   <h2>What we collect</h2>
   <ul>
-    <li>The GitHub URL, live URL, or ZIP file you submit for analysis</li>
+    <li>The GitHub link, live address, or ZIP file you submit for analysis. We read your code to run the analysis. We do not keep your project's files (see &ldquo;How your data is stored&rdquo;)</li>
     <li>The analysis results — findings, score, and layer breakdown</li>
     <li>Your IP address for rate limiting (not stored permanently)</li>
     <li>If you join the waitlist — your email address</li>
@@ -4834,8 +4834,16 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2>How your data is stored</h2>
   <p>Analysis reports are stored in Supabase (hosted in the EU) linked to a random report ID. Reports are accessible only via your unique share link. We do not publish, share, or sell individual report data.</p>
-  <p>The share link of a free analysis keeps working for 90 days after the scan. After that the link stops working and the report is no longer shown to anyone. The stored copy is not erased automatically, so email <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> if you want it erased. Stored reports also help us improve the product. You can delete your report at any time using the Delete Report button on your report page, which removes the submitted code and findings.</p>
+  <p>The share link of a free analysis keeps working for 90 days after the scan. After that the link stops working and the report is no longer shown to anyone. The stored copy is not erased automatically, so email <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> if you want it erased. We may look at stored reports (not your project's files, which we do not keep) to improve the product. You can delete your report at any time using the Delete Report button on your report page, which removes the report (its findings, score and file names).</p>
+  <p>A saved report contains the findings, the score, the names of the files that were read, a summary, and the detected tools. A finding can mention a function name or a short piece of code, and a key that was found is shown only in part (for example the first few characters). A report never contains your project's files. Anyone who has a report's link can open it, so share it only with people you trust.</p>
 
+  <h2>Services that help us run Verilay</h2>
+  <ul>
+    <li><strong>AI analysis.</strong> To analyse your code, parts of it are sent to Claude, an AI service made by Anthropic. Under Anthropic's business terms, content sent this way is not used to train its models.</li>
+    <li><strong>Storage.</strong> Reports are stored in Supabase (hosted in the EU).</li>
+    <li><strong>Hosting and network.</strong> The site runs on Railway and is served through Cloudflare, which see your IP address in the normal way.</li>
+    <li><strong>Analytics and payments.</strong> Plausible Analytics (no personal data) and, for the deep scan, Stripe.</li>
+  </ul>
   <h2>Accounts and the deep scan</h2>
   <p>Signing in uses a passwordless email link or code — we never ask for or store a password. Buying a deep scan records your email, the app it was purchased for, the amount paid, and the purchase date; this comes from Stripe, which does not verify the email it collects, so a payment on its own does not sign you in. Signing in with that same email afterward links your purchase to an account so your reports are still there when you come back.</p>
   <p>Deep-scan reports are tied to your account rather than a share link alone, and are kept for as long as your account exists. You can request account and purchase-record deletion at any time by emailing <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> — note that Stripe keeps its own transaction records independently, for tax and accounting purposes, which we cannot delete on your behalf.</p>
