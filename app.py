@@ -1291,19 +1291,50 @@ def _client_ip():
     return get_ip()
 
 
+# The Ask AI limiter keeps a counter per person per hour in the ask_usage table. Since 2026-10-19 the visitor's IP address is
+# never written there: the key holds a keyed hash of it (HMAC with this app's secret), so the table cannot be turned back into
+# addresses. Counters older than ASK_KEEP_HOURS are deleted automatically (best effort, at most every 10 minutes per worker,
+# whenever the box is used). Keys in the new shape start with ASK_KEY_PREFIX; anything older (which began with the raw address)
+# is dead weight and is deleted too.
+ASK_KEY_PREFIX = "h1|"
+ASK_KEEP_HOURS = 2
+_ask_last_purge = 0.0
+
+
+def _ask_key(ip, scope, bucket):
+    """Counter key: prefix | hour | keyed hash of (address, scope). The address itself is never part of it."""
+    raw = f"{ip}|{scope}".encode("utf-8")
+    digest = _hmac.new(str(app.secret_key).encode("utf-8"), raw, _hashlib.sha256).hexdigest()[:32]
+    return f"{ASK_KEY_PREFIX}{bucket}|{digest}"
+
+
+def _ask_purge_old(now=None):
+    """Delete counters older than ASK_KEEP_HOURS and any old-shape rows. Best effort: never raises, never slows a question."""
+    global _ask_last_purge
+    t = time.time()
+    if t - _ask_last_purge < 600:
+        return
+    _ask_last_purge = t
+    cutoff = ((now or datetime.utcnow()) - _timedelta(hours=ASK_KEEP_HOURS)).strftime("%Y-%m-%dT%H")
+    try:
+        _sb.table("ask_usage").delete().like("id", ASK_KEY_PREFIX + "%").lt("id", f"{ASK_KEY_PREFIX}{cutoff}|").execute()
+        _sb.table("ask_usage").delete().not_.like("id", ASK_KEY_PREFIX + "%").execute()
+    except Exception as _e:
+        print(f"Ask counter cleanup skipped: {type(_e).__name__}", flush=True)
+
+
 def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
-    """Per-IP hourly limit via Supabase. Returns (allowed: bool, remaining: int).
+    """Per-visitor hourly limit via Supabase. Returns (allowed: bool, remaining: int).
     Fails OPEN (allows) if Supabase is unavailable — see note to maintainer.
 
     `scope` lets a caller share this same table/bucket logic with a distinct
     key namespace (e.g. "report:<id>" for the report-grounded Ask Verilay)
-    without a schema change. Default scope="" reproduces the exact key shape
-    this function always used (f"{ip}|{bucket}") so /ask's existing usage
-    rows and behavior are completely unaffected by this parameter existing."""
+    without a schema change. The key never contains the address (see _ask_key)."""
     if not _HAS_SUPABASE:
         return True, limit  # no store available → don't block users
-    bucket = datetime.utcnow().strftime("%Y-%m-%dT%H")  # one bucket per hour (UTC)
-    key = f"{ip}|{scope}|{bucket}" if scope else f"{ip}|{bucket}"
+    now = datetime.utcnow()
+    bucket = now.strftime("%Y-%m-%dT%H")  # one bucket per hour (UTC)
+    key = _ask_key(ip, scope, bucket)
     try:
         res = _sb.table("ask_usage").select("count").eq("id", key).execute()
         rows = res.data or []
@@ -1314,6 +1345,7 @@ def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
             _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
         else:
             _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
+        _ask_purge_old(now)
         return True, max(0, limit - (used + 1))
     except Exception:
         return True, limit  # store error → fail open rather than break the feature
@@ -4814,7 +4846,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <ul>
     <li>The GitHub link, live address, or ZIP file you submit for analysis. We read your code to run the analysis. We do not keep your project's files (see &ldquo;How your data is stored&rdquo;)</li>
     <li>The analysis results — findings, score, and layer breakdown</li>
-    <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter tied to your IP address and the hour is stored in our database</li>
+    <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
     <li>If you join the waitlist — your email address</li>
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
