@@ -1940,8 +1940,9 @@ function renderReport(data) {
 
   var layersHtml = '<div id="layer-errors">' + layerErrorsHTML() + '</div>' + html;
   var incomplete = window._incompleteLayers || [];
-  var sections = secHtml('sec-layers', 'What we found, by layer', hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…', layersHtml, true);
+  var sections = secHtml('sec-layers', 'What we found, by layer', hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…', layersHtml, !isPreview);
   if (checksHtml) sections += secHtml('sec-checks', 'Checks we ran', checksSummaryText(data), checksHtml, false);
+  if (isPreview && data.live_view) sections = secHtml('sec-live', 'About this live-site preview', 'What it saw, and tests to try', liveCheckHTML(data), true) + sections;
   if (discoveryInner) sections += secHtml('sec-similar', 'Similar open-source projects', window._discoverySum || 'See what already exists',
                                           '<div id="discovery-slot">' + discoveryInner + '</div>', false);
   sections += secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false);
@@ -2378,6 +2379,48 @@ function renderSelfCheck(items) {
   return '<details class="selfcheck" style="margin:.6rem 0 0;background:#F8F8FC;border-radius:8px;padding:.6rem .8rem">' +
     '<summary style="cursor:pointer;font-size:13px;font-weight:600;color:#534AB7">Check it yourself' + when + '</summary>' + body +
     '<div style="font-size:12px;color:#6b6966;border-top:0.5px solid #e5e5f0;padding-top:.4rem">Only try this on your own app, with test accounts. Never on someone else\'s app.</div></details>';
+}
+
+// A live-address preview: what could be read from outside, tests to try, and the next step. The wording comes from the server
+// (verilay_livecheck.py); every value is escaped here.
+function liveCheckHTML(data) {
+  var v = data && data.live_view;
+  if (!v) return "";
+  var names = data.files_analysed;
+  var n = Array.isArray(names) ? names.filter(function(x) { return String(x).charAt(0) !== "_"; }).length : (data.files_read || 0);
+  var h = "<div style=\"font-size:13px;line-height:1.6\">Verilay read the page your browser receives from this address, plus its script files" +
+    (n ? " (" + n + " file" + (n === 1 ? "" : "s") + " in all)" : "") +
+    ". It ran fixed checks on them for exposed keys and passwords and for weak hashing patterns, and read the security headers and outside scripts shown below.</div>" +
+    "<div style=\"font-size:13px;line-height:1.6;margin-top:.5rem\"><strong>It can't see</strong> " + esc(v.limits) +
+    ". So &ldquo;not graded&rdquo; means &ldquo;not enough to grade&rdquo;, not &ldquo;fine&rdquo;.</div>";
+  if (v.headers) {
+    h += "<div style=\"font-size:13px;font-weight:600;margin:.9rem 0 .3rem\">Security headers this site sends</div>";
+    h += "<div style=\"font-size:13px;margin-bottom:.3rem\">" + (v.https ? "This address uses a secure (https) connection." : "This address does not use a secure (https) connection.") + "</div>";
+    v.headers.forEach(function(r) {
+      var word = r.sent ? "sent" : (r.covered ? "covered by the Content-Security-Policy" : "not seen");
+      var colour = (r.sent || r.covered) ? "#1D9E75" : "#92400E";
+      h += "<div style=\"padding:.4rem 0;border-top:0.5px solid var(--bdr)\"><span style=\"font-family:monospace;font-size:12.5px\">" + esc(r.name) + "</span> " +
+        "<span style=\"color:" + colour + ";font-size:12.5px;font-weight:600\">" + ((r.sent || r.covered) ? "&#10003; " : "&ndash; ") + esc(word) + "</span>" +
+        "<div style=\"font-size:12.5px;color:var(--mut)\">" + esc(r.plain) + "</div></div>";
+    });
+    h += "<div style=\"font-size:12px;color:var(--mut);margin-top:.4rem\">" + esc(v.header_note) + "</div>";
+  }
+  if (v.scripts) {
+    h += "<div style=\"font-size:13px;font-weight:600;margin:.9rem 0 .3rem\">Outside scripts this page loads</div>";
+    if (v.scripts.length) {
+      h += "<div style=\"font-size:13px;line-height:1.6\">The main page loads scripts from other sites: " +
+        v.scripts.map(function(x) { return "<span style=\"font-family:monospace;font-size:12.5px\">" + esc(x) + "</span>"; }).join(", ") + ".</div>" +
+        "<div style=\"font-size:12px;color:var(--mut);margin-top:.3rem\">" + esc(v.scripts_note) + "</div>";
+    } else {
+      h += "<div style=\"font-size:13px\">The main page loads no scripts from other sites.</div>";
+    }
+  }
+  h += "<div style=\"font-size:13px;font-weight:600;margin:.9rem 0 .2rem\">Check it yourself on your live site</div>" +
+    "<div style=\"font-size:13px;line-height:1.6\">These are the tests a scanner can't do from outside. Try them on your own site.</div>" +
+    renderSelfCheck(v.check_detail);
+  h += "<div style=\"font-size:13px;font-weight:600;margin:.9rem 0 .2rem\">Want a real review?</div>" +
+    "<div style=\"font-size:13px;line-height:1.6\">" + esc(v.next_step) + "</div>";
+  return h;
 }
 
 function renderPart2(data) {

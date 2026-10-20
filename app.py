@@ -52,6 +52,7 @@ from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_i
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_selfcheck as selfcheck
+import verilay_livecheck as livecheck
 from verilay_glance import render_glance_html, sample_preview_html
 import verilay_fonts as vl_fonts
 import verilay_fixtags as fixtags
@@ -3033,6 +3034,10 @@ def analyse_stream():
             is_url_preview = (method == "url")
             if is_url_preview:
                 s1["preview_only"] = True
+                # What can honestly be read from outside: security headers and outside scripts (verilay_livecheck.py).
+                # The facts are saved; the plain-English wording travels with the live event only.
+                s1["live_check"] = livecheck.build(files, url)
+                s1["live_view"] = livecheck.view(s1["live_check"])
                 s1.setdefault("health", {})
                 s1["health"]["score"] = None
                 s1["health"]["critical"] = None
@@ -3046,6 +3051,7 @@ def analyse_stream():
 
             if is_url_preview:
                 preview = dict(s1)
+                preview.pop("live_view", None)   # fixed wording is re-attached when a page or the history view is drawn
                 preview["client_type"] = client_type
                 preview["layers"] = []
                 # A key hardcoded into index.html is exactly what a URL scan can prove.
@@ -3339,6 +3345,8 @@ def report_data(report_id):
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
+    if data.get("preview_only") and data.get("input_method") == "url":
+        data["live_view"] = livecheck.view(data.get("live_check"))
     return jsonify(data)
 
 
@@ -5830,12 +5838,17 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 </div>""")
 
     # Score grid
+    _crit, _warn, _pass = (("&ndash;",) * 3) if is_preview else (h.get('critical',0), h.get('warnings',0), h.get('passing',0))
     out.append(f"""<div class="sg">
-  <div class="sb"><div class="sn" style="color:{score_color}">{score_display}</div><div class="sl">Score</div></div>
-  <div class="sb"><div class="sn" style="color:#E24B4A">{h.get('critical',0)}</div><div class="sl">Critical</div></div>
-  <div class="sb"><div class="sn" style="color:#EF9F27">{h.get('warnings',0)}</div><div class="sl">Warnings</div></div>
-  <div class="sb"><div class="sn" style="color:#1D9E75">{h.get('passing',0)}</div><div class="sl">No issues seen</div></div>
+  <div class="sb"><div class="sn" style="color:{score_color}">{score_display}</div><div class="sl">{"Score, not graded" if is_preview else "Score"}</div></div>
+  <div class="sb"><div class="sn" style="color:#E24B4A">{_crit}</div><div class="sl">Critical</div></div>
+  <div class="sb"><div class="sn" style="color:#EF9F27">{_warn}</div><div class="sl">Warnings</div></div>
+  <div class="sb"><div class="sn" style="color:#1D9E75">{_pass}</div><div class="sl">No issues seen</div></div>
 </div>""")
+
+    # A live-address preview: what it looked at, the headers and outside scripts it could read, tests to try, and the next step.
+    if is_preview and data.get("input_method") == "url":
+        out.append(livecheck.render_html(raw_data.get("live_check"), livecheck.served_count(raw_data.get("files_analysed"), raw_data.get("files_read"))))
 
     # "Fix these first" -- moved from the very bottom of the page (2026-10-10). On a
     # deep scan it sat ~84% of the way down, collapsed, after a 41-item list.
@@ -5907,7 +5920,11 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     files_read = data.get("files_read")
     files_total = data.get("files_total")
     is_deep = bool(data.get("is_deep_scan"))
-    if files_read and files_total:
+    if files_read and files_total and is_preview and data.get("input_method") == "url":
+        out.append(f'<div class="card"><strong>Files reviewed: {livecheck.served_count(raw_data.get("files_analysed"), files_read) or files_read}</strong>'
+                   '<div style="font-size:13px;color:#666;margin-top:.35rem">The page and script files this address sends to a browser. '
+                   'A live address does not expose the rest of your project.</div></div>')
+    elif files_read and files_total:
         badge = (
             '<span style="background:#534AB7;color:#fff;font-size:11px;font-weight:600;'
             'padding:3px 10px;border-radius:20px;margin-left:8px">DEEP SCAN</span>'
@@ -6092,7 +6109,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if so.get("summary_prompt"):
         out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
 
-    out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br><strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
+    out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">' + ('' if is_preview else 'Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br>') + '<strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
     return "".join(out)
