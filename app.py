@@ -3508,7 +3508,7 @@ def self_monitor_health():
 BLOG_POSTS = [
     {
         "slug": checklist.SLUG,
-        "title": checklist.TITLE,
+        "title": checklist.BLOG_TITLE,
         "date": "October 20, 2026",
         "category": "Guide",
         "excerpt": "Ten plain-English questions to ask before real users or payments arrive, with a way to check each one yourself and an honest note on what a scan can and can't cover.",

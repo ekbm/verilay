@@ -16,10 +16,12 @@ Rules it follows (decided with Moses, 2026-10-20):
 """
 from html import escape
 
-TITLE = "A 10-Point Security Checklist for AI-Built Apps"
+TITLE = "Vibe Coding Security Checklist: 10 Questions for Your AI-Built App"          # the page heading
+SEO_TITLE = "Vibe Coding Security Checklist: 10 Plain Questions | Verilay"            # the browser and search-result title (kept under 60 characters)
+BLOG_TITLE = "Vibe Coding Security Checklist: 10 Questions to Ask Before You Launch"   # the blog post
 SLUG = "10-point-security-checklist-ai-built-app"
-DESCRIPTION = ("Ten plain-English questions to ask before real users or payments arrive: login, data, secrets, inputs, uploads, "
-               "connections and packages. Free, general good practice, with what a scan can and can't tell you.")
+DESCRIPTION = ("A free vibe coding security checklist for Lovable, Replit and Bolt apps: ten plain questions to ask before launch, "
+               "each with a way to check it yourself.")
 NOT_A_STANDARD = "General good practice. Not a standard, and not a guarantee."
 
 # coverage kind -> (chip text, chip colours)
@@ -139,7 +141,7 @@ def render_page():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{_t(TITLE)} | Verilay</title>
+<title>{_t(SEO_TITLE)}</title>
 <meta name="description" content="{escape(DESCRIPTION)}">
 <link rel="canonical" href="https://verilay.dev/checklist">
 <meta property="og:type" content="article">
