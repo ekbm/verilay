@@ -20,13 +20,14 @@ Rules (decided with Moses):
 import functools
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from urllib.parse import quote
 
 from flask import Blueprint, jsonify, redirect, request, session, make_response
 
 import verilay_ghapp as gh
+import verilay_report_expiry as _expiry
 from verilay_checklist import _CSS, _LOGO
 
 bp = Blueprint("private_repos", __name__)
@@ -107,6 +108,23 @@ def _check_allowance(account_hash):
         raise PrivateRefused("The beta has reached its limit for today. Please try again tomorrow.")
 
 
+COUNTER_KEEP_DAYS = 2          # today's and yesterday's daily counters are kept; older ones are deleted
+_last_purge = 0.0
+
+
+def _purge_old(sb):
+    """Delete daily counters older than yesterday. Best effort, at most every 10 minutes per worker; never raises."""
+    global _last_purge
+    if time.time() - _last_purge < 600:
+        return
+    _last_purge = time.time()
+    cutoff = (datetime.utcnow() - timedelta(days=COUNTER_KEEP_DAYS - 1)).strftime("%Y-%m-%d")
+    try:
+        sb.table("stats").delete().like("key", "private:%").lt("key", f"private:{cutoff}").execute()
+    except Exception as e:
+        print(f"[private] counter cleanup skipped: {type(e).__name__}", flush=True)
+
+
 def _consume(account_hash):
     sb = _deps["get_sb"]()
     try:
@@ -114,6 +132,7 @@ def _consume(account_hash):
         _bump(sb, _key())
     except Exception:
         raise PrivateRefused("Private scanning is paused for a moment. Please try again later.")
+    _purge_old(sb)
 
 
 # ── pages ───────────────────────────────────────────────────────────────────
@@ -248,6 +267,8 @@ def choose():
              'then removes its own access to your GitHub account straight away. Nothing is changed in your repository.</p>'
              f'<p style="font-size:13px;color:#6b6966">This is a free beta with limits: {lim["per_account_day"]} private scans per GitHub account per day. '
              f'You have {escape(str(left["account_left"]))} left today.</p>')
+    intro += (f'<p style="font-size:13px;color:#6b6966"><strong>What we keep:</strong> the report (findings, score and file names), private to your browser '
+              f'and removed after {_expiry.private_days()} days. Never your code. <a href="/privacy">Privacy policy</a></p>')
     if any(not r["private"] for r in repos):
         intro += ('<p style="font-size:13px;color:#6b6966">A repository marked <em>public</em> can also be scanned the normal way, '
                   'with just its link, so it does not need this private route.</p>')

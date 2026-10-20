@@ -4942,6 +4942,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <h2>What we collect</h2>
   <ul>
     <li>The GitHub link, live address, or ZIP file you submit for analysis. We read your code to run the analysis. We do not keep your project's files (see &ldquo;How your data is stored&rdquo;)</li>
+    <li>If you use the private-repository beta: you install the Verilay GitHub App on your account, with read-only access to code, and choose one repository. Verilay reads that repository once and then removes its own access. We keep the report, marked private (findings, score, file names and a summary, as for any report). To apply the daily limit we keep a count tied to a scrambled version of your GitHub account number, not your name, email or repository, for about two days</li>
     <li>The analysis results — findings, score, and layer breakdown</li>
     <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
     <li>If you join the waitlist — your email address</li>
@@ -4958,13 +4959,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you register interest in monitoring, we store your email and your answers and use them only to tell you about monitoring</li>
     <li>If you register interest in private repository support, we store your email and your answers and use them only to tell you about that</li>
     <li>No payment card details — Stripe handles payment directly and Verilay never sees or stores your card number</li>
-    <li>No access to your GitHub account beyond what you explicitly submit — we read public repos only via GitHub API, and never write to or modify any repository</li>
+    <li>No access to your GitHub account beyond what you explicitly submit or approve — public repositories are read through GitHub's public API, a private repository only when you connect it in the private-repository beta (see below), and Verilay never writes to or modifies any repository</li>
   </ul>
 
   <h2>How your data is stored</h2>
   <p>Analysis reports are stored in Supabase (hosted in the EU) linked to a random report ID. Reports are accessible only via your unique share link. We do not publish, share, or sell individual report data.</p>
   <p>The share link of a free analysis keeps working for 90 days after the scan. After that the link stops working and the report is no longer shown to anyone. The stored copy is not erased automatically, so email <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> if you want it erased. We may look at stored reports (not your project's files, which we do not keep) to improve the product. You can delete your report at any time using the Delete Report button on your report page, which removes the report (its findings, score and file names).</p>
   <p>A saved report contains the findings, the score, the names of the files that were read, a summary, and the detected tools. A finding can mention a function name or a short piece of code, and a key that was found is shown only in part (for example the first few characters). A report never contains your project's files. Anyone who has a report's link can open it, so share it only with people you trust.</p>
+  <p><strong>Private reports (beta).</strong> A report from the private-repository beta opens only in the browser that ran the scan, and for the site's admin. Its link stops working after 30 days, and you can delete it at any time with the Delete Report button. As with other reports, the stored copy is not erased automatically when the link stops working, so email <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> if you want it erased. Private reports are never shown in the app directory and are never reused for another visitor's scan.</p>
 
   <h2>Services that help us run Verilay</h2>
   <ul>
@@ -4972,9 +4974,10 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li><strong>Storage.</strong> Reports are stored in Supabase (hosted in the EU).</li>
     <li><strong>Hosting and network.</strong> The site runs on Railway and is served through Cloudflare, which see your IP address in the normal way.</li>
     <li><strong>Analytics and payments.</strong> Plausible Analytics (no personal data) and, for the deep scan, Stripe.</li>
+    <li><strong>GitHub.</strong> If you use the private-repository beta, GitHub lets Verilay read the one repository you choose, with your permission and read-only access. Verilay never uses its own GitHub access to read private code.</li>
   </ul>
   <h2>Accounts and the deep scan</h2>
-  <p>Signing in uses a passwordless email link or code — we never ask for or store a password. Buying a deep scan records your email, the app it was purchased for, the amount paid, and the purchase date; this comes from Stripe, which does not verify the email it collects, so a payment on its own does not sign you in. Signing in with that same email afterward links your purchase to an account so your reports are still there when you come back.</p>
+  <p>Signing in uses a passwordless email link — we never ask for or store a password. Buying a deep scan records your email, the app it was purchased for, the amount paid, and the purchase date; this comes from Stripe, which does not verify the email it collects, so a payment on its own does not sign you in. Signing in with that same email afterward links your purchase to an account so your reports are still there when you come back.</p>
   <p>Deep-scan reports are tied to your account rather than a share link alone, and are kept for as long as your account exists. You can request account and purchase-record deletion at any time by emailing <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> — note that Stripe keeps its own transaction records independently, for tax and accounting purposes, which we cannot delete on your behalf.</p>
 
   <h2>Statistics</h2>
@@ -5433,6 +5436,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 20, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Private repositories: a free beta</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> you can now check a private GitHub repository. Connect one repository with read-only access, and Verilay reads its code once, then removes its own access to your account. The report is private to your browser and is removed after 30 days. It is a free beta, with daily limits for each GitHub account.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Good to know:</strong> a ZIP upload still works for private code and keeps your project entirely under your control. The <a href="/privacy" style="color:#534AB7">privacy page</a> says exactly what is kept.</p>
   </div>
 
   <div class="entry">
