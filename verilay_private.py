@@ -248,6 +248,9 @@ def choose():
              'then removes its own access to your GitHub account straight away. Nothing is changed in your repository.</p>'
              f'<p style="font-size:13px;color:#6b6966">This is a free beta with limits: {lim["per_account_day"]} private scans per GitHub account per day. '
              f'You have {escape(str(left["account_left"]))} left today.</p>')
+    if any(not r["private"] for r in repos):
+        intro += ('<p style="font-size:13px;color:#6b6966">A repository marked <em>public</em> can also be scanned the normal way, '
+                  'with just its link, so it does not need this private route.</p>')
     if not repos:
         return _page("Choose a repository", intro + '<p>No repositories were shared with Verilay. Connect again and select the one you want checked.</p>')
     rows = "".join(

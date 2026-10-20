@@ -501,8 +501,16 @@ function init() {
   // repository (the server remembers the choice for one scan) arrives here with ?private_repo=owner/name and the scan starts.
   (function() {
     fetch("/github/status", {cache: "no-store"}).then(function(r) { return r.json(); }).then(function(s) {
+      if (!s || !s.enabled) return;
       var box = document.getElementById("private-beta");
-      if (box && s && s.enabled) box.style.display = "block";
+      if (box) box.style.display = "block";
+      // the fourth method card and the link in the top box: visible, but only where the beta is open
+      ["mc-private", "hero-private"].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = "";
+      });
+      var card = document.getElementById("mc-private");
+      if (card) card.addEventListener("click", function() { window.location.href = "/github/connect"; });
     }).catch(function() {});
     var m = /[?&]private_repo=([^&]+)/.exec(window.location.search || "");
     if (m) {

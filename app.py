@@ -5436,6 +5436,43 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 20, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">A free security checklist, and a fuller preview for live-site scans</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span><span class="tag fix">Fix</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> a free <a href="/checklist" style="color:#534AB7">vibe coding security checklist</a>: ten plain questions to ask before real users or payments arrive, each with a way to check it yourself and an honest note on how much Verilay covers it. There is a <a href="/blog/10-point-security-checklist-ai-built-app" style="color:#534AB7">blog post</a> to go with it.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> a scan of a live address now shows the security headers the site sends, the outside scripts its page loads, six tests you can try yourself, and how to get a full review of your code. The score cards show dashes instead of the word &ldquo;None&rdquo;, and the file count leaves out Verilay&rsquo;s own note files.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> a live-address result no longer says &ldquo;Analysing&rdquo; for ever. It says the layer breakdown needs your code (a GitHub link or a ZIP).</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 19, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">What Verilay keeps, in plain words</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> a short &ldquo;What we keep&rdquo; note under the Upload ZIP box. A ZIP is read while the scan runs and is not saved. A report keeps the findings, the score and file names, never your project&rsquo;s files. The code is analysed by Claude, an AI service made by Anthropic. A free report&rsquo;s link works for 90 days and can be deleted.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the <a href="/privacy" style="color:#534AB7">privacy page</a> now says the same, lists the services that help run Verilay, and describes how your IP address is used.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the Ask Verilay question box no longer saves your IP address. It keeps a scrambled counter for the free-question limit, and old counters are deleted automatically.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 18, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Plainer results, and steps to check each finding yourself</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> &ldquo;Check it yourself&rdquo;: under each finding, a few short, safe steps you can try on your own app, such as opening a private window to see whether a page needs a login, using two test accounts, or typing an apostrophe into a search box. Each says what a good and a bad result look like. Where a finding needs an experienced person, it says so.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> &ldquo;passing&rdquo; now reads &ldquo;no issues seen&rdquo; (&ldquo;Nothing found&rdquo; in the IT review, and &ldquo;Check required&rdquo; when a person should look). To a non-developer, &ldquo;passing&rdquo; sounds like &ldquo;all clear&rdquo;, and a scan can&rsquo;t promise that.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> a scan of a live address is never graded, however many files the site sends. A scan from outside can&rsquo;t see the backend, so it shows &ldquo;Preview, not graded&rdquo; and points to a GitHub link or ZIP for a real review.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the weak-encryption check now works across more languages, points out when a weak hash sits in one file and passwords are handled in another, and every area that shows no issues says why and what was not checked.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 17, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">A clearer home page, labelled fixes, and a quick view of what was checked</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> a home page with the scan box right at the top, an example report, and the story of why Verilay exists. A &ldquo;Scan at a glance&rdquo; panel in every report shows what each check covered, in numbers.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> each fix now says which part of your app and which technology it is about, and the packages card points to the right fix. Private keys pasted inside strings in code are now found.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> a page where you can tell me you&rsquo;d like to scan private repositories, so I know whether it is worth building.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 16, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Checked apps: a directory for apps built with AI, and a stamp for yours</div>
     <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
@@ -7370,6 +7407,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <span>Have a ZIP instead?</span>
       <button id="btn-hero-analyse" type="button" class="hx-link">Open the full form &rarr;</button>
       __SAMPLE_BUTTON__
+      <a id="hero-private" href="/github/connect" class="hx-link" style="display:none">Private repo? Try the beta &rarr;</a>
     </div>
     <div class="hx-stats">
       {% if analysis_count %}
@@ -7687,11 +7725,20 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <div class="mc-desc">Paste your published app link. Surface scan only, not graded.</div>
       <span class="mbadge" style="background:var(--orl);color:var(--ort)">Quick scan</span>
     </div>
+    <div class="mc" id="mc-private" style="display:none">
+      <div class="mc-icon"><i class="ti ti-lock"></i></div>
+      <div class="mc-title">Private repo</div>
+      <div class="mc-desc">Connect one private GitHub repo, read-only. Free beta with daily limits.</div>
+      <span class="mbadge" style="background:var(--pul);color:var(--put)">Beta</span>
+    </div>
   </div>
 
   <div class="ip vis" id="p-github">
     <label class="lbl">Repository URL</label>
     <p class="sub">Works with GitHub, GitLab, Bitbucket, and Azure DevOps</p>
+    <div id="private-beta" style="display:none;margin:0 0 .75rem;font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.6rem .85rem">
+        <strong style="color:var(--txt)">Private repo (beta).</strong> Connect one private repository with read-only access. Verilay reads the code once, then removes its own access. Free, with daily limits. If GitHub shows a &ldquo;Configure&rdquo; page, tick your repository, click Save, and you will come back here. <a href="/github/connect" style="color:var(--pu);font-weight:600">Connect a private repo &rarr;</a>
+    </div>
     <input type="url" id="gh-url" placeholder="https://github.com/username/project">
     <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem 1rem;margin-top:.65rem">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleAccuracyTip()">
@@ -7754,9 +7801,6 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       </div>
       <div style="margin-top:.65rem;font-size:12px;color:var(--mut)">
         <strong style="color:var(--txt)">Note:</strong> The repo must be public for Verilay to read it. Private code? Upload a ZIP instead, or <a href="/private-repos" style="color:var(--pu)">tell us you'd like private repository support</a>.
-      </div>
-      <div id="private-beta" style="display:none;margin-top:.65rem;font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.6rem .85rem">
-        <strong style="color:var(--txt)">Private repo (beta).</strong> Connect one private repository with read-only access. Verilay reads the code once, then removes its own access. Free, with daily limits. <a href="/github/connect" style="color:var(--pu);font-weight:600">Connect a private repo &rarr;</a>
       </div>
     </div>
   </div>
