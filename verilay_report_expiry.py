@@ -28,6 +28,18 @@ def days():
     return n if n >= 0 else DEFAULT_DAYS
 
 
+PRIVATE_DEFAULT_DAYS = 30
+
+
+def private_days():
+    """How many days a PRIVATE report (private-repository beta) lasts. Never 0: a private report always expires."""
+    try:
+        n = int(os.getenv("VERILAY_PRIVATE_REPORT_DAYS", "").strip())
+        return n if 1 <= n <= 365 else PRIVATE_DEFAULT_DAYS
+    except ValueError:
+        return PRIVATE_DEFAULT_DAYS
+
+
 def _parse(ts):
     try:
         d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
@@ -49,8 +61,9 @@ def sample_ids():
 
 def expires_at(created_at, data, owner, report_id=None):
     """The moment this report's link stops working, or None when it never does."""
-    n = days()
-    if n == 0 or owner or (isinstance(data, dict) and data.get("is_deep_scan")):
+    private = isinstance(data, dict) and bool(data.get("private"))
+    n = private_days() if private else days()
+    if (not private) and (n == 0 or owner or (isinstance(data, dict) and data.get("is_deep_scan"))):
         return None
     if report_id and str(report_id).lower() in sample_ids():
         return None

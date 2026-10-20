@@ -55,6 +55,7 @@ import verilay_selfcheck as selfcheck
 import verilay_livecheck as livecheck
 import verilay_checklist as checklist
 import verilay_usage as usage
+import verilay_private as privatemod
 from verilay_glance import render_glance_html, sample_preview_html
 import verilay_fonts as vl_fonts
 import verilay_fixtags as fixtags
@@ -423,7 +424,7 @@ def _save_report_row(data, user_id=None):
             prev_score = None
             prev_critical = None
             prev_row = None
-            if repo:
+            if repo and not data.get("private"):      # a private report never borrows from, or lends to, another report of the same name
                 try:
                     prev = _sb.table("reports").select("score,data").eq("repo", repo).order("created_at", desc=True).limit(1).execute()
                     if prev.data:
@@ -485,6 +486,12 @@ def _is_deleted_report(data):
 
 
 def get_report_data(report_id):
+    """A saved report by id, or None. A private report (private-repository beta) is shown only to the browser that ran the scan or to
+    a signed-in admin; to everyone else it simply does not exist (verilay_private.gate)."""
+    return privatemod.gate(_get_report_data_raw(report_id), report_id)
+
+
+def _get_report_data_raw(report_id):
     if _HAS_SUPABASE:
         # One retry: a dropped connection should cost a moment, not a 404 on
         # someone's shared report link.
@@ -917,6 +924,10 @@ def _request_is_admin():
         return False
 
 
+privatemod.init(app, get_sb=_usage_db, is_admin=_request_is_admin, report_auth_info=_report_auth_info,
+                can_write_report=_can_write_report, secret=lambda: app.secret_key)
+
+
 def fetch_github(repo_url, vis=None):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
     parts = clean.split("/")
@@ -982,6 +993,29 @@ def fetch_github(repo_url, vis=None):
     files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:MAX_FILES] if p in all_files_text}
 
     return files, all_files, f"{owner}/{repo}"
+
+
+def fetch_github_private(scan):
+    """Read one private repository with the visitor's one-hour, read-only key (verilay_private.begin_scan), then REMOVE Verilay's
+    installation straight away. Never uses Verilay's own GitHub key. Returns (files, all_paths, name, all_text)."""
+    try:
+        all_files_text = fetch_all_files_tarball(scan["owner"], scan["repo"], scan["token"])
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("Could not read that repository from GitHub. Please try again, or upload a ZIP of your project instead.")
+    finally:
+        privatemod.finish_access(scan)
+    all_files = list(all_files_text.keys())
+    selected_paths = smart_file_selection(all_files_text, max_files=MAX_FILES)
+    for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
+        if manifest in all_files_text and manifest not in selected_paths:
+            if len(selected_paths) >= MAX_FILES:
+                selected_paths[-1] = manifest
+            else:
+                selected_paths.insert(0, manifest)
+    files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:MAX_FILES] if p in all_files_text}
+    return files, all_files, f"{scan['owner']}/{scan['repo']}", all_files_text
 
 # Folders to skip in ZIP analysis
 SKIP_FOLDERS = {
@@ -2896,9 +2930,12 @@ def analyse_stream():
         if _zf:
             zip_upload = (_zf.read(), _zf.filename)
 
+    private_scan = None     # set below, once a scan slot is held (verilay_private.begin_scan)
+
     def generate():
         _cx = {}
         _s1_event = None
+        _pv_text = None
         try:
             # ── Fetch files ────────────────────────────────────────────
             yield json.dumps({"event":"status","data":"Reading your project files..."}) + "\n"
@@ -2918,6 +2955,9 @@ def analyse_stream():
                     yield from _replay_cached(_cx, client_type, method)
                     return
                 files, tree, repo_name = fetch_github(url, vis=_cx["vis"]) if "vis" in _cx else fetch_github(url)
+            elif method == "github_private":
+                # Private-repository beta: read once with the visitor's read-only key; access is removed inside this call.
+                files, tree, repo_name, _pv_text = fetch_github_private(private_scan)
             elif method == "zip":
                 if not zip_upload:
                     yield json.dumps({"event":"error","data":"Please select a ZIP file"}) + "\n"; return
@@ -2954,6 +2994,10 @@ def analyse_stream():
                 if method == "github":
                     _owner, _, _repo = repo_name.partition("/")
                     _all_text = fetch_all_files_tarball(_owner, _repo, GITHUB_TOKEN)
+                    scan_findings = scan_repo(_all_text)
+                    scan_files_count = len(_all_text)
+                elif method == "github_private":
+                    _all_text = _pv_text
                     scan_findings = scan_repo(_all_text)
                     scan_files_count = len(_all_text)
                 elif method == "zip":
@@ -3028,6 +3072,8 @@ def analyse_stream():
             # ── Step 1: Stack + overview ────────────────────────────────
             s1 = analyse_step1(files, tree, repo_name, method)
             s1["files_read"] = len(files)
+            if private_scan is not None:
+                s1["private"] = True      # kept private: never cached, never listed, shown only to this browser
             s1["files_total"] = len(tree) if tree else len(files)
             s1["file_breakdown"] = categorise_files(tree if tree else list(files.keys()))
             s1["files_analysed"] = sorted(files.keys())
@@ -3272,7 +3318,23 @@ def analyse_stream():
         def busy():
             yield json.dumps({"event":"error","data":BUSY_MESSAGE}) + "\n"
         return _sse_response(busy())
-    return _sse_response(generate(), on_close=lambda: FREE_SCANS.release(_slot))
+    if method == "github_private":
+        try:
+            private_scan = privatemod.begin_scan(request.form.get("private_repo", ""))
+        except privatemod.PrivateRefused as _pe:
+            FREE_SCANS.release(_slot)
+            _refund_rate_limit(ip)
+            _pmsg = _pe.user_message
+            def refused():
+                yield json.dumps({"event": "error", "data": _pmsg}) + "\n"
+            return _sse_response(refused())
+
+    def _scan_closed():
+        FREE_SCANS.release(_slot)
+        if private_scan is not None:
+            privatemod.finish_access(private_scan)      # certain, even if the visitor closed the tab before the scan began
+
+    return _sse_response(generate(), on_close=_scan_closed)
 
 
 @app.route("/analyse-step4", methods=["POST"])
@@ -5695,6 +5757,8 @@ def save_report_route():
         data = request.get_json()
         existing_id = data.pop("report_id", None)
         data.pop("_mgmt", None)  # never accept a client-supplied token hash
+        if data.get("private") or data.get("input_method") == "github_private":
+            return jsonify({"error": "A private report can't be saved as a shareable copy."}), 403
         # Everything in a browser-saved report (grade included) came from the browser, so it can
         # never earn an app-directory listing or stamp (see verilay_directory.scan_verdict).
         data["_client_saved"] = True
@@ -5705,6 +5769,8 @@ def save_report_route():
             stored, _owner = _report_auth_info(str(existing_id))
             if stored and stored.get("_mgmt"):
                 data["_mgmt"] = stored["_mgmt"]  # keep the report's own token
+            if stored and stored.get("private"):
+                return jsonify({"error": "A private report can't be replaced by a shareable copy."}), 403
             if _HAS_SUPABASE:
                 try:
                     _sb.table("reports").update({"data": data}).eq("id", existing_id).execute()
@@ -5884,6 +5950,11 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
   <a href="/report/{report_id}/it-review" style="display:inline-block;margin-top:.75rem;font-size:13px;color:#534AB7;font-weight:600;text-decoration:none">IT Review Pack &rarr;</a>
   <span style="font-size:12px;color:#888"> a printable checklist for IT teams approving this app</span>
 </div>""")
+
+    if data.get("private"):
+        out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:13px;color:#3C3489">'
+                   '<strong>Private report.</strong> This page opens only in the browser that ran the scan (and for a signed-in admin). '
+                   f'It is removed after {report_expiry.private_days()} days. Use Print or Export to keep a copy.</div></div>')
 
     # Score grid
     _crit, _warn, _pass = (("&ndash;",) * 3) if is_preview else (h.get('critical',0), h.get('warnings',0), h.get('passing',0))
@@ -7683,6 +7754,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       </div>
       <div style="margin-top:.65rem;font-size:12px;color:var(--mut)">
         <strong style="color:var(--txt)">Note:</strong> The repo must be public for Verilay to read it. Private code? Upload a ZIP instead, or <a href="/private-repos" style="color:var(--pu)">tell us you'd like private repository support</a>.
+      </div>
+      <div id="private-beta" style="display:none;margin-top:.65rem;font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.6rem .85rem">
+        <strong style="color:var(--txt)">Private repo (beta).</strong> Connect one private repository with read-only access. Verilay reads the code once, then removes its own access. Free, with daily limits. <a href="/github/connect" style="color:var(--pu);font-weight:600">Connect a private repo &rarr;</a>
       </div>
     </div>
   </div>

@@ -5,3 +5,5 @@ python-dotenv==1.2.2
 gunicorn>=21.2.0
 supabase==2.31.0
 stripe==15.4.0
+PyJWT>=2.8.0
+cryptography>=42.0.0

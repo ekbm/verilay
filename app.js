@@ -497,6 +497,27 @@ function init() {
     if (el) el.addEventListener('click', showForm);
   });
 
+  // Private-repository beta (verilay_private.py): the box shows only to visitors the beta is open to. A visitor who has just chosen a
+  // repository (the server remembers the choice for one scan) arrives here with ?private_repo=owner/name and the scan starts.
+  (function() {
+    fetch("/github/status", {cache: "no-store"}).then(function(r) { return r.json(); }).then(function(s) {
+      var box = document.getElementById("private-beta");
+      if (box && s && s.enabled) box.style.display = "block";
+    }).catch(function() {});
+    var m = /[?&]private_repo=([^&]+)/.exec(window.location.search || "");
+    if (m) {
+      var repo = "";
+      try { repo = decodeURIComponent(m[1]); } catch (e) { repo = ""; }
+      if (/^[A-Za-z0-9._-]{1,100}[/][A-Za-z0-9._-]{1,100}$/.test(repo)) {
+        window._privateRepo = repo;
+        currentMethod = "github_private";
+        try { history.replaceState(null, "", window.location.pathname); } catch (e) {}
+        showForm();
+        runAnalysis();
+      }
+    }
+  })();
+
   // Hero scan box (2026-10-18). Fills the real form, picks the right method and presses the real Analyse
   // button, so nothing about the scan itself changes.
   var heroScan = document.getElementById('hero-scan');
@@ -787,6 +808,10 @@ async function runAnalysis() {
     var url = document.getElementById('gh-url').value.trim();
     if (!url) { showErr('Please enter a GitHub URL'); return; }
     fd.append('github_url', url);
+  } else if (currentMethod === 'github_private') {
+    var pr = window._privateRepo || '';
+    if (!pr) { showErr('Please connect your private repository again.'); return; }
+    fd.append('private_repo', pr);
   } else if (currentMethod === 'zip') {
     var f = document.getElementById('zf').files[0];
     if (!f) { showErr('Please select a ZIP file'); return; }
@@ -999,6 +1024,10 @@ function handleStreamEvent(evt) {
       updateStepsProgress(97);
       savedReportId = evt.data.report_id;
       storeReportToken(evt.data.report_id, evt.data.manage_token);
+      if (currentReport && currentReport.private) {
+        // The server checks the report's own private key before it lets this browser open the report later.
+        try { fetch('/private-report/claim/' + encodeURIComponent(evt.data.report_id), {method: 'POST', headers: {'X-Report-Token': evt.data.manage_token}}); } catch (e) {}
+      }
       currentVerifications = {};  // Reset verifications for new report
       // The report-grounded Ask Verilay box (in the "Have questions" card)
       // renders disabled from step1 onward, since savedReportId doesn't

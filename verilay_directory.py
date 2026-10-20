@@ -123,6 +123,8 @@ def scan_verdict(data):
     stamped:  listable, every part analysed, no critical issues, grade A or B."""
     if not isinstance(data, dict) or data.get("deleted"):
         return False, False, "That scan could not be found. Please run a new free scan."
+    if data.get("private"):      # belt and braces: a private-repository report is never listed, whatever else is true of it
+        return False, False, "A private report can't be listed."
     if data.get("input_method", "github") != "github" or not data.get("repo"):
         return False, False, "Only scans of a public GitHub repository can be listed for now."
     if data.get("_client_saved"):
