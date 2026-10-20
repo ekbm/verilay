@@ -614,7 +614,7 @@ def checkout_success():
     <h2 style="margin-top:0">Keep your reports — set up your account</h2>
     <p>Your reports are saved against <strong>{_esc(email)}</strong>. To reach them
     from any device, and to be sure you never lose the link, sign in once. No
-    password — we email you a link and a code.</p>
+    password — we email you a link.</p>
     <form method="POST" action="/login">
       <input type="hidden" name="next" value="/account">
       <input type="email" name="email" value="{_esc(email)}" required>
@@ -729,20 +729,8 @@ def login():
   {notice}
   <h1>Check your email</h1>
   <p>We sent a sign-in link to <strong>{_esc(sent_to)}</strong>. Click it and you
-  are in. If the link is awkward to use — say you are checking email on your
-  phone but want to sign in here — the same email has a six-digit code:</p>
-  <div class="card">
-    <form method="POST" action="/auth/code">
-      <input type="hidden" name="email" value="{_esc(sent_to)}">
-      <input type="hidden" name="next" value="{_esc(nxt)}">
-      <label for="code">Six-digit code</label>
-      <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
-             pattern="[0-9]*" maxlength="8" placeholder="123456" required>
-      <p class="note" style="margin:.5rem 0 1rem">The code expires in about an hour.</p>
-      <button class="btn" type="submit">Sign in</button>
-    </form>
-  </div>
-  <p class="note">Nothing arrived? Check spam, then
+  are in. Open it on the device where you want to be signed in.</p>
+  <p class="note">The link works only once, and expires after a short time. Nothing arrived? Check spam, then
   <a href="/login">request another</a>.</p>
 """
         return _page("Check your email", body, robots="noindex")

@@ -7,16 +7,15 @@ for. An account exists for one reason — someone paid, and their reports should
 still be there next week when they come back to check whether their fixes worked.
 
 Sign-in is by email with no password. Supabase Auth sends the email; we never
-store or compare a credential, so there is nothing here worth stealing. Two ways
-in, both from the same email:
+store or compare a credential, so there is nothing here worth stealing. Since
+21 Oct 2026 the email carries a LINK only (Moses's decision; the email template no
+longer has a code):
 
-  • a link  — clicked, handled by /auth/callback
-  • a code  — six digits, typed into the form, handled by /auth/code
-
-The code path is the one to rely on. It is entirely server-side, so it works with
-Flask's plain server-rendered pages. The link path needs a few lines of
-JavaScript because Supabase returns the token in the URL *fragment*, which the
-browser never sends to a server.
+  • a link  — clicked, handled by /auth/callback. It needs a few lines of
+    JavaScript, because Supabase returns the token in the URL *fragment*, which
+    the browser never sends to a server.
+  • the older six-digit code path, /auth/code, still exists and still works, but
+    no page links to it and the email no longer contains a code.
 
 IMPORTANT — SECRET_KEY. Sessions here are signed with app.secret_key. Verilay
 previously fell back to a random key per process, which was harmless when nothing
@@ -112,7 +111,7 @@ def valid_email(value):
 
 
 def send_login_email(email, ip=None, base_url="https://verilay.dev", create_user=True):
-    """Email a sign-in link and code. Returns (ok, message).
+    """Email a sign-in link. Returns (ok, message).
 
     `create_user=False` is used nowhere yet, but is the switch to flip if you ever
     want sign-in restricted to people who have already bought something.
@@ -139,7 +138,7 @@ def send_login_email(email, ip=None, base_url="https://verilay.dev", create_user
         return False, ("We could not send that email just now. Please try again, "
                        "or email moses@verilay.dev and I will sort it out.")
     print(f"[accounts] Sign-in email sent to {email}", flush=True)
-    return True, "Check your email — we have sent you a sign-in link and a code."
+    return True, "Check your email — we have sent you a sign-in link."
 
 
 # ── Verifying ──────────────────────────────────────────────────────────────────
