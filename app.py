@@ -54,6 +54,7 @@ import verilay_scancache as scancache
 import verilay_selfcheck as selfcheck
 import verilay_livecheck as livecheck
 import verilay_checklist as checklist
+import verilay_usage as usage
 from verilay_glance import render_glance_html, sample_preview_html
 import verilay_fonts as vl_fonts
 import verilay_fixtags as fixtags
@@ -897,6 +898,14 @@ def verdict_from_score(score):
     }
     return m.get(score, m["C"])
 
+def _usage_db():
+    """The database client for the usage counters, or None. Resolved late, so import order does not matter."""
+    return _sb if globals().get("_HAS_SUPABASE") else None
+
+
+usage.init(_usage_db)
+
+
 def _request_is_admin():
     """True for a signed-in admin (ADMIN_EMAILS). Never raises."""
     try:
@@ -1137,6 +1146,7 @@ def call_claude(prompt, max_tokens=2500):
         ) as stream:
             for text in stream.text_stream:
                 raw += text
+            usage.record_from_stream(stream, "scan")   # token counts only (verilay_usage.py)
 
     # ── Fallback: raw requests streaming ──────────────────────────────
     else:
@@ -1372,6 +1382,7 @@ def ask_claude_call(system, prompt, max_tokens=1500):
         ) as stream:
             for text in stream.text_stream:
                 raw += text
+            usage.record_from_stream(stream, "ask")    # token counts only (verilay_usage.py)
         return raw.strip()
     # raw requests fallback
     resp = requests.post(
@@ -1653,6 +1664,7 @@ def call_claude_text(prompt, max_tokens=800):
         ) as stream:
             for text in stream.text_stream:
                 raw += text
+            usage.record_from_stream(stream, "scan")   # token counts only (verilay_usage.py)
             # Silent truncation used to be invisible: the function just
             # returned whatever text streamed before hitting max_tokens,
             # with no error and no flag, so a cut-off response looked
@@ -2851,6 +2863,7 @@ def _replay_cached(cx, client_type, method):
     report_id, manage_token = save_report_with_token(partial)
     try:
         increment_analysis_count(score=(partial.get("health") or {}).get("score"), method=method)
+        usage.scan_done("replayed")
     except Exception as _inc_err:
         print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
     yield json.dumps({"event": "saved", "data": {"report_id": report_id, "manage_token": manage_token}}) + "\n"
@@ -3061,6 +3074,7 @@ def analyse_stream():
                 report_id, manage_token = save_report_with_token(preview)
                 try:
                     increment_analysis_count(score=None, method=method)
+                    usage.scan_done("preview")
                 except Exception as _inc_err:
                     print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
                 yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token}}) + "\n"
@@ -3237,6 +3251,7 @@ def analyse_stream():
             report_id, manage_token = save_report_with_token(partial)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
+                usage.scan_done("full")
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
             yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token}}) + "\n"
@@ -5196,6 +5211,20 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 </div>
 </body>
 </html>"""
+
+
+@app.route("/usage-summary")
+def usage_summary():
+    """Admin only: AI use per day, to work out what a scan costs (verilay_usage.py). Counts only; 404 for everyone else."""
+    if not _request_is_admin():
+        return "Not found", 404
+    try:
+        days = max(1, min(90, int(request.args.get("days", "14"))))
+    except ValueError:
+        days = 14
+    resp = jsonify(usage.summary(days))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/checklist")
