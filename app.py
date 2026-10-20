@@ -53,6 +53,7 @@ from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_selfcheck as selfcheck
 import verilay_livecheck as livecheck
+import verilay_checklist as checklist
 from verilay_glance import render_glance_html, sample_preview_html
 import verilay_fonts as vl_fonts
 import verilay_fixtags as fixtags
@@ -3506,6 +3507,17 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": checklist.SLUG,
+        "title": checklist.TITLE,
+        "date": "October 20, 2026",
+        "category": "Guide",
+        "excerpt": "Ten plain-English questions to ask before real users or payments arrive, with a way to check each one yourself and an honest note on what a scan can and can't cover.",
+        "medium_url": None,
+        "read_time": "4 min read",
+        "featured": False,
+        "body": checklist.render_blog_body(),
+    },
+    {
         "slug": "is-your-lovable-or-replit-app-safe-free-check-no-sign-up",
         "title": "Is Your Lovable or Replit App Safe? A Free Check, No Sign-Up",
         "date": "October 17, 2026",
@@ -5186,6 +5198,12 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 </html>"""
 
 
+@app.route("/checklist")
+def checklist_page():
+    """The free 10-point checklist (verilay_checklist.py). All wording is fixed text."""
+    return checklist.render_page()
+
+
 @app.route("/ai-disclaimer")
 def ai_disclaimer():
     return """<!DOCTYPE html>
@@ -5596,6 +5614,7 @@ def sitemap():
         ("https://verilay.dev/", "weekly", "1.0"),
         ("https://verilay.dev/blog", "weekly", "0.8"),
         ("https://verilay.dev/about", "monthly", "0.5"),
+        ("https://verilay.dev/checklist", "monthly", "0.6"),
         ("https://verilay.dev/monitoring", "monthly", "0.6"),
         ("https://verilay.dev/apps", "daily", "0.8"),
     ]
@@ -6770,7 +6789,7 @@ _PLAUSIBLE_SNIPPET = (
     'src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>\n'
     '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
 )
-_ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer",
+_ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer", "/checklist",
                     "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos")
 
 
@@ -7871,6 +7890,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <a href="/about" style="font-size:12px;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="font-size:12px;color:var(--mut);text-decoration:none">Blog</a>
       <a href="/changelog" style="font-size:12px;color:var(--mut);text-decoration:none">Changelog</a>
+      <a href="/checklist" style="font-size:12px;color:var(--mut);text-decoration:none">Free checklist</a>
       <a href="/privacy" style="font-size:12px;color:var(--mut);text-decoration:none">Privacy</a>
       <a href="/terms" style="font-size:12px;color:var(--mut);text-decoration:none">Terms</a>
       <a href="/ai-disclaimer" style="font-size:12px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
@@ -7990,7 +8010,8 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <a href="/about" style="font-size:12px;color:var(--mut);text-decoration:none">About</a>
     <a href="/blog" style="font-size:12px;color:var(--mut);text-decoration:none">Blog</a>
     <a href="/changelog" style="font-size:12px;color:var(--mut);text-decoration:none">Changelog</a>
-    <a href="/privacy" style="font-size:12px;color:var(--mut);text-decoration:none">Privacy</a>
+    <a href="/checklist" style="font-size:12px;color:var(--mut);text-decoration:none">Free checklist</a>
+      <a href="/privacy" style="font-size:12px;color:var(--mut);text-decoration:none">Privacy</a>
     <a href="/terms" style="font-size:12px;color:var(--mut);text-decoration:none">Terms</a>
     <a href="/ai-disclaimer" style="font-size:12px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
     <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:12px;color:var(--mut);text-decoration:none">Contact Moses</a>
