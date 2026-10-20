@@ -1940,7 +1940,7 @@ function renderReport(data) {
 
   var layersHtml = '<div id="layer-errors">' + layerErrorsHTML() + '</div>' + html;
   var incomplete = window._incompleteLayers || [];
-  var sections = secHtml('sec-layers', 'What we found, by layer', hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…', layersHtml, !isPreview);
+  var sections = secHtml('sec-layers', 'What we found, by layer', isPreview ? 'Needs your code (GitHub or ZIP)' : (hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…'), layersHtml, !isPreview);
   if (checksHtml) sections += secHtml('sec-checks', 'Checks we ran', checksSummaryText(data), checksHtml, false);
   if (isPreview && data.live_view) sections = secHtml('sec-live', 'About this live-site preview', 'What it saw, and tests to try', liveCheckHTML(data), true) + sections;
   if (discoveryInner) sections += secHtml('sec-similar', 'Similar open-source projects', window._discoverySum || 'See what already exists',
