@@ -17,6 +17,7 @@ Rules (decided with Moses):
     browser that ran the scan. It expires sooner than a public report (verilay_report_expiry).
   * Nothing secret is logged or shown. Every value shown to a visitor is escaped.
 """
+import functools
 import secrets
 import time
 from datetime import datetime
@@ -132,6 +133,36 @@ def _message(title, text, status=200):
     return _page(title, f'<p>{escape(text)}</p><p><a href="/">Back to Verilay</a></p>', status)
 
 
+def _shown(e):
+    """What to show for an error: the plain message for everyone, plus (for a signed-in admin only) the short, secret-free reason."""
+    note = ""
+    try:
+        if getattr(e, "detail", "") and _deps["is_admin"]():
+            note = f" (for the admin: {e.detail})"
+    except Exception:
+        note = ""
+    return e.user_message + note
+
+
+def _safe(fn):
+    """Any unexpected error becomes a plain page (and a one-line log naming the step and the kind of error, never a value),
+    instead of a bare server error that Cloudflare would turn into a 'Bad gateway' page."""
+    @functools.wraps(fn)
+    def wrapper(*a, **k):
+        try:
+            return fn(*a, **k)
+        except Exception as e:
+            print(f"[private] unexpected error in {fn.__name__}: {type(e).__name__}", flush=True)
+            note = ""
+            try:
+                if _deps["is_admin"]():
+                    note = f" (for the admin: unexpected {type(e).__name__} in {fn.__name__})"
+            except Exception:
+                pass
+            return _message("Something went wrong", "Something went wrong on our side. Please try again in a minute." + note, 500)
+    return wrapper
+
+
 def _not_open():
     return _message("Private repositories", "Scanning private repositories is a beta that is not open to you yet. "
                     "You can still scan a public repository, or upload a ZIP of your project, which keeps your code private.", 403)
@@ -151,6 +182,7 @@ def status():
 
 
 @bp.route("/github/connect")
+@_safe
 def connect():
     if not allowed_now():
         return _not_open()
@@ -159,10 +191,11 @@ def connect():
     try:
         return redirect(gh.install_url(state), 302)
     except gh.GhAppError as e:
-        return _message("Private repositories", e.user_message, 503)
+        return _message("Private repositories", _shown(e), 500)
 
 
 @bp.route("/github/callback")
+@_safe
 def callback():
     if not allowed_now():
         return _not_open()
@@ -181,7 +214,7 @@ def callback():
     except gh.GhAppError as e:
         if e.detail:
             print(f"[private] connect refused: {e.detail}", flush=True)
-        return _message("Could not connect", e.user_message, 400)
+        return _message("Could not connect", _shown(e), 400)
     session["gh_priv"] = {"inst": installation_id, "uh": gh.account_hash(uid, _deps["secret"]()), "t": time.time()}
     return redirect("/github/choose", 302)
 
@@ -192,6 +225,7 @@ def _connection():
 
 
 @bp.route("/github/choose")
+@_safe
 def choose():
     if not allowed_now():
         return _not_open()
@@ -204,9 +238,9 @@ def choose():
     except gh.GhAppError as e:
         if e.detail:
             print(f"[private] choose failed: {e.detail}", flush=True)
-        return _message("Could not read your repositories", e.user_message, 502)
+        return _message("Could not read your repositories", _shown(e), 500)
     except PrivateRefused as e:
-        return _message("Private repositories", e.user_message, 503)
+        return _message("Private repositories", _shown(e), 500)
     csrf = secrets.token_urlsafe(16)
     session["gh_csrf"] = csrf
     lim = gh.limits()
@@ -225,6 +259,7 @@ def choose():
 
 
 @bp.route("/github/pick", methods=["POST"])
+@_safe
 def pick():
     if not allowed_now():
         return _not_open()
@@ -243,7 +278,7 @@ def pick():
             return _message("Choose a repository", "That repository isn't one you shared with Verilay.", 400)
         _check_allowance(c["uh"])
     except gh.GhAppError as e:
-        return _message("Could not check that repository", e.user_message, 502)
+        return _message("Could not check that repository", _shown(e), 500)
     except PrivateRefused as e:
         return _message("Private repositories", e.user_message, 429)
     session["gh_pick"] = {"repo": full, "t": time.time()}
@@ -268,7 +303,7 @@ def begin_scan(repo_full):
         token = gh.installation_token(inst, parts[1])
     except gh.GhAppError as e:
         gh.delete_installation(inst)
-        raise PrivateRefused(e.user_message)
+        raise PrivateRefused(_shown(e))
     except PrivateRefused:
         gh.delete_installation(inst)
         raise
