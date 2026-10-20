@@ -5047,7 +5047,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 </nav>
 <div class="wrap">
   <div style="margin-bottom:2rem">
-    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Last updated August 2026</div>
+    <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">Last updated October 2026</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Terms of Use</h1>
     <p>By using Verilay you agree to these terms. If you do not agree, please do not use the service.</p>
   </div>
@@ -5112,10 +5112,15 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <h2>8. Limitation of liability</h2>
   <p>To the maximum extent permitted by law, Verilay and its creator shall not be liable for any damages arising from use of the service, including but not limited to security breaches, data loss, or decisions made based on analysis results. Our total liability for any claim relating to the deep scan is limited to the amount you paid for that scan.</p>
 
-  <h2>9. Changes to terms</h2>
+  <h2>9. Private repository beta</h2>
+  <p>The private repository beta is free, limited and may change or stop at any time. You may connect only a repository you own or are allowed to share for analysis.</p>
+  <p>When you connect a repository you give Verilay read-only access to that one repository for a single scan. Verilay reads its code once and then removes its own access to your GitHub account. You can also remove the Verilay app at any time in your GitHub settings.</p>
+  <p>The code you share is sent to Claude (Anthropic) to produce your report. The report is private to the browser that ran the scan and is removed after 30 days. The <a href="/privacy" style="color:#534AB7">Privacy Policy</a> says exactly what is kept.</p>
+  <p>Daily limits apply to each GitHub account and to the beta as a whole, and Verilay may refuse or stop a scan to keep the service available. Sections 3, 4, 7 and 8 apply in full: the analysis is a first check, not a penetration test or a guarantee.</p>
+  <h2>10. Changes to terms</h2>
   <p>These terms may be updated from time to time. Continued use of Verilay constitutes acceptance of the updated terms.</p>
 
-  <h2>10. Contact</h2>
+  <h2>11. Contact</h2>
   <p>Questions: <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a></p>
 
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">

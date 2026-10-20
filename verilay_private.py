@@ -200,11 +200,66 @@ def status():
     return resp
 
 
-@bp.route("/github/connect")
+def _intro_page(csrf, error="", status=200):
+    """The page a visitor reads, and agrees to, BEFORE they are sent to GitHub. Every number comes from the real settings."""
+    lim = gh.limits()
+    days = _expiry.private_days()
+    err = f'<p style="background:#FEF3C7;color:#92400E;border-radius:8px;padding:.6rem .85rem;font-size:13px">{escape(error)}</p>' if error else ""
+    body = (
+        f'{err}<p style="font-size:15px">Before you connect GitHub, here is exactly what happens, what Verilay keeps, and the limits. '
+        'You stay in control the whole time.</p>'
+        '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">What happens</h2>'
+        '<ol style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
+        '<li>You continue to GitHub and sign in if needed. GitHub asks you to choose <strong>one</strong> repository to share, read-only.</li>'
+        '<li>You come back to Verilay and confirm that repository.</li>'
+        '<li>Verilay reads its code <strong>once</strong>, then <strong>removes its own access</strong> to your GitHub account straight away.</li>'
+        '<li>Verilay analyses what it read and shows a report that only <strong>your browser</strong> can open.</li></ol>'
+        '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">What Verilay can and can&rsquo;t do</h2>'
+        '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
+        '<li><strong>Read-only.</strong> Verilay can read the code of that one repository. It can&rsquo;t change, delete or add anything.</li>'
+        '<li><strong>One repository, one time.</strong> It can&rsquo;t see your other repositories, and its access is removed as soon as the code has been read.</li>'
+        '<li><strong>Your code goes to an AI service.</strong> To analyse it, parts of your code are sent to Claude, made by Anthropic. '
+        'Under Anthropic&rsquo;s business terms, content sent this way is not used to train its models.</li></ul>'
+        '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">What Verilay keeps</h2>'
+        '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
+        f'<li>The <strong>report</strong> (findings, score, file names and a summary), private to your browser and removed after {days} days. <strong>Never your code.</strong></li>'
+        f'<li>A daily count tied to a <strong>scrambled</strong> version of your GitHub account number, for about {COUNTER_KEEP_DAYS} days, to apply the daily limit.</li></ul>'
+        '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">The limits</h2>'
+        '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
+        f'<li>This is a <strong>free beta</strong>: {lim["per_account_day"]} private scan{"" if lim["per_account_day"] == 1 else "s"} per GitHub account per day. It may change or stop at any time.</li>'
+        '<li>It is a <strong>first check</strong>, not a penetration test, and not a guarantee that an app is secure. It can miss things and can be wrong.</li></ul>'
+        '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">Prefer not to connect?</h2>'
+        '<p style="font-size:14px">You can <a href="/">upload a ZIP of your project instead</a>. Your code stays under your control until you upload it. '
+        'If you do connect, you can also remove the Verilay app at any time in your GitHub settings.</p>'
+        '<form method="post" action="/github/connect" style="margin-top:1.25rem;background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1rem 1.15rem">'
+        f'<input type="hidden" name="csrf" value="{escape(csrf)}">'
+        '<label style="display:block;font-size:14px;margin-bottom:.6rem"><input type="checkbox" name="agree" value="yes" id="agree"> '
+        'I have read this, and I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a>, the '
+        '<a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a> and the <a href="/ai-disclaimer" target="_blank" rel="noopener">AI Disclaimer</a>.</label>'
+        '<label style="display:block;font-size:14px;margin-bottom:.9rem"><input type="checkbox" name="allowed" value="yes" id="allowed"> '
+        'I own this repository, or I am allowed to share its code for analysis.</label>'
+        '<button type="submit" id="go" class="cta-btn" style="border:0;cursor:pointer">Continue to GitHub</button>'
+        '</form>')
+    return _page("Connect a private repository (beta)", body, status)
+
+
+@bp.route("/github/connect", methods=["GET", "POST"])
 @_safe
 def connect():
     if not allowed_now():
         return _not_open()
+    if request.method == "GET":
+        csrf = secrets.token_urlsafe(16)
+        session["gh_csrf0"] = {"s": csrf, "t": time.time()}
+        return _intro_page(csrf)
+    saved = session.pop("gh_csrf0", None)
+    given = request.form.get("csrf", "")
+    if not _fresh(saved, STATE_MAX_AGE) or not secrets.compare_digest(str(saved.get("s", "")), given):
+        return _message("Please start again", "That page has expired. Please open the private repository page again.", 400)
+    if request.form.get("agree") != "yes" or request.form.get("allowed") != "yes":
+        csrf = secrets.token_urlsafe(16)
+        session["gh_csrf0"] = {"s": csrf, "t": time.time()}
+        return _intro_page(csrf, "Please tick both boxes to continue. Nothing is sent to GitHub until you do.", 400)
     state = secrets.token_urlsafe(24)
     session["gh_state"] = {"s": state, "t": time.time()}
     try:
