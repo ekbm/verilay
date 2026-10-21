@@ -70,6 +70,25 @@ create index if not exists purchases_pi_idx      on public.purchases (stripe_pay
 -- key. Fix the key — do not add a permissive policy here.
 alter table public.purchases enable row level security;
 
+
+-- ── Grants (needed for any NEW table from 30 Oct 2026) ───────────────────────
+-- Supabase stopped handing new tables in the `public` schema to the Data API
+-- automatically. A table now has to be granted on purpose, in the same file that
+-- creates it, or the server gets "permission denied" and a fresh project built
+-- from this file would have a purchases table nobody can reach.
+--
+-- Only service_role, which is what the Verilay server connects as. NOT anon and
+-- NOT authenticated: nothing in the browser reads this table, and the anon key is
+-- public. Row level security above stays on as a second lock.
+--
+-- Existing projects already have access to this table, and running these lines
+-- again changes nothing.
+grant select, insert, update, delete on public.purchases to service_role;
+
+-- Only if you ever add a signed-in page that reads a customer's OWN purchases
+-- (it pairs with the "own purchases readable" policy below). Left off on purpose:
+-- -- grant select on public.purchases to authenticated;
+
 -- One policy, so a signed-in customer could read their OWN purchases directly if
 -- you ever add a client-side page. The server does not rely on this.
 drop policy if exists "own purchases readable" on public.purchases;
