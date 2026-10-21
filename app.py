@@ -927,6 +927,11 @@ def _request_is_admin():
 privatemod.init(app, get_sb=_usage_db, is_admin=_request_is_admin, report_auth_info=_report_auth_info,
                 can_write_report=_can_write_report, secret=lambda: app.secret_key)
 
+# Admin-only page that tests every service Verilay stands on (verilay_platformcheck.py). Writes one test row to `stats`, then removes it.
+import verilay_platformcheck as platformcheck
+platformcheck.init(app, get_sb=_usage_db, is_admin=_request_is_admin, anthropic_key=lambda: ANTHROPIC_API_KEY,
+                   github_token=lambda: GITHUB_TOKEN, billing=billing)
+
 
 def fetch_github(repo_url, vis=None):
     clean = repo_url.replace("https://","").replace("http://","").strip("/")
