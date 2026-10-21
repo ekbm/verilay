@@ -133,7 +133,9 @@ __BODY__
 def _page(title, body, robots="index,follow"):
     user = accounts.current_user()
     if user:
-        right = (f'<a href="/account" style="color:#6b6966;text-decoration:none">{_esc(user["email"])}</a>'
+        admin_link = ('<a href="/admin" style="color:#534AB7;text-decoration:none;font-weight:600">Admin</a> &nbsp;'
+                      if _is_admin_user(user) else "")
+        right = (f'{admin_link}<a href="/account" style="color:#6b6966;text-decoration:none">{_esc(user["email"])}</a>'
                  f' &nbsp;<a href="/logout" style="color:#6b6966;text-decoration:none">Sign out</a>')
     else:
         right = '<a href="/" style="color:#6b6966;text-decoration:none">Back to app</a>'
@@ -1187,6 +1189,245 @@ def private_repo_interest_submit():
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 
 
+def _admin_sections():
+    """The admin-only blocks, built once for the Admin page (/admin). Returns
+    (admin_note, monitor_note, interest_note, private_note, clients_note); each is HTML.
+    Moved here from /account on 21 Oct 2026 so the admin material is in one place and an ordinary
+    signed-in user's account page never carries any of it. Only ever called for a signed-in admin."""
+    admin_note = ""
+    monitor_note = ""
+    interest_note = ""
+    private_note = ""
+    clients_note = ""
+    # Who has registered interest in monitoring (admin only: these are people's emails).
+    try:
+        _ir = _sb().table("monitoring_interest").select("*").order("created_at", desc=True).limit(50).execute().data or []
+        _lab = lambda k, v: _esc(_MON_CHOICES.get(k, {}).get(v, v or "-"))
+        _rows_i = "".join(
+            f'<tr><td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(str(r.get("created_at", ""))[:10])}</td>'
+            f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(r.get("email"))}</td>'
+            f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("apps", r.get("apps"))}<br>{_lab("visibility", r.get("visibility"))}</td>'
+            f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("delivery", r.get("delivery"))}</td>'
+            f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("price", r.get("price"))}</td>'
+            f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(r.get("repo"))} {_esc(r.get("notes"))}</td></tr>'
+            for r in _ir)
+        interest_note = (
+            f'<details class="acc"><summary>\U0001F4EC Monitoring interest ({len(_ir)})</summary><div class="acc-body">'
+            + ('<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse">'
+               '<tr><th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">When</th>'
+               '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Email</th>'
+               '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Apps</th>'
+               '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Wants</th>'
+               '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Price</th>'
+               '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Repo / notes</th></tr>'
+               + _rows_i + '</table></div>' if _ir else '<p class="note" style="margin:0">No one has registered yet.</p>')
+            + '</div></details>')
+    except Exception as _ie:
+        interest_note = ('<details class="acc"><summary>\U0001F4EC Monitoring interest</summary><div class="acc-body">'
+                         '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
+                         'being saved as emails only (waitlist, source &ldquo;monitoring&rdquo;). Run '
+                         'supabase_monitoring_interest.sql in Supabase to keep the full answers.</p></div></details>')
+    # Who has registered interest in a way to connect a PRIVATE repository (admin only: these are people's emails).
+    try:
+        _pr = _sb().table("private_repo_interest").select("*").order("created_at", desc=True).limit(50).execute().data or []
+        _plab = lambda k, v: _esc(_PRIV_CHOICES.get(k, {}).get(v, v or "-"))
+        _cell = 'style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0"'
+        _rows_p = "".join(
+            f'<tr><td {_cell}>{_esc(str(r.get("created_at", ""))[:10])}</td>'
+            f'<td {_cell}>{_esc(r.get("email"))}</td>'
+            f'<td {_cell}>{_plab("host", r.get("host"))}<br>{_plab("repos", r.get("repos"))}</td>'
+            f'<td {_cell}>{_plab("connect", r.get("connect"))}</td>'
+            f'<td {_cell}>{_plab("reason", r.get("reason"))}</td>'
+            f'<td {_cell}>{_esc(r.get("notes"))}</td></tr>'
+            for r in _pr)
+        _th = 'style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966"'
+        private_note = (
+            f'<details class="acc"><summary>\U0001F512 Private repo interest ({len(_pr)})</summary><div class="acc-body">'
+            + ('<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse">'
+               f'<tr><th {_th}>When</th><th {_th}>Email</th><th {_th}>Where / how many</th><th {_th}>Wants</th>'
+               f'<th {_th}>Why private</th><th {_th}>Notes</th></tr>'
+               + _rows_p + '</table></div>' if _pr else '<p class="note" style="margin:0">No one has registered yet.</p>')
+            + '</div></details>')
+    except Exception:
+        private_note = ('<details class="acc"><summary>\U0001F512 Private repo interest</summary><div class="acc-body">'
+                        '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
+                        'being saved as emails only (waitlist, source &ldquo;private-repos&rdquo;). Run '
+                        'supabase_private_repo_interest.sql in Supabase to keep the full answers.</p></div></details>')
+    # Who runs scans: browser / script / AI agent ... (a guess from the request's browser identity;
+    # only the label is stored, see verilay_client_type.py).
+    try:
+        import verilay_client_type as _ct
+        _rows_c = _sb().table("reports").select("created_at,client_type:data->>client_type") \
+            .order("created_at", desc=True).limit(1000).execute().data or []
+        _cnt = {}
+        for _r in _rows_c:
+            _k = _r.get("client_type") or "not recorded"
+            _cnt[_k] = _cnt.get(_k, 0) + 1
+        _order = list(_ct.LABELS) + ["not recorded"]
+        _parts = "".join(
+            f'<tr><td style="padding:4px 8px;font-size:13px">{_esc(_ct.LABELS.get(k, "Not recorded (older scans)"))}</td>'
+            f'<td style="padding:4px 8px;font-size:13px;text-align:right">{_cnt[k]}</td></tr>'
+            for k in _order if _cnt.get(k))
+        clients_note = (
+            f'<details class="acc"><summary>\U0001F916 Who runs scans (last {len(_rows_c)} reports)</summary><div class="acc-body">'
+            + (f'<table style="border-collapse:collapse;min-width:260px">{_parts}</table>' if _parts else
+               '<p class="note" style="margin:0">No scans recorded yet.</p>')
+            + '<p class="note" style="margin:.6rem 0 0">A guess from the browser type each request announced. Nothing else is '
+              'stored: no addresses and no browser strings. An AI agent that drives a real browser looks like a person, and '
+              '&ldquo;not recorded&rdquo; means scans from before this was added.</p></div></details>')
+    except Exception:
+        clients_note = ('<details class="acc"><summary>\U0001F916 Who runs scans</summary><div class="acc-body">'
+                        '<p class="note" style="margin:0">Not available right now.</p></div></details>')
+    admin_note = (
+        '<div class="card" style="background:#EEEDFE;border-color:#534AB7;margin-bottom:1rem">'
+        '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
+        '<strong>any</strong> repo directly from <a href="/deep-scan" style="color:#3C3489">'
+        'Analyse</a> — no purchase needed, so it will not show in the "bought" list on your account page. '
+        'Repos you have already scanned as admin get a Deep re-scan link (and a Quick scan link) under your reports on your account page.</p></div>'
+    )
+
+    # Real critical/warning counts, unlike the public homepage badge —
+    # safe here because this whole block is already gated on is_admin,
+    # i.e. only ever rendered for Moses's own signed-in account. Table
+    # format (2026-09-15, Moses's request) rather than the stacked-card
+    # layout used elsewhere on this page, specifically so this section
+    # can be screenshotted/shown as evidence of results without any
+    # extra reformatting on his end.
+    import verilay_self_monitor as self_monitor
+    mon_rows = self_monitor.admin_summary()
+    if mon_rows:
+        grade_color = {"A": "#1D9E75", "B": "#4A90D9", "C": "#EF9F27",
+                       "D": "#E24B4A", "F": "#A32D2D"}
+        # Hardcoded to match THIS page's own stylesheet (top of file) —
+        # var(--mut)/var(--bdr)/var(--txt) are homepage-only CSS custom
+        # properties that don't exist here, so they were silently no-ops
+        # (found 2026-09-15 while reworking this section for mobile).
+        th = ('padding:6px 10px;font-size:11px;font-weight:600;color:#6b6966;'
+              'text-transform:uppercase;letter-spacing:.03em;text-align:left;'
+              'border-bottom:1px solid #e8e6e0')
+        td = 'padding:8px 10px;font-size:13px;vertical-align:top;border-bottom:0.5px solid #e8e6e0'
+
+        def _cell(r):
+            score = r.get("score") or "—"
+            color = grade_color.get(score, "#1a1917")
+            checked_abs = self_monitor._format_checked_at(r.get("last_checked_at"))
+            checked_rel = self_monitor._humanize_ago_full(r.get("last_checked_at"))
+            checked = (f'{checked_abs}<br><span class="note">{checked_rel}</span>'
+                       if checked_abs else '<span class="note">never</span>')
+            status = (f'<span style="color:#A32D2D">⚠ {_esc(str(r.get("last_error"))[:100])}</span>'
+                      if r.get("last_error") else '<span style="color:#1D9E75">✓ OK</span>')
+            # Straight to the DEEP scan gate, not the free homepage — as
+            # admin this is the full-detail, fix-prompt-generating path,
+            # not just a teaser. Opens in a new tab so the account page
+            # stays put. This is a landing page with its own "Start the
+            # deep scan" button (deep_scan() above), not an instant
+            # trigger — and /start already redirects to any job already
+            # running for this repo instead of duplicating it, so no
+            # extra confirmation or dedup logic is needed here.
+            repo = r.get("repo") or ""
+            owner_name, _, name = repo.partition("/")
+            scan_link = (
+                f'<a href="/deep/{_esc(owner_name)}/{_esc(name)}" target="_blank" '
+                f'rel="noopener" style="font-size:12px;font-weight:600">Deep scan &rarr;</a>'
+                if owner_name and name else ""
+            )
+            # Free standard analysis of the same repo, for when a check
+            # shows problems and Moses wants to read more about them.
+            # Opens the homepage with the address filled in; he presses
+            # Analyse (same /?scan= pre-fill the Your reports rows use).
+            if _REPO_RE.match(repo):
+                scan_link += (
+                    f'<br><a href="/?scan={_esc(repo)}" target="_blank" rel="noopener" '
+                    f'title="Run a fresh standard analysis of this app" '
+                    f'style="font-size:12px;font-weight:600">Quick scan &rarr;</a>'
+                )
+            return (
+                f'<tr>'
+                f'<td style="{td}"><strong>{_esc(r.get("app_name") or "—")}</strong></td>'
+                f'<td style="{td}">{_esc(r.get("repo") or "—")}</td>'
+                f'<td style="{td};font-weight:700;color:{color}">{_esc(score)}</td>'
+                f'<td style="{td};text-align:center">{r.get("critical") if r.get("critical") is not None else "—"}</td>'
+                f'<td style="{td};text-align:center">{r.get("warnings") if r.get("warnings") is not None else "—"}</td>'
+                f'<td style="{td}">{checked}</td>'
+                f'<td style="{td}">{status}</td>'
+                f'<td style="{td}">{scan_link}</td>'
+                f'</tr>'
+            )
+
+        mon_table = (
+            '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;'
+            'min-width:640px">'
+            '<tr>'
+            f'<th style="{th}">App</th><th style="{th}">Repo</th><th style="{th}">Grade</th>'
+            f'<th style="{th};text-align:center">Critical</th><th style="{th};text-align:center">Warnings</th>'
+            f'<th style="{th}">Last checked</th><th style="{th}">Status</th><th style="{th}"></th>'
+            '</tr>'
+            + "".join(_cell(r) for r in mon_rows)
+            + '</table></div>'
+        )
+        try:
+            mon_detail = self_monitor.admin_detail_html(mon_rows)
+        except Exception as exc:  # detail is a bonus -- never break /account
+            print(f"[account] monitor detail failed: {exc}", flush=True)
+            mon_detail = ""
+        monitor_note = (
+            f'<details class="acc"><summary>📡 Monitored apps ({len(mon_rows)})</summary>'
+            f'<div class="acc-body">{mon_table}{mon_detail}</div></details>'
+        )
+    return admin_note, monitor_note, interest_note, private_note, clients_note
+
+
+_ADMIN_CSS = """<style>.wrap{max-width:1100px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin:.3rem 0 1.6rem}
+.tool{display:block;background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:.85rem 1rem;text-decoration:none;color:#1a1917}
+.tool b{display:block;font-size:14px;margin-bottom:.2rem;color:#3C3489}
+.tool span{font-size:12.5px;color:#6b6966;line-height:1.45}
+.tool:hover{border-color:#534AB7}
+.grp{font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin:1.4rem 0 .5rem}
+</style>"""
+
+# (group, [(name, address, one-line explanation)]). To add an admin tool, add one line here.
+_ADMIN_TOOLS = [
+    ("Is everything working?", [
+        ("Platform check", "/platform-health", "Tests the database, the AI model, GitHub, sign-in and payments for real, and says what to fix. Also counts down to the AI model's retirement."),
+        ("Payments set-up", "/billing-health", "Is the deep-scan payment path wired up? Yes or no for each piece, no secrets."),
+        ("Monitored-apps checker", "/self-monitor-health", "Is the checker that watches your own apps running, and when did it last succeed?"),
+        ("Private-repo beta status", "/github/status", "Is the private-repo beta open, in admin-only mode, or off?"),
+    ]),
+    ("Cost and use", [
+        ("AI use and cost", "/usage-summary", "Tokens used per day and what a scan really costs, to set the free limits from facts."),
+        ("Scans so far", "/stats", "The running count of analyses."),
+    ]),
+    ("Review", [
+        ("App directory review", "/apps/review", "Approve or hide apps people have listed in the directory."),
+    ]),
+]
+
+
+def _admin_tools_html():
+    out = []
+    for group, tools in _ADMIN_TOOLS:
+        cards = "".join(f'<a class="tool" href="{_esc(href)}" target="_blank" rel="noopener"><b>{_esc(name)}</b><span>{_esc(why)}</span></a>'
+                        for name, href, why in tools)
+        out.append(f'<div class="grp">{_esc(group)}</div><div class="tgrid">{cards}</div>')
+    return "".join(out)
+
+
+@bp.route("/admin")
+def admin_home():
+    """One place for everything only the site's owner uses. Anyone else, signed in or not, gets 'Not found'."""
+    user = accounts.current_user()
+    if not _is_admin_user(user):
+        return "Not found", 404
+    admin_note, monitor_note, interest_note, private_note, clients_note = _admin_sections()
+    people = f'<div class="grp">People and demand</div>{interest_note}{private_note}{clients_note}'
+    body = (_ADMIN_CSS + '<div class="eyebrow">Admin</div><h1>Admin</h1>'
+            + admin_note + _admin_tools_html() + people
+            + (f'<div class="grp">Your own apps</div>{monitor_note}' if monitor_note else "")
+            + '<p class="note" style="margin-top:2rem"><a href="/account">Back to your account</a></p>')
+    return _page("Admin", body, robots="noindex")
+
+
 @bp.route("/account")
 @accounts.login_required
 def account():
@@ -1266,187 +1507,15 @@ def account():
         if reports else
         "No reports saved to this account yet. Any analysis you run while signed in shows up here.")
 
-    admin_note = ""
-    monitor_note = ""
-    interest_note = ""
-    private_note = ""
-    clients_note = ""
+    admin_card = ""
     if is_admin:
-        # Who has registered interest in monitoring (admin only: these are people's emails).
-        try:
-            _ir = _sb().table("monitoring_interest").select("*").order("created_at", desc=True).limit(50).execute().data or []
-            _lab = lambda k, v: _esc(_MON_CHOICES.get(k, {}).get(v, v or "-"))
-            _rows_i = "".join(
-                f'<tr><td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(str(r.get("created_at", ""))[:10])}</td>'
-                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(r.get("email"))}</td>'
-                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("apps", r.get("apps"))}<br>{_lab("visibility", r.get("visibility"))}</td>'
-                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("delivery", r.get("delivery"))}</td>'
-                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_lab("price", r.get("price"))}</td>'
-                f'<td style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0">{_esc(r.get("repo"))} {_esc(r.get("notes"))}</td></tr>'
-                for r in _ir)
-            interest_note = (
-                f'<details class="acc"><summary>\U0001F4EC Monitoring interest ({len(_ir)})</summary><div class="acc-body">'
-                + ('<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse">'
-                   '<tr><th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">When</th>'
-                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Email</th>'
-                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Apps</th>'
-                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Wants</th>'
-                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Price</th>'
-                   '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966">Repo / notes</th></tr>'
-                   + _rows_i + '</table></div>' if _ir else '<p class="note" style="margin:0">No one has registered yet.</p>')
-                + '</div></details>')
-        except Exception as _ie:
-            interest_note = ('<details class="acc"><summary>\U0001F4EC Monitoring interest</summary><div class="acc-body">'
-                             '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
-                             'being saved as emails only (waitlist, source &ldquo;monitoring&rdquo;). Run '
-                             'supabase_monitoring_interest.sql in Supabase to keep the full answers.</p></div></details>')
-        # Who has registered interest in a way to connect a PRIVATE repository (admin only: these are people's emails).
-        try:
-            _pr = _sb().table("private_repo_interest").select("*").order("created_at", desc=True).limit(50).execute().data or []
-            _plab = lambda k, v: _esc(_PRIV_CHOICES.get(k, {}).get(v, v or "-"))
-            _cell = 'style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0"'
-            _rows_p = "".join(
-                f'<tr><td {_cell}>{_esc(str(r.get("created_at", ""))[:10])}</td>'
-                f'<td {_cell}>{_esc(r.get("email"))}</td>'
-                f'<td {_cell}>{_plab("host", r.get("host"))}<br>{_plab("repos", r.get("repos"))}</td>'
-                f'<td {_cell}>{_plab("connect", r.get("connect"))}</td>'
-                f'<td {_cell}>{_plab("reason", r.get("reason"))}</td>'
-                f'<td {_cell}>{_esc(r.get("notes"))}</td></tr>'
-                for r in _pr)
-            _th = 'style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966"'
-            private_note = (
-                f'<details class="acc"><summary>\U0001F512 Private repo interest ({len(_pr)})</summary><div class="acc-body">'
-                + ('<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse">'
-                   f'<tr><th {_th}>When</th><th {_th}>Email</th><th {_th}>Where / how many</th><th {_th}>Wants</th>'
-                   f'<th {_th}>Why private</th><th {_th}>Notes</th></tr>'
-                   + _rows_p + '</table></div>' if _pr else '<p class="note" style="margin:0">No one has registered yet.</p>')
-                + '</div></details>')
-        except Exception:
-            private_note = ('<details class="acc"><summary>\U0001F512 Private repo interest</summary><div class="acc-body">'
-                            '<p class="note" style="margin:0">The interest table is not set up yet, so answers are '
-                            'being saved as emails only (waitlist, source &ldquo;private-repos&rdquo;). Run '
-                            'supabase_private_repo_interest.sql in Supabase to keep the full answers.</p></div></details>')
-        # Who runs scans: browser / script / AI agent ... (a guess from the request's browser identity;
-        # only the label is stored, see verilay_client_type.py).
-        try:
-            import verilay_client_type as _ct
-            _rows_c = _sb().table("reports").select("created_at,client_type:data->>client_type") \
-                .order("created_at", desc=True).limit(1000).execute().data or []
-            _cnt = {}
-            for _r in _rows_c:
-                _k = _r.get("client_type") or "not recorded"
-                _cnt[_k] = _cnt.get(_k, 0) + 1
-            _order = list(_ct.LABELS) + ["not recorded"]
-            _parts = "".join(
-                f'<tr><td style="padding:4px 8px;font-size:13px">{_esc(_ct.LABELS.get(k, "Not recorded (older scans)"))}</td>'
-                f'<td style="padding:4px 8px;font-size:13px;text-align:right">{_cnt[k]}</td></tr>'
-                for k in _order if _cnt.get(k))
-            clients_note = (
-                f'<details class="acc"><summary>\U0001F916 Who runs scans (last {len(_rows_c)} reports)</summary><div class="acc-body">'
-                + (f'<table style="border-collapse:collapse;min-width:260px">{_parts}</table>' if _parts else
-                   '<p class="note" style="margin:0">No scans recorded yet.</p>')
-                + '<p class="note" style="margin:.6rem 0 0">A guess from the browser type each request announced. Nothing else is '
-                  'stored: no addresses and no browser strings. An AI agent that drives a real browser looks like a person, and '
-                  '&ldquo;not recorded&rdquo; means scans from before this was added.</p></div></details>')
-        except Exception:
-            clients_note = ('<details class="acc"><summary>\U0001F916 Who runs scans</summary><div class="acc-body">'
-                            '<p class="note" style="margin:0">Not available right now.</p></div></details>')
-        admin_note = (
+        admin_card = (
             '<div class="card" style="background:#EEEDFE;border-color:#534AB7;margin-bottom:1rem">'
-            '<p style="margin:0;font-size:13px;color:#3C3489">🔑 Admin access: you can deep-scan '
-            '<strong>any</strong> repo directly from <a href="/deep-scan" style="color:#3C3489">'
-            'Analyse</a> — no purchase needed, so it will not show in the "bought" list below. '
-            'Repos you have already scanned as admin get a Deep re-scan link (and a Quick scan link) under your reports.</p></div>'
+            '<p style="margin:0;font-size:13px;color:#3C3489">\U0001F511 You are signed in as the site admin. '
+            '<a href="/admin" style="color:#3C3489;font-weight:600">Open the Admin page &rarr;</a> '
+            'for the health checks, cost figures, reviews and who has asked for what. You can also deep-scan <strong>any</strong> repo '
+            'from <a href="/deep-scan" style="color:#3C3489">Analyse</a> with no purchase, so it will not appear in the "bought" list below.</p></div>'
         )
-
-        # Real critical/warning counts, unlike the public homepage badge —
-        # safe here because this whole block is already gated on is_admin,
-        # i.e. only ever rendered for Moses's own signed-in account. Table
-        # format (2026-09-15, Moses's request) rather than the stacked-card
-        # layout used elsewhere on this page, specifically so this section
-        # can be screenshotted/shown as evidence of results without any
-        # extra reformatting on his end.
-        import verilay_self_monitor as self_monitor
-        mon_rows = self_monitor.admin_summary()
-        if mon_rows:
-            grade_color = {"A": "#1D9E75", "B": "#4A90D9", "C": "#EF9F27",
-                           "D": "#E24B4A", "F": "#A32D2D"}
-            # Hardcoded to match THIS page's own stylesheet (top of file) —
-            # var(--mut)/var(--bdr)/var(--txt) are homepage-only CSS custom
-            # properties that don't exist here, so they were silently no-ops
-            # (found 2026-09-15 while reworking this section for mobile).
-            th = ('padding:6px 10px;font-size:11px;font-weight:600;color:#6b6966;'
-                  'text-transform:uppercase;letter-spacing:.03em;text-align:left;'
-                  'border-bottom:1px solid #e8e6e0')
-            td = 'padding:8px 10px;font-size:13px;vertical-align:top;border-bottom:0.5px solid #e8e6e0'
-
-            def _cell(r):
-                score = r.get("score") or "—"
-                color = grade_color.get(score, "#1a1917")
-                checked_abs = self_monitor._format_checked_at(r.get("last_checked_at"))
-                checked_rel = self_monitor._humanize_ago_full(r.get("last_checked_at"))
-                checked = (f'{checked_abs}<br><span class="note">{checked_rel}</span>'
-                           if checked_abs else '<span class="note">never</span>')
-                status = (f'<span style="color:#A32D2D">⚠ {_esc(str(r.get("last_error"))[:100])}</span>'
-                          if r.get("last_error") else '<span style="color:#1D9E75">✓ OK</span>')
-                # Straight to the DEEP scan gate, not the free homepage — as
-                # admin this is the full-detail, fix-prompt-generating path,
-                # not just a teaser. Opens in a new tab so the account page
-                # stays put. This is a landing page with its own "Start the
-                # deep scan" button (deep_scan() above), not an instant
-                # trigger — and /start already redirects to any job already
-                # running for this repo instead of duplicating it, so no
-                # extra confirmation or dedup logic is needed here.
-                repo = r.get("repo") or ""
-                owner_name, _, name = repo.partition("/")
-                scan_link = (
-                    f'<a href="/deep/{_esc(owner_name)}/{_esc(name)}" target="_blank" '
-                    f'rel="noopener" style="font-size:12px;font-weight:600">Deep scan &rarr;</a>'
-                    if owner_name and name else ""
-                )
-                # Free standard analysis of the same repo, for when a check
-                # shows problems and Moses wants to read more about them.
-                # Opens the homepage with the address filled in; he presses
-                # Analyse (same /?scan= pre-fill the Your reports rows use).
-                if _REPO_RE.match(repo):
-                    scan_link += (
-                        f'<br><a href="/?scan={_esc(repo)}" target="_blank" rel="noopener" '
-                        f'title="Run a fresh standard analysis of this app" '
-                        f'style="font-size:12px;font-weight:600">Quick scan &rarr;</a>'
-                    )
-                return (
-                    f'<tr>'
-                    f'<td style="{td}"><strong>{_esc(r.get("app_name") or "—")}</strong></td>'
-                    f'<td style="{td}">{_esc(r.get("repo") or "—")}</td>'
-                    f'<td style="{td};font-weight:700;color:{color}">{_esc(score)}</td>'
-                    f'<td style="{td};text-align:center">{r.get("critical") if r.get("critical") is not None else "—"}</td>'
-                    f'<td style="{td};text-align:center">{r.get("warnings") if r.get("warnings") is not None else "—"}</td>'
-                    f'<td style="{td}">{checked}</td>'
-                    f'<td style="{td}">{status}</td>'
-                    f'<td style="{td}">{scan_link}</td>'
-                    f'</tr>'
-                )
-
-            mon_table = (
-                '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;'
-                'min-width:640px">'
-                '<tr>'
-                f'<th style="{th}">App</th><th style="{th}">Repo</th><th style="{th}">Grade</th>'
-                f'<th style="{th};text-align:center">Critical</th><th style="{th};text-align:center">Warnings</th>'
-                f'<th style="{th}">Last checked</th><th style="{th}">Status</th><th style="{th}"></th>'
-                '</tr>'
-                + "".join(_cell(r) for r in mon_rows)
-                + '</table></div>'
-            )
-            try:
-                mon_detail = self_monitor.admin_detail_html(mon_rows)
-            except Exception as exc:  # detail is a bonus -- never break /account
-                print(f"[account] monitor detail failed: {exc}", flush=True)
-                mon_detail = ""
-            monitor_note = (
-                f'<details class="acc"><summary>📡 Monitored apps ({len(mon_rows)})</summary>'
-                f'<div class="acc-body">{mon_table}{mon_detail}</div></details>'
-            )
 
     # A scan you started and then closed the tab on used to be genuinely lost
     # — nothing anywhere showed it was still going. This is the way back.
@@ -1482,11 +1551,7 @@ def account():
   <div class="eyebrow">Your account</div>
   <h1>{_esc(user["email"])}</h1>
   {running_note}
-  {admin_note}
-  {monitor_note}
-  {interest_note}
-  {private_note}
-  {clients_note}
+  {admin_card}
   <details class="acc"><summary>Deep scan reports ({len(deep_reports)})</summary>
     <div class="acc-body">{deep_reports_html}</div>
   </details>
