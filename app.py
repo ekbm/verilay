@@ -8345,6 +8345,7 @@ self_monitor.configure(
     grade_from_counts=grade_from_counts,
     authz_scan_repo=authz_scan_repo,
     supabase_client=_sb,
+    analysis_version=lambda: ANALYSIS_VERSION,    # a changed scan rule makes the monitor scan again even if the code is the same
 )
 # Traffic-independent ticking, added 2026-09-15 so the self-monitor badge's
 # "last checked" figure is always genuinely fresh instead of depending on

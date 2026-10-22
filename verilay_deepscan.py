@@ -42,6 +42,7 @@ import verilay_deepreport as deepreport
 import verilay_deepwatch as deepwatch
 import verilay_discovery as discovery
 import verilay_fixtags as fixtags
+import verilay_usage as usage
 
 MAX_DEEP_FILES = 150
 BATCH_SIZE = 25
@@ -393,6 +394,12 @@ def _build_findings_summary(report):
 
 
 def _run_job(job_id, user_id=None):
+    """Run one deep scan. Its AI use is counted under 'deep' (verilay_usage.py), not as a visitor's free scan."""
+    with usage.attribute("deep"):
+        _run_job_body(job_id, user_id)
+
+
+def _run_job_body(job_id, user_id=None):
     job = get_job(job_id)
     if not job:
         return
@@ -562,6 +569,7 @@ def _run_job(job_id, user_id=None):
             print(f"[deepscan] completion email skipped: {e}", flush=True)
 
         _update_job(job_id, status="done", progress="Done", report_id=report_id)
+        usage.scan_done("deep")
     except _JobCancelled:
         # Status is already "cancelled" (set by cancel_job(), called from a
         # real user request) -- nothing more to do. No report saved, no

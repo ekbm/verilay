@@ -1395,7 +1395,8 @@ _ADMIN_TOOLS = [
         ("Private-repo beta status", "/github/status", "Is the private-repo beta open, in admin-only mode, or off?"),
     ]),
     ("Cost and use", [
-        ("AI use and cost", "/usage-summary", "Tokens used per day and what a scan really costs, to set the free limits from facts."),
+        ("AI costs", "/admin/costs", "What the AI is costing, split into free scans, monitoring our own apps, deep scans and questions, with the cost of one scan of each."),
+        ("Raw AI numbers", "/usage-summary", "The same counts as plain data, per day (technical)."),
         ("Scans so far", "/stats", "The running count of analyses."),
     ]),
     ("Review", [
@@ -1411,6 +1412,70 @@ def _admin_tools_html():
                         for name, href, why in tools)
         out.append(f'<div class="grp">{_esc(group)}</div><div class="tgrid">{cards}</div>')
     return "".join(out)
+
+
+def _usd(x, places=2):
+    return "&ndash;" if x is None else f"US${x:,.{places}f}"
+
+
+def _costs_html(d):
+    """The admin cost page body. Every number comes from verilay_usage.dashboard(); nothing here is guessed."""
+    if not d.get("available"):
+        return ('<div class="eyebrow">Admin</div><h1>AI costs</h1><div class="card"><p style="margin:0">The usage numbers are not available '
+                f'right now ({_esc(d.get("reason", "unknown"))}).</p></div>')
+    th = 'style="text-align:left;padding:7px 10px;font-size:11px;font-weight:600;color:#6b6966;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid #e8e6e0"'
+    thr = th.replace("text-align:left", "text-align:right")
+    td = 'style="padding:8px 10px;font-size:13px;border-bottom:0.5px solid #e8e6e0"'
+    tdr = td.replace('style="', 'style="text-align:right;white-space:nowrap;')
+    warn = ""
+    if not d.get("prices_set"):
+        warn = ('<div class="card" style="background:#FEF9C3;border-color:#EF9F27;margin-bottom:1rem"><p style="margin:0;font-size:13px">'
+                'Costs are blank because the AI prices are not set. Add AI_PRICE_INPUT_PER_MTOK and AI_PRICE_OUTPUT_PER_MTOK on Railway '
+                '(US dollars per million tokens, from the price list of the model in use). Only counts are shown until then.</p></div>')
+
+    def card(title, value, sub=""):
+        return (f'<div class="tool" style="cursor:default"><b>{_esc(title)}</b><span style="font-size:20px;color:#1a1917;font-weight:700">{value}</span>'
+                + (f'<br><span>{_esc(sub)}</span>' if sub else "") + '</div>')
+    cards = (card(f"Last {d['days_with_data']} day(s) with data", _usd(d["total_usd"]), "AI only")
+             + card("At this pace, per month", _usd(d["estimated_per_month_usd"]), "AI only; days without data are not counted")
+             + card("Hosting per month", _usd(d["hosting_per_month_usd"]) if d["hosting_per_month_usd"] is not None else "not set",
+                    "set HOSTING_COST_USD_PER_MONTH on Railway to include it")
+             + card("All in, per month", _usd(d["all_in_per_month_usd"]) if d["all_in_per_month_usd"] is not None else "&ndash;", "AI plus hosting"))
+    rows = ""
+    for c in d["categories"]:
+        per = _usd(c["cost_per_unit_usd"]) if c["cost_per_unit_usd"] is not None else "&ndash;"
+        rows += (f'<tr><td {td}><strong>{_esc(c["label"])}</strong></td><td {tdr}>{c["calls"]:,}</td>'
+                 f'<td {tdr}>{(c["input_tokens"] + c["output_tokens"]):,}</td><td {tdr}>{_usd(c["cost_usd"])}</td>'
+                 f'<td {tdr}>{c["units"]:,}</td><td {tdr}>{per}</td></tr>')
+    table = ('<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:560px"><tr>'
+             f'<th {th}>What it was for</th><th {thr}>AI calls</th><th {thr}>Tokens</th><th {thr}>Cost</th><th {thr}>Scans finished</th><th {thr}>Cost of one</th></tr>'
+             + rows + '</table></div>')
+    drows = ""
+    for r in d["per_day"]:
+        drows += (f'<tr><td {td}>{_esc(r["date"])}</td><td {tdr}>{_usd(r["scan"])}</td><td {tdr}>{_usd(r["monitor"])}</td>'
+                  f'<td {tdr}>{_usd(r["deep"])}</td><td {tdr}>{_usd(r["ask"])}</td><td {tdr}><strong>{_usd(r["total_usd"])}</strong></td></tr>')
+    daily = ('<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:560px"><tr>'
+             f'<th {th}>Day</th><th {thr}>Free scans</th><th {thr}>Monitoring</th><th {thr}>Deep scans</th><th {thr}>Questions</th><th {thr}>Total</th></tr>'
+             + drows + '</table></div>') if drows else '<p class="note">No days recorded yet.</p>'
+    skipped = d.get("own_app_checks_skipped", 0)
+    saved = (f'<p class="note" style="margin-top:.8rem">Own-app checks skipped because the code had not changed: <strong>{skipped:,}</strong> '
+             '(each one is an AI scan that was not paid for).</p>')
+    return (_ADMIN_CSS + '<div class="eyebrow">Admin</div><h1>AI costs</h1>' + warn
+            + f'<div class="tgrid">{cards}</div>'
+            + '<div class="grp">By what it was used for</div>' + table + saved
+            + '<div class="grp">By day</div>' + daily
+            + f'<p class="note" style="margin-top:1.2rem">{_esc(d.get("note", ""))} Estimates use the prices you set; they are not Anthropic\'s invoice. '
+              'Compare with the Anthropic Console now and then.</p>'
+            + '<p class="note"><a href="/admin">Back to Admin</a></p>')
+
+
+@bp.route("/admin/costs")
+def admin_costs():
+    """What the AI is costing, split by purpose. Admin only; anyone else gets 'Not found'."""
+    if not _is_admin_user(accounts.current_user()):
+        return "Not found", 404
+    import verilay_usage as _usage
+    return _page("AI costs", _costs_html(_usage.dashboard(30)), robots="noindex")
 
 
 @bp.route("/admin")

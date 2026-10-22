@@ -3,9 +3,14 @@
 Counts only. It never stores a prompt, an answer, a line of code, a repository name, an email or an address. For each day it keeps a
 handful of numbers in the existing `stats` table (key = "usage:<date>:<name>", value = a whole number):
 
-  scan_calls / scan_input_tokens / scan_output_tokens   AI calls for scans (this also includes the Part 2 fix prompts and any deep scan that day)
-  ask_calls  / ask_input_tokens  / ask_output_tokens    the Ask Verilay question box
-  scans_full / scans_replayed / scans_preview           finished scans: analysed in full, replayed from a saved result (no AI), live-address preview
+  scan_calls    / scan_input_tokens    / scan_output_tokens      AI calls for visitors' free scans and their Part 2 fix prompts
+  monitor_calls / monitor_input_tokens / monitor_output_tokens   the daily checks of our own apps (the landing-page badge)       [from 22 Oct 2026]
+  deep_calls    / deep_input_tokens    / deep_output_tokens      deep scans                                                    [from 22 Oct 2026]
+  ask_calls     / ask_input_tokens     / ask_output_tokens       the Ask Verilay question box
+  scans_full / scans_replayed / scans_preview           finished free scans: analysed in full, replayed from a saved result (no AI), live-address preview
+  scans_monitor / scans_monitor_skipped / scans_deep    own-app checks run, own-app checks skipped because the code had not changed, deep scans finished
+
+Before 22 Oct 2026 the monitor's and the deep scans' AI calls were counted under "scan", so older days cannot be split.
 
 The numbers are approximate on purpose: two workers can update the same number at the same moment and one update can be lost, and a
 restart can lose the last few seconds. That is fine for working out an average. Nothing here can slow down or break a scan: every call is
@@ -17,17 +22,39 @@ price list for the model in use). With no prices set, only tokens are shown: no 
 import os
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
-KINDS = ("scan", "ask")
-SCAN_KINDS = ("full", "replayed", "preview")
+KINDS = ("scan", "ask", "monitor", "deep")
+SCAN_SOURCES = ("monitor", "deep")           # what a scan-type AI call can be attributed to, besides a visitor's free scan
+SCAN_KINDS = ("full", "replayed", "preview", "monitor", "monitor_skipped", "deep")
+LABELS = {"scan": "Free scans (visitors)", "monitor": "Monitoring our own apps", "deep": "Deep scans", "ask": "Ask Verilay questions"}
+UNIT = {"scan": "full", "monitor": "monitor", "deep": "deep"}    # which finished-scan counter divides each cost
 FLUSH_EVERY_SECONDS = 60
 MAX_PENDING_KEYS = 200
 
 _lock = threading.Lock()
+_local = threading.local()
 _pending = {}
 _last_flush = 0.0
 _get_sb = lambda: None
+
+
+@contextmanager
+def attribute(source):
+    """Inside the block, AI calls made by THIS thread that would count as a visitor's scan are counted under `source` instead
+    ("monitor" or "deep"). Anything else is ignored. The previous setting is always restored, even on an error."""
+    prev = getattr(_local, "source", None)
+    if source in SCAN_SOURCES:
+        _local.source = source
+    try:
+        yield
+    finally:
+        _local.source = prev
+
+
+def current_source():
+    return getattr(_local, "source", None)
 
 
 def init(get_sb):
@@ -55,6 +82,8 @@ def record(input_tokens=None, output_tokens=None, kind="scan", now=None):
     try:
         if kind not in KINDS:
             return
+        if kind == "scan" and current_source() in SCAN_SOURCES:
+            kind = current_source()
         _bump(f"{kind}_calls", 1, now)
         if isinstance(input_tokens, int):
             _bump(f"{kind}_input_tokens", input_tokens, now)
@@ -127,6 +156,11 @@ def _prices():
         return None
 
 
+def _cost(d, prices, kinds=KINDS):
+    return round(sum(d.get(f"{k}_input_tokens", 0) for k in kinds) * prices[0] / 1e6
+                 + sum(d.get(f"{k}_output_tokens", 0) for k in kinds) * prices[1] / 1e6, 4)
+
+
 def summary(days=14, now=None):
     """Per-day numbers for the last `days` days, newest first, plus averages. Plain data; never raises."""
     try:
@@ -146,8 +180,7 @@ def summary(days=14, now=None):
         for day in sorted(by_day, reverse=True):
             d = dict(by_day[day])
             if prices:
-                d["est_cost_usd"] = round((d.get("scan_input_tokens", 0) + d.get("ask_input_tokens", 0)) * prices[0] / 1e6
-                                          + (d.get("scan_output_tokens", 0) + d.get("ask_output_tokens", 0)) * prices[1] / 1e6, 4)
+                d["est_cost_usd"] = _cost(d, prices)
             out_days.append({"date": day, **d})
             for k, v in d.items():
                 tot[k] = tot.get(k, 0) + v
@@ -157,11 +190,50 @@ def summary(days=14, now=None):
             avg["scan_tokens_per_full_scan"] = round((tot.get("scan_input_tokens", 0) + tot.get("scan_output_tokens", 0)) / full)
             avg["scan_calls_per_full_scan"] = round(tot.get("scan_calls", 0) / full, 1)
             if prices:
-                avg["est_cost_usd_per_full_scan"] = round(((tot.get("scan_input_tokens", 0)) * prices[0] / 1e6
-                                                           + (tot.get("scan_output_tokens", 0)) * prices[1] / 1e6) / full, 4)
+                avg["est_cost_usd_per_full_scan"] = _cost(tot, prices, ("scan",)) / full
+                avg["est_cost_usd_per_full_scan"] = round(avg["est_cost_usd_per_full_scan"], 4)
         return {"available": True, "days": out_days, "totals": tot, "averages": avg, "prices_set": bool(prices),
-                "note": ("Approximate. Scan figures include the Part 2 fix prompts and any deep scan that day; replayed scans use no AI. "
+                "note": ("Approximate. Days before 22 Oct 2026 count own-app monitoring and deep scans under 'scan'; replayed scans use no AI. "
                          "Cost needs AI_PRICE_INPUT_PER_MTOK and AI_PRICE_OUTPUT_PER_MTOK to be set." if not prices else
-                         "Approximate. Scan figures include the Part 2 fix prompts and any deep scan that day; replayed scans use no AI.")}
+                         "Approximate. Days before 22 Oct 2026 count own-app monitoring and deep scans under 'scan'; replayed scans use no AI.")}
     except Exception as e:
         return {"available": False, "reason": type(e).__name__}
+
+
+def dashboard(days=30, now=None):
+    """What the AI is costing, split by what it was used for, for the admin cost page. Plain data; never raises.
+
+    Per category (free scans, monitoring, deep scans, Ask): AI calls, tokens, estimated cost, how many finished scans there were, and
+    the cost of one. Also the per-day cost split, and a rough monthly figure from the days that have data. Hosting is added only when
+    HOSTING_COST_USD_PER_MONTH is set. Never guesses: with no AI prices set, costs are None and only counts are shown."""
+    base = summary(days, now)
+    if not base.get("available"):
+        return base
+    prices = _prices()
+    tot = base["totals"]
+    cats = []
+    for kind in ("scan", "monitor", "deep", "ask"):
+        calls = tot.get(f"{kind}_calls", 0)
+        tin, tout = tot.get(f"{kind}_input_tokens", 0), tot.get(f"{kind}_output_tokens", 0)
+        units = tot.get({"scan": "scans_full", "monitor": "scans_monitor", "deep": "scans_deep"}.get(kind, ""), 0)
+        cost = _cost(tot, prices, (kind,)) if prices else None
+        cats.append({"kind": kind, "label": LABELS[kind], "calls": calls, "input_tokens": tin, "output_tokens": tout, "cost_usd": cost,
+                     "units": units, "cost_per_unit_usd": round(cost / units, 4) if (cost is not None and units) else None})
+    day_rows = []
+    for d in base["days"]:
+        row = {"date": d["date"], "total_usd": d.get("est_cost_usd")}
+        for kind in ("scan", "monitor", "deep", "ask"):
+            row[kind] = _cost(d, prices, (kind,)) if prices else None
+        day_rows.append(row)
+    total_cost = round(sum(c["cost_usd"] for c in cats), 4) if prices else None
+    n_days = len(base["days"])
+    per_month = round(total_cost / n_days * 30, 2) if (prices and n_days) else None
+    try:
+        hosting = float(os.getenv("HOSTING_COST_USD_PER_MONTH", "").strip())
+    except Exception:
+        hosting = None
+    return {"available": True, "days_with_data": n_days, "window_days": days, "categories": cats, "per_day": day_rows,
+            "total_usd": total_cost, "estimated_per_month_usd": per_month, "hosting_per_month_usd": hosting,
+            "all_in_per_month_usd": round(per_month + hosting, 2) if (per_month is not None and hosting is not None) else None,
+            "own_app_checks_skipped": tot.get("scans_monitor_skipped", 0), "prices_set": bool(prices),
+            "note": base["note"]}

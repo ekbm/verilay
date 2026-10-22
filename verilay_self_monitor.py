@@ -30,6 +30,13 @@ dropped from 7 days to 24 hours to match: worst case the badge now reads
 "checked ~23 hours ago," never the multi-day figure that caused the original
 complaint.
 
+UPDATE 2026-10-22 (Moses's decision, after the AI cost figures showed a daily full scan of every app costs about US$1 each): an
+app is now scanned only WHEN ITS CODE HAS CHANGED. Each due check first asks GitHub for the newest commit (one free call). If it is
+the commit the last successful scan read, with the same scan rules (ANALYSIS_VERSION), and that scan is under
+RESCAN_UNCHANGED_DAYS old, nothing is scanned and no AI is used. Any doubt (no stored commit, GitHub did not answer, an earlier
+error, a new scan rule) means the scan runs as before. The landing-page badge no longer shows a "last checked" time, because with
+this design a check that finds nothing new is correctly silent; the admin table shows when the last REAL scan happened.
+
 Kept dependency-injected (configure(), called once from app.py) rather than
 importing app.py directly, to avoid a circular import — same pattern as
 verilay_deepscan.py, and deliberately reuses its exact free-analysis
@@ -42,8 +49,10 @@ from datetime import datetime, timedelta, timezone
 
 import verilay_deepwatch as deepwatch
 import verilay_notify as notify
+import verilay_usage as usage
 
 CHECK_INTERVAL_HOURS = 24
+RESCAN_UNCHANGED_DAYS = 30   # even when the code is the same, look again after this long: new vulnerabilities are published for old code
 RESOLVED_LOG_MAX = 200  # newest fixed-issue entries kept per app
 MAX_FILES = 25  # same depth as a normal free scan — this is a teaser, not a deep scan
 SCHEDULER_TICK_SECONDS = 30 * 60  # frequent enough that both apps stay comfortably
@@ -174,10 +183,78 @@ def maybe_tick():
         print(f"[self-monitor] tick failed (non-critical): {e}", flush=True)
 
 
+def _analysis_version():
+    try:
+        fn = _deps.get("analysis_version")
+        return str(fn()) if fn else ""
+    except Exception:
+        return ""
+
+
+def _parse_iso(text):
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def code_unchanged(row, head_sha, version, now=None):
+    """True ONLY when it is certain that nothing needs scanning: the newest commit is the one the last successful scan read, that scan
+    used the same scan rules, it was under RESCAN_UNCHANGED_DAYS ago, and the app has no recorded error. Any doubt gives False."""
+    try:
+        if not head_sha or not row or row.get("last_error") or not row.get("score"):
+            return False
+        scanned = (row.get("finding_state") or {}).get("scanned")
+        if not isinstance(scanned, dict) or scanned.get("sha") != head_sha:
+            return False
+        if (scanned.get("version") or "") != (version or ""):
+            return False
+        at = _parse_iso(scanned.get("at"))
+        if at is None:
+            return False
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
+        age = (now or datetime.now(timezone.utc)) - at
+        return timedelta(0) <= age <= timedelta(days=RESCAN_UNCHANGED_DAYS)
+    except Exception:
+        return False
+
+
+def _record_scanned(sb, app_name, head_sha):
+    """Remember which commit this scan read and when, in finding_state. Best effort: if it fails, the next check just scans again."""
+    try:
+        res = sb.table("self_monitoring").select("finding_state").eq("app_name", app_name).execute()
+        state = dict((res.data[0].get("finding_state") if res.data else None) or {})
+        state["scanned"] = {"sha": head_sha, "at": datetime.now(timezone.utc).isoformat(), "version": _analysis_version()}
+        sb.table("self_monitoring").update({"finding_state": state}).eq("app_name", app_name).execute()
+    except Exception as e:
+        print(f"[self-monitor] could not record the scanned commit for {app_name}: {type(e).__name__}: {e}", flush=True)
+
+
 def _run_scan(app_name, repo):
+    """One check of one of our own apps. Its AI use is counted under 'monitor' (verilay_usage.py), not as a visitor's scan."""
+    with usage.attribute("monitor"):
+        _scan_body(app_name, repo)
+
+
+def _scan_body(app_name, repo):
     sb = _sb()
     try:
         owner, _, name = repo.partition("/")
+        head_sha = None
+        try:
+            head = deepwatch.head_info(owner, name, _deps["github_token"]())
+            head_sha = head.get("sha") if isinstance(head, dict) else None
+        except Exception:
+            head_sha = None
+        try:
+            _rows = sb.table("self_monitoring").select("score,last_error,finding_state").eq("app_name", app_name).execute().data or []
+        except Exception:
+            _rows = []
+        if _rows and code_unchanged(_rows[0], head_sha, _analysis_version()):
+            usage.scan_done("monitor_skipped")
+            print(f"[self-monitor] {app_name}: code unchanged since the last scan, nothing to do", flush=True)
+            return
         all_files = _deps["fetch_all_files_tarball"](owner, name, _deps["github_token"]())
         if not all_files:
             raise ValueError(f"could not read any files from {repo}")
@@ -235,6 +312,8 @@ def _run_scan(app_name, repo):
         # Should a deep scan be run? Decided from steady signals only (see verilay_deepwatch.py). Best effort:
         # it can never cost a check.
         _update_watch(sb, app_name, repo, scan_findings, osv_vulns, all_files)
+        _record_scanned(sb, app_name, head_sha)
+        usage.scan_done("monitor")
 
         # Alert Moses ONLY when critical count went UP (including the first
         # ever successful check finding any) — never on a routine unchanged
@@ -567,10 +646,20 @@ def admin_summary():
         return []
     try:
         res = sb.table("self_monitoring").select("*").order("app_name").execute()
-        return res.data or []
+        rows = res.data or []
     except Exception as e:
         print(f"[self-monitor] admin_summary read failed: {e}", flush=True)
         return []
+    for r in rows:
+        # "Last checked" for the admin means the last time a real scan happened, not the last time we looked and found no change.
+        try:
+            real = ((r.get("finding_state") or {}).get("scanned") or {}).get("at")
+            if real:
+                r["looked_at"] = r.get("last_checked_at")
+                r["last_checked_at"] = real
+        except Exception:
+            pass
+    return rows
 
 
 def _humanize_ago(iso_str):
@@ -684,7 +773,7 @@ def badge_html():
     resolved = sum(public_resolved(r) for r in checked)
 
     if total_open == 0:
-        detail = "0 issues found — all clear right now"
+        detail = "0 issues found — all clear at the latest check"
     elif resolved > 0:
         detail = f"{resolved} issue{'s' if resolved != 1 else ''} resolved since the last check"
     else:
@@ -692,12 +781,8 @@ def badge_html():
 
     detail_html = f" &nbsp;·&nbsp; {detail}" if detail else ""
 
-    most_recent = max(
-        (r["last_checked_at"] for r in checked if r.get("last_checked_at")),
-        default=None,
-    )
-    ago = _humanize_ago(most_recent) if most_recent else None
-    ago_html = f" &nbsp;·&nbsp; last checked {ago}" if ago else ""
+    # No "last checked" time on the public badge (Moses, 2026-10-22): apps are re-scanned when their code changes, so a time
+    # would only show how long ago the code last changed.
 
     return (
         '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--grl);'
@@ -705,7 +790,7 @@ def badge_html():
         'display:inline-block">'
         '<span style="width:8px;height:8px;border-radius:50%;background:var(--gr);'
         'display:inline-block;flex-shrink:0"></span>'
-        f'Continuously monitoring {len(checked)} of our own apps — {names}{detail_html}{ago_html}'
+        f'Continuously monitoring {len(checked)} of our own apps — {names}{detail_html}'
         '</div>'
     )
 
