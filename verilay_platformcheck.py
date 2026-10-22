@@ -271,25 +271,40 @@ def check_osv():
 
 
 def check_stripe():
+    """The Stripe key is what matters. A price id is optional: without STRIPE_PRICE_ID the checkout builds the price itself."""
     b = _deps["billing"]
-    if b is None or not getattr(b, "STRIPE_SECRET_KEY", "") or not getattr(b, "STRIPE_PRICE_ID", ""):
-        return _res(SKIP, "payments not configured")
+    key = (getattr(b, "STRIPE_SECRET_KEY", "") or "") if b is not None else ""
+    if not key:
+        return _res(SKIP, "no Stripe key set, so payments are not set up")
     st = getattr(b, "_stripe", None)
     if st is None:
         return _res(FAIL, "the Stripe library is not installed")
+    mode = "live" if key.startswith(("sk_live", "rk_live")) else "test"
+    price_id = (getattr(b, "STRIPE_PRICE_ID", "") or "").strip()
     try:
-        price = st.Price.retrieve(b.STRIPE_PRICE_ID)
-        active = price["active"] if not hasattr(price, "active") else price.active
+        if price_id:
+            price = st.Price.retrieve(price_id)
+            active = price["active"] if not hasattr(price, "active") else price.active
+            if not active:
+                return _res(FAIL, "the price is archived in Stripe", "Customers could not buy. Un-archive it or make a new price and update STRIPE_PRICE_ID.")
+            what = "the saved price is active"
+        else:
+            st.Balance.retrieve()
+            what = "no saved price needed, the checkout builds it"
     except Exception as e:
         low = f"{type(e).__name__}: {e}".lower()
         if "no such price" in low:
             return _res(FAIL, "the price was not found", "STRIPE_PRICE_ID is from a different Stripe account or mode than STRIPE_SECRET_KEY.")
         if "invalid api key" in low or "authentication" in low:
             return _res(FAIL, "the Stripe key was refused", "STRIPE_SECRET_KEY is wrong or has been rolled in the Stripe dashboard.")
-        return _res(WARN, f"{type(e).__name__}", "Stripe did not answer as expected. Check status.stripe.com.")
-    if not active:
-        return _res(FAIL, "the price is archived in Stripe", "Customers could not buy. Un-archive it or make a new price and update STRIPE_PRICE_ID.")
-    return _res(OK, "key accepted and the price is active")
+        if "permission" in low:
+            what = "key accepted (a restricted key that may not read the balance)"
+        else:
+            return _res(WARN, f"{type(e).__name__}", "Stripe did not answer as expected. Check status.stripe.com.")
+    if not (getattr(b, "STRIPE_WEBHOOK_SECRET", "") or "").strip():
+        return _res(WARN, f"{mode} mode, key accepted, but no webhook secret",
+                    "Without STRIPE_WEBHOOK_SECRET a payment is taken but the purchase is never recorded. Add it from the Stripe dashboard (Developers, Webhooks).")
+    return _res(OK, f"{mode} mode, key accepted, {what}, webhook secret set")
 
 
 def check_settings():
