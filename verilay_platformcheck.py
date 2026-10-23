@@ -44,14 +44,19 @@ SECRET_NAMES = ("ANTHROPIC_API_KEY", "SUPABASE_KEY", "SUPABASE_ANON_KEY", "STRIP
 
 OK, WARN, FAIL, SKIP = "ok", "warn", "fail", "skipped"
 
-_deps = {"get_sb": lambda: None, "is_admin": lambda: False, "anthropic_key": lambda: "", "github_token": lambda: "", "billing": None}
+_deps = {"get_sb": lambda: None, "is_admin": lambda: False, "anthropic_key": lambda: "", "github_token": lambda: "", "billing": None,
+         "analysis_version": lambda: "", "base_url": lambda: (os.getenv("BASE_URL") or "").strip().rstrip("/")}
 _cache = {"at": 0.0, "data": None}
 _lock = threading.Lock()
 
 
-def init(app, get_sb, is_admin, anthropic_key, github_token, billing=None):
+def init(app, get_sb, is_admin, anthropic_key, github_token, billing=None, analysis_version=None, base_url=None):
     """Hand over what the checks need. Everything is a function, resolved only when a check runs."""
     _deps.update(get_sb=get_sb, is_admin=is_admin, anthropic_key=anthropic_key, github_token=github_token, billing=billing)
+    if analysis_version:
+        _deps["analysis_version"] = analysis_version
+    if base_url:
+        _deps["base_url"] = base_url
     app.add_url_rule("/platform-health", "platform_health", platform_health)
 
 
@@ -307,6 +312,28 @@ def check_stripe():
     return _res(OK, f"{mode} mode, key accepted, {what}, webhook secret set")
 
 
+SITE_HEADERS = ("Strict-Transport-Security", "X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "Permissions-Policy",
+                "Content-Security-Policy")
+
+
+def check_site_headers():
+    """Ask our own public address for its home page and see whether the browser-protection headers arrive. Verilay sends them itself;
+    if one is missing, something between the app and the visitor (Cloudflare, a code change) is removing it."""
+    base = _deps["base_url"]()
+    if not base.startswith("https://"):
+        return _res(SKIP, "no public https address set (BASE_URL), so it was not checked")
+    try:
+        r = http.get(base + "/", timeout=12, headers={"User-Agent": "verilay-platform-check"})
+    except Exception as e:
+        return _res(WARN, f"could not reach {base}: {type(e).__name__}", "The site did not answer its own check. Look at your uptime monitor.")
+    low = {str(k).lower() for k in dict(getattr(r, "headers", None) or {})}
+    missing = [h for h in SITE_HEADERS if h.lower() not in low]
+    if missing:
+        return _res(WARN, "not sent: " + ", ".join(missing),
+                    "Verilay adds these itself, so something in front of it, or a recent change, is removing them. Outside scanners will mark the site down.")
+    return _res(OK, "all six browser-protection headers are sent")
+
+
 def check_settings():
     missing = [n for n in ("ANTHROPIC_API_KEY", "SUPABASE_URL", "SUPABASE_KEY", "SECRET_KEY") if not (os.getenv(n) or "").strip()]
     if missing:
@@ -321,6 +348,12 @@ def check_versions():
     except Exception:
         return _res(OK, "")
     parts = [f"python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"]
+    try:
+        av = (_deps["analysis_version"]() or "").strip()
+    except Exception:
+        av = ""
+    if av:
+        parts.append(f"scan rules {av}")           # tells you which version of the code is really running
     for lib in ("flask", "anthropic", "supabase", "stripe", "requests", "gunicorn"):
         try:
             parts.append(f"{lib} {version(lib)}")
@@ -331,6 +364,7 @@ def check_versions():
 
 def _plan():
     out = [("Settings present", check_settings),
+           ("Site security headers", check_site_headers),
            ("Database write test", check_db_write),
            ("AI model", check_anthropic),
            ("GitHub API", check_github_api),

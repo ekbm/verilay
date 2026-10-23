@@ -930,7 +930,11 @@ privatemod.init(app, get_sb=_usage_db, is_admin=_request_is_admin, report_auth_i
 # Admin-only page that tests every service Verilay stands on (verilay_platformcheck.py). Writes one test row to `stats`, then removes it.
 import verilay_platformcheck as platformcheck
 platformcheck.init(app, get_sb=_usage_db, is_admin=_request_is_admin, anthropic_key=lambda: ANTHROPIC_API_KEY,
-                   github_token=lambda: GITHUB_TOKEN, billing=billing)
+                   github_token=lambda: GITHUB_TOKEN, billing=billing, analysis_version=lambda: ANALYSIS_VERSION)
+
+# The browser-protection headers on every page, and /.well-known/security.txt (verilay_security_headers.py).
+import verilay_security_headers as secheaders
+secheaders.init(app)
 
 
 def fetch_github(repo_url, vis=None):
