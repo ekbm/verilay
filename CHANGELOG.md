@@ -2,6 +2,14 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 23, 2026: Live-address scans now say how to fix the site’s setup
+
+`New` · `Improve`
+
+**New:** a scan of a live address now has a “Site setup” section. It checks whether plain http is sent on to https, how long the certificate lasts, whether sign-in cookies are protected, whether the server announces what software it runs, the email records (SPF and DMARC) of your own domain, and whether there is a security.txt file telling researchers where to report a problem. Anything that needs attention comes with plain steps for the host the site seems to run on, and a prompt you can paste into your AI builder.
+
+**Improved:** the security headers now come with one fix for all the ones that are missing, with the exact code for hosts such as Express, Flask, Vercel and Netlify. It only reads what any browser is sent, plus public DNS records. It never looks for hidden files, and the result is still a checklist, not a grade. The [privacy page](https://verilay.dev/privacy) says exactly what is looked up.
+
 ## October 20, 2026: Private repositories: a free beta
 
 `New`

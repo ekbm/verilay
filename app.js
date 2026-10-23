@@ -2421,6 +2421,54 @@ function renderSelfCheck(items) {
     '<div style="font-size:12px;color:#6b6966;border-top:0.5px solid #e5e5f0;padding-top:.4rem">Only try this on your own app, with test accounts. Never on someone else\'s app.</div></details>';
 }
 
+// "Site setup": what a live address shows about how it is set up, with how to fix each item. The wording comes from the server
+// (verilay_sitecheck.py); every value is escaped here. Prompts are kept in a list and copied by number, so no text sits inside an attribute.
+window._sitePrompts = window._sitePrompts || [];
+function copySitePrompt(i) {
+  var p = window._sitePrompts[i];
+  if (!p || !navigator.clipboard) return;
+  navigator.clipboard.writeText(p).then(function() {
+    var b = document.getElementById("site-copy-" + i);
+    if (b) { var t = b.textContent; b.textContent = "Copied"; setTimeout(function() { b.textContent = t; }, 2500); }
+  });
+}
+function siteFixHTML(steps, code, prompt, intro) {
+  var h = "";
+  var pre = "font-size:12px;background:var(--bg2,#f4f3ee);border-radius:6px;padding:.5rem;overflow-x:auto;white-space:pre-wrap;margin:.3rem 0";
+  if (intro) h += "<div style=\"font-size:12.5px;font-weight:600;margin:.3rem 0\">" + esc(intro) + "</div>";
+  h += "<ol style=\"font-size:12.5px;line-height:1.6;margin:.2rem 0 .4rem 1.1rem;padding:0\">" + (steps || []).map(function(s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
+  if (code) h += "<pre style=\"" + pre + "\">" + esc(code) + "</pre>";
+  if (prompt) {
+    var i = window._sitePrompts.push(prompt) - 1;
+    h += "<div style=\"font-size:12px;color:var(--mut);margin-top:.3rem\">Or paste this into your AI builder:</div><pre style=\"" + pre + "\">" + esc(prompt) + "</pre>" +
+      "<button type=\"button\" id=\"site-copy-" + i + "\" onclick=\"copySitePrompt(" + i + ")\" style=\"font-size:12px;padding:4px 10px;border:0.5px solid var(--bdr);border-radius:6px;background:var(--bg);cursor:pointer\">Copy prompt</button>";
+  }
+  return h;
+}
+function siteSetupHTML(sv) {
+  if (!sv || !sv.has) return "";
+  window._sitePrompts = [];
+  var c = sv.counts || {};
+  var h = "<div style=\"font-size:13px;font-weight:600;margin:.9rem 0 .3rem\">Site setup: what to fix</div>" +
+    "<div style=\"font-size:13px;line-height:1.6\"><strong>" + esc(c.check || 0) + " worth fixing, " + esc(c.ok || 0) + " fine.</strong> This looks like it runs on " + esc(sv.platform_label) + ", so the steps are for that.</div>";
+  if (sv.header_fix) {
+    var hf = sv.header_fix;
+    h += "<details style=\"margin-top:.6rem\"><summary style=\"cursor:pointer;font-size:13px;font-weight:600;color:var(--pu)\">&ndash; Security headers: how to fix</summary>" + siteFixHTML(hf.steps, hf.code, hf.prompt, hf.intro) + "</details>";
+  }
+  (sv.items || []).forEach(function(it) {
+    var mark = it.status === "ok" ? ["&#10003;", "#1D9E75"] : (it.status === "check" ? ["&ndash;", "#92400E"] : ["&middot;", "#6b6966"]);
+    var head = "<span style=\"color:" + mark[1] + ";font-weight:700\">" + mark[0] + "</span> <strong style=\"font-size:13px\">" + esc(it.title) + "</strong>" +
+      "<span style=\"font-size:12.5px;color:var(--mut)\"> &mdash; " + esc(it.detail || "") + "</span>";
+    if (it.status === "check") {
+      h += "<details style=\"margin-top:.6rem\"><summary style=\"cursor:pointer\">" + head + "</summary><div style=\"font-size:12.5px;line-height:1.6;margin:.3rem 0\">" + esc(it.why) + "</div>" + siteFixHTML(it.steps, it.code, it.prompt) + "</details>";
+    } else {
+      h += "<div style=\"margin-top:.5rem\">" + head + "</div>";
+    }
+  });
+  h += "<div style=\"font-size:12px;color:var(--mut);margin-top:.7rem\">" + esc(sv.prompt_note) + " " + esc(sv.note) + "</div>";
+  return h;
+}
+
 // A live-address preview: what could be read from outside, tests to try, and the next step. The wording comes from the server
 // (verilay_livecheck.py); every value is escaped here.
 function liveCheckHTML(data) {
@@ -2455,6 +2503,7 @@ function liveCheckHTML(data) {
       h += "<div style=\"font-size:13px\">The main page loads no scripts from other sites.</div>";
     }
   }
+  h += siteSetupHTML(data && data.site_view);
   h += "<div style=\"font-size:13px;font-weight:600;margin:.9rem 0 .2rem\">Check it yourself on your live site</div>" +
     "<div style=\"font-size:13px;line-height:1.6\">These are the tests a scanner can't do from outside. Try them on your own site.</div>" +
     renderSelfCheck(v.check_detail);

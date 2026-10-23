@@ -53,6 +53,7 @@ from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_selfcheck as selfcheck
 import verilay_livecheck as livecheck
+import verilay_sitecheck as sitecheck
 import verilay_checklist as checklist
 import verilay_usage as usage
 import verilay_private as privatemod
@@ -152,7 +153,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-23.2"
+ANALYSIS_VERSION = "2026-10-23.3"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -3107,6 +3108,10 @@ def analyse_stream():
                 # The facts are saved; the plain-English wording travels with the live event only.
                 s1["live_check"] = livecheck.build(files, url)
                 s1["live_view"] = livecheck.view(s1["live_check"])
+                # Site setup (verilay_sitecheck.py): https redirect, certificate, cookies, leaked server details, email records,
+                # security.txt, with how to fix each. Passive only. Facts are saved; the wording travels with the live event.
+                s1["site_setup"] = sitecheck.collect(url)
+                s1["site_view"] = sitecheck.view(s1["site_setup"], s1["live_check"])
                 s1.setdefault("health", {})
                 s1["health"]["score"] = None
                 s1["health"]["critical"] = None
@@ -3121,6 +3126,7 @@ def analyse_stream():
             if is_url_preview:
                 preview = dict(s1)
                 preview.pop("live_view", None)   # fixed wording is re-attached when a page or the history view is drawn
+                preview.pop("site_view", None)
                 preview["client_type"] = client_type
                 preview["layers"] = []
                 # A key hardcoded into index.html is exactly what a URL scan can prove.
@@ -3435,6 +3441,7 @@ def report_data(report_id):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
         data["live_view"] = livecheck.view(data.get("live_check"))
+        data["site_view"] = sitecheck.view(data.get("site_setup"), data.get("live_check"))
     return jsonify(data)
 
 
@@ -4956,6 +4963,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <h2>What we collect</h2>
   <ul>
     <li>The GitHub link, live address, or ZIP file you submit for analysis. We read your code to run the analysis. We do not keep your project's files (see &ldquo;How your data is stored&rdquo;)</li>
+    <li>If you scan a live address: Verilay asks for that address the way a browser does (the page, its http:// version and the standard /.well-known/security.txt), reads the dates on its public certificate, and looks up the public email records (SPF and DMARC) of the domain you typed. It never looks for hidden files. The report keeps only plain facts from this: header names and values, the names and protection flags of cookies (never their contents), and yes or no answers</li>
     <li>If you use the private-repository beta: you install the Verilay GitHub App on your account, with read-only access to code, and choose one repository. Verilay reads that repository once and then removes its own access. We keep the report, marked private (findings, score, file names and a summary, as for any report). To apply the daily limit we keep a count tied to a scrambled version of your GitHub account number, not your name, email or repository, for about two days</li>
     <li>The analysis results — findings, score, and layer breakdown</li>
     <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
@@ -4986,7 +4994,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <ul>
     <li><strong>AI analysis.</strong> To analyse your code, parts of it are sent to Claude, an AI service made by Anthropic. Under Anthropic's business terms, content sent this way is not used to train its models.</li>
     <li><strong>Storage.</strong> Reports are stored in Supabase (hosted in the EU).</li>
-    <li><strong>Hosting and network.</strong> The site runs on Railway and is served through Cloudflare, which see your IP address in the normal way.</li>
+    <li><strong>Hosting and network.</strong> The site runs on Railway and is served through Cloudflare, which see your IP address in the normal way. When you scan a live address, the domain you typed is also looked up through Cloudflare&rsquo;s public DNS service.</li>
     <li><strong>Analytics and payments.</strong> Plausible Analytics (no personal data) and, for the deep scan, Stripe.</li>
     <li><strong>GitHub.</strong> If you use the private-repository beta, GitHub lets Verilay read the one repository you choose, with your permission and read-only access. Verilay never uses its own GitHub access to read private code.</li>
   </ul>
@@ -5455,6 +5463,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 23, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Live-address scans now say how to fix the site&rsquo;s setup</div>
+    <div><span class="tag new">New</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> a scan of a live address now has a &ldquo;Site setup&rdquo; section. It checks whether plain http is sent on to https, how long the certificate lasts, whether sign-in cookies are protected, whether the server announces what software it runs, the email records (SPF and DMARC) of your own domain, and whether there is a security.txt file telling researchers where to report a problem. Anything that needs attention comes with plain steps for the host the site seems to run on, and a prompt you can paste into your AI builder.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the security headers now come with one fix for all the ones that are missing, with the exact code for hosts such as Express, Flask, Vercel and Netlify. It only reads what any browser is sent, plus public DNS records. It never looks for hidden files, and the result is still a checklist, not a grade. The <a href="/privacy" style="color:#534AB7">privacy page</a> says exactly what is looked up.</p>
   </div>
 
   <div class="entry">
@@ -6035,6 +6051,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # A live-address preview: what it looked at, the headers and outside scripts it could read, tests to try, and the next step.
     if is_preview and data.get("input_method") == "url":
         out.append(livecheck.render_html(raw_data.get("live_check"), livecheck.served_count(raw_data.get("files_analysed"), raw_data.get("files_read"))))
+        out.append(sitecheck.render_html(raw_data.get("site_setup"), raw_data.get("live_check")))
 
     # "Fix these first" -- moved from the very bottom of the page (2026-10-10). On a
     # deep scan it sat ~84% of the way down, collapsed, after a 41-item list.
