@@ -152,7 +152,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-18.3"
+ANALYSIS_VERSION = "2026-10-23.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -3295,7 +3295,8 @@ def analyse_stream():
             # Keep a copy of this analysis for the next visitor who scans the same code (taken BEFORE the report is
             # saved, so it holds none of this visitor's private key or feedback). Public repos only; never an
             # incomplete result.
-            if _cx.get("key") and not _missing and partial.get("layers"):
+            _osv_incomplete = bool((getattr(osv_vulns, "coverage", None) or {}).get("incomplete"))   # a check that could not finish is not kept for others
+            if _cx.get("key") and not _missing and partial.get("layers") and not _osv_incomplete:
                 scancache.put(_sb if _HAS_SUPABASE else None, _cx["key"], f'{_cx["owner"]}/{_cx["name"]}', _cx["sha"], ANALYSIS_VERSION, {
                     "s1": _s1_event or _copy.deepcopy(s1), "s2": _copy.deepcopy(s2), "s3": _copy.deepcopy(s3), "disc": _copy.deepcopy(disc["result"]),
                     "partial": _copy.deepcopy({k: v for k, v in partial.items() if k != "client_type"})})

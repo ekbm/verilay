@@ -312,7 +312,8 @@ def _scan_body(app_name, repo):
         # Should a deep scan be run? Decided from steady signals only (see verilay_deepwatch.py). Best effort:
         # it can never cost a check.
         _update_watch(sb, app_name, repo, scan_findings, osv_vulns, all_files)
-        _record_scanned(sb, app_name, head_sha)
+        if not (getattr(osv_vulns, "coverage", None) or {}).get("incomplete"):
+            _record_scanned(sb, app_name, head_sha)     # an unfinished dependency check must be tried again, not remembered as done
         usage.scan_done("monitor")
 
         # Alert Moses ONLY when critical count went UP (including the first

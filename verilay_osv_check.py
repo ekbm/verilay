@@ -28,19 +28,41 @@ How it works:
   4. Findings sorted critical-first, same convention as the secret scanner.
 
 Stdlib + requests only (already a Verilay dependency).
+
+UPDATE 2026-10-23 (found by reading this code against a real alert: Replit listed 180 vulnerabilities in one app, and this check would have
+shown a fraction of them):
+  * A database that does not answer, or refuses a very large request, used to look exactly like "no known vulnerabilities". Now the
+    result says the check could not be completed (coverage scope "unavailable"), and never claims the packages are clean.
+  * Details were fetched for only the first 40 advisories, in alphabetical order, one at a time, and the rest were dropped silently.
+    Now every advisory is looked up (in parallel, kept for 24 hours), and one whose details cannot be loaded is still listed, with
+    unknown severity.
+  * The package list is sent in chunks, because the database accepts a limited number of packages per request.
+  * More package lists are read: poetry.lock, uv.lock and Pipfile.lock (Python apps from Replit and similar), yarn.lock, pnpm-lock.yaml.
 """
 
 import json
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
+try:                                   # Python 3.11+: reads poetry.lock and uv.lock
+    import tomllib
+except Exception:                      # pragma: no cover
+    tomllib = None
+
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns/{id}"
 OSV_TIMEOUT = 20
-MAX_DETAIL_LOOKUPS = 40   # cap follow-up calls; a pathological manifest shouldn't stall an analysis
+MAX_DETAIL_LOOKUPS = 500  # a safety ceiling only; anything beyond it is still listed (unknown severity), never dropped
+BATCH_SIZE = 300          # packages per request; the database accepts at most 1000, stay well under
+DETAIL_WORKERS = 8        # advisory details are fetched this many at a time
+DETAIL_CACHE_SECONDS = 24 * 3600   # an advisory's own record rarely changes; the "which packages are affected" answer is NEVER cached
+DETAIL_CACHE_MAX = 3000
 
 # Severity ranking used by OSV's database_specific.severity (GitHub Security
 # Advisory convention) and our own sort order.
@@ -184,10 +206,120 @@ def _pypi_requirements_deps(content: str) -> Dict[str, Tuple[str, bool]]:
     return deps
 
 
+def _set_dep(deps, name, version, is_dev):
+    """Same rule as the npm lockfile reader: if ANY copy of a package is not dev-only, it counts as reaching production."""
+    prev = deps.get(name)
+    deps[name] = (version, (prev[1] and is_dev) if prev else is_dev)
+
+
+def _toml_packages(content: str) -> list:
+    if tomllib is None:
+        return []
+    try:
+        data = tomllib.loads(content)
+    except Exception:
+        return []
+    pk = data.get("package") if isinstance(data, dict) else None
+    return pk if isinstance(pk, list) else []
+
+
+def _poetry_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """poetry.lock (Python): every package with its exact resolved version. Older files mark dev tools with category = "dev"."""
+    deps: Dict[str, Tuple[str, bool]] = {}
+    for p in _toml_packages(content):
+        if not isinstance(p, dict):
+            continue
+        name, version = p.get("name"), p.get("version")
+        if isinstance(name, str) and isinstance(version, str) and name and version:
+            _set_dep(deps, name, version, p.get("category") == "dev")
+    return deps
+
+
+def _uv_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """uv.lock (Python, the Replit default): exact versions. The project itself and local packages are left out; dev status is unknown."""
+    deps: Dict[str, Tuple[str, bool]] = {}
+    for p in _toml_packages(content):
+        if not isinstance(p, dict):
+            continue
+        name, version = p.get("name"), p.get("version")
+        src = p.get("source")
+        if isinstance(src, dict) and any(k in src for k in ("editable", "virtual", "directory", "path")):
+            continue
+        if isinstance(name, str) and isinstance(version, str) and name and version:
+            _set_dep(deps, name, version, False)
+    return deps
+
+
+def _pipfile_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """Pipfile.lock (Python): "default" is what ships, "develop" is tooling."""
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    deps: Dict[str, Tuple[str, bool]] = {}
+    if not isinstance(data, dict):
+        return deps
+    for section, is_dev in (("default", False), ("develop", True)):
+        for name, info in (data.get(section) or {}).items():
+            v = info.get("version") if isinstance(info, dict) else None
+            if isinstance(v, str) and v.startswith("==") and len(v) > 2:
+                _set_dep(deps, name, v[2:], is_dev)
+    return deps
+
+
+_YARN_HEADER = re.compile(r'^"?((?:@[^/@"\s]+/)?[^@"\s,:]+)@')
+_YARN_VERSION = re.compile(r'^\s+version:?\s+"?([^"\s]+)"?\s*$')
+
+
+def _yarn_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """yarn.lock, classic and Berry formats. Dev status is not recorded in this file, so every package counts."""
+    deps: Dict[str, Tuple[str, bool]] = {}
+    name = None
+    for line in content.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith((" ", "\t")):
+            m = _YARN_HEADER.match(line.strip())
+            name = m.group(1) if (m and line.rstrip().endswith(":") and "@workspace:" not in line) else None
+            continue
+        if name:
+            m = _YARN_VERSION.match(line)
+            if m:
+                if not m.group(1).startswith("0.0.0-use.local"):
+                    _set_dep(deps, name, m.group(1), False)
+                name = None
+    return deps
+
+
+_PNPM_NEW = re.compile(r"^  '?/?((?:@[^/@'\s]+/)?[^@'\s/]+)@(\d[^:'\s(]*)")
+_PNPM_V5 = re.compile(r"^  '?/((?:@[^/'\s]+/)?[^/'\s]+)/(\d[^:_'\s(]*)")
+
+
+def _pnpm_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+    """pnpm-lock.yaml: the "packages" section lists name and exact version. Dev status is not read, so every package counts."""
+    deps: Dict[str, Tuple[str, bool]] = {}
+    in_packages = False
+    for line in content.splitlines():
+        if line and not line.startswith((" ", "\t", "#")):
+            in_packages = line.strip().rstrip(":") == "packages"
+            continue
+        if not in_packages:
+            continue
+        m = _PNPM_NEW.match(line) or _PNPM_V5.match(line)
+        if m:
+            _set_dep(deps, m.group(1), m.group(2), False)
+    return deps
+
+
 # path suffix -> (parser, ecosystem, is_lockfile)
 _MANIFEST_PARSERS: List[Tuple[str, callable, str, bool]] = [
     ("package-lock.json", _npm_lockfile_deps, "npm", True),
+    ("yarn.lock", _yarn_lock_deps, "npm", True),
+    ("pnpm-lock.yaml", _pnpm_lock_deps, "npm", True),
     ("package.json", _npm_manifest_deps, "npm", False),
+    ("poetry.lock", _poetry_lock_deps, "PyPI", True),
+    ("uv.lock", _uv_lock_deps, "PyPI", True),
+    ("Pipfile.lock", _pipfile_lock_deps, "PyPI", True),
     ("requirements.txt", _pypi_requirements_deps, "PyPI", False),
 ]
 
@@ -313,16 +445,27 @@ def coverage_summary(coverage: Optional[dict], packages_checked: int) -> dict:
     pk = f"{n} package" + ("" if n == 1 else "s")
     scope = (coverage or {}).get("scope") or "unknown"
     extra = " A package list file was found but could not be read." if (coverage or {}).get("unreadable_lockfiles") else ""
+    if scope == "unavailable":
+        return {"scope": scope, "summary": "0 packages checked",
+                "note": "The public vulnerability database did not answer, so none of your packages could be checked. "
+                        "This is not a clean result. Run the scan again later."}
+    more = ""
+    if (coverage or {}).get("incomplete"):
+        more += " The vulnerability database did not answer for part of this check, so more known problems may exist. Run the scan again later."
+    dm = int((coverage or {}).get("details_missing") or 0)
+    if dm:
+        more += (f" For {dm} known problem{'s' if dm != 1 else ''} the details could not be loaded, so "
+                 f"{'it is' if dm == 1 else 'they are'} listed with unknown severity.")
     if scope == "full":
-        return {"scope": scope, "summary": f"{pk}, including the ones your packages depend on", "note": ""}
+        return {"scope": scope, "summary": f"{pk}, including the ones your packages depend on", "note": more.strip()}
     if scope == "direct":
         return {"scope": scope, "summary": f"{pk} you installed directly",
-                "note": "The packages these depend on were not checked, because no full package list was found in the files Verilay read." + extra}
+                "note": "The packages these depend on were not checked, because no full package list was found in the files Verilay read." + extra + more}
     if scope == "listed":
         k = int((coverage or {}).get("unpinned_skipped") or 0)
         skipped = f" ({k} without an exact version {'was' if k == 1 else 'were'} skipped)" if k else ""
         return {"scope": scope, "summary": f"{pk} listed in requirements.txt",
-                "note": f"Only entries with an exact version number were checked{skipped}. The packages these depend on were not checked." + extra}
+                "note": f"Only entries with an exact version number were checked{skipped}. The packages these depend on were not checked." + extra + more}
     if scope == "partial":
         return {"scope": scope, "summary": f"{pk} (part of the project only)",
                 "note": "Only some of the package lists were complete, so for part of the project only the packages named directly were checked, not the ones they depend on." + extra}
@@ -339,50 +482,133 @@ def _scope_sentence(vulns, packages_checked: int) -> str:
     """Tells the AI exactly what was covered, so its write-up cannot say 'all your dependencies'."""
     cs = _coverage_of(vulns, packages_checked)
     if cs["scope"] in ("full", "unknown"):
-        return ""
+        return f" NOTE: {cs['note']} Say this plainly in the Libraries write-up." if cs["note"] else ""
     return (f" SCOPE: only {cs['summary']} were checked. {cs['note']} Say this plainly in the Libraries write-up. "
             "Never describe it as all of the app's dependencies or every library.")
 
 
 # ── OSV.dev queries ─────────────────────────────────────────────────────────
 
-def _query_batch(deps: Dict[Tuple[str, str], Tuple[str, bool]]) -> Dict[Tuple[str, str], List[str]]:
-    """One request for all dependencies. Returns {(name, ecosystem): [vuln_id, ...]}."""
-    if not deps:
-        return {}
-    keys = list(deps.keys())
-    queries = [
-        {"package": {"name": name, "ecosystem": ecosystem}, "version": version}
-        for (name, ecosystem), (version, _is_dev) in deps.items()
-    ]
-    try:
-        resp = requests.post(OSV_BATCH_URL, json={"queries": queries}, timeout=OSV_TIMEOUT)
-        resp.raise_for_status()
-    except requests.RequestException:
-        return {}  # fail open — OSV being down shouldn't break the analysis
+class _Matches(dict):
+    """{(name, ecosystem): [advisory ids]} that also remembers whether EVERY request was answered. A plain dict (as tests supply)
+    counts as complete."""
+    complete = True
 
-    results = resp.json().get("results", [])
-    out = {}
-    for key, result in zip(keys, results):
-        ids = [v["id"] for v in (result.get("vulns") or [])]
-        if ids:
-            out[key] = ids
+
+def _post_chunk(queries):
+    """One request for up to BATCH_SIZE packages: the list of results, or None when the database did not give a usable answer.
+    One retry, because a single dropped connection should not make a whole scan unreadable."""
+    for _attempt in (1, 2):
+        try:
+            resp = requests.post(OSV_BATCH_URL, json={"queries": queries}, timeout=OSV_TIMEOUT)
+            if resp.status_code >= 500:
+                continue
+            resp.raise_for_status()
+            results = resp.json().get("results")
+            if isinstance(results, list) and len(results) == len(queries):
+                return results
+            return None
+        except (requests.RequestException, ValueError, AttributeError):
+            continue
+    return None
+
+
+def _query_batch(deps: Dict[Tuple[str, str], Tuple[str, bool]]) -> Dict[Tuple[str, str], List[str]]:
+    """Which advisories affect which packages. Sent in chunks. Returns {(name, ecosystem): [vuln_id, ...]}; the result's
+    .complete is False when any chunk could not be answered, so the caller never reads silence as "all clear"."""
+    out = _Matches()
+    if not deps:
+        return out
+    keys = list(deps.keys())
+    queries = [{"package": {"name": name, "ecosystem": ecosystem}, "version": version}
+               for (name, ecosystem), (version, _is_dev) in deps.items()]
+    for i in range(0, len(keys), BATCH_SIZE):
+        results = _post_chunk(queries[i:i + BATCH_SIZE])
+        if results is None:
+            out.complete = False
+            continue
+        for key, result in zip(keys[i:i + BATCH_SIZE], results):
+            r = result if isinstance(result, dict) else {}
+            ids = [v["id"] for v in (r.get("vulns") or []) if isinstance(v, dict) and v.get("id")]
+            if ids:
+                out[key] = ids
+            if r.get("next_page_token"):
+                out.complete = False          # more results exist than this answer carried
     return out
 
 
-def _fetch_details(vuln_ids: List[str]) -> Dict[str, dict]:
-    """One GET per unique id — the batch endpoint only returns ids. Capped to
-    avoid a pathological manifest (hundreds of distinct advisories) stalling
-    an analysis; a repo that bad already has bigger problems to report first."""
-    details = {}
-    for vid in vuln_ids[:MAX_DETAIL_LOOKUPS]:
+class _Details(dict):
+    """{advisory id: its record} that also lists the ids whose record could NOT be loaded (.missing)."""
+    missing = ()
+
+
+_DETAIL_CACHE: Dict[str, Tuple[float, dict]] = {}
+_DETAIL_LOCK = threading.Lock()
+
+
+def clear_detail_cache():
+    with _DETAIL_LOCK:
+        _DETAIL_CACHE.clear()
+
+
+def _cache_get(vid, now):
+    with _DETAIL_LOCK:
+        hit = _DETAIL_CACHE.get(vid)
+        if hit and now - hit[0] < DETAIL_CACHE_SECONDS:
+            return hit[1]
+        if hit:
+            del _DETAIL_CACHE[vid]
+    return None
+
+
+def _cache_put(vid, data, now):
+    with _DETAIL_LOCK:
+        if len(_DETAIL_CACHE) >= DETAIL_CACHE_MAX:
+            _DETAIL_CACHE.clear()             # simple and safe: a cache that never grows without end
+        _DETAIL_CACHE[vid] = (now, data)
+
+
+def _get_one(vid):
+    """One advisory's record, or None. One retry for a dropped connection or a busy answer; a plain "not found" is final."""
+    for _attempt in (1, 2):
         try:
             resp = requests.get(OSV_VULN_URL.format(id=vid), timeout=OSV_TIMEOUT)
             if resp.ok:
-                details[vid] = resp.json()
-        except requests.RequestException:
-            continue
-    return details
+                data = resp.json()
+                if isinstance(data, dict):
+                    return data
+            elif resp.status_code < 500 and resp.status_code != 429:
+                return None
+        except (requests.RequestException, ValueError):
+            pass
+    return None
+
+
+def _fetch_details(vuln_ids: List[str]) -> Dict[str, dict]:
+    """The record of every advisory, fetched several at a time and kept for 24 hours. Nothing is dropped: an id whose record cannot
+    be loaded (or that lies beyond MAX_DETAIL_LOOKUPS) is listed in .missing, and the caller still reports it."""
+    out = _Details()
+    missing = []
+    now = time.time()
+    todo = []
+    for vid in vuln_ids:
+        hit = _cache_get(vid, now)
+        if hit is not None:
+            out[vid] = hit
+        else:
+            todo.append(vid)
+    look, over = todo[:MAX_DETAIL_LOOKUPS], todo[MAX_DETAIL_LOOKUPS:]
+    missing.extend(over)
+    if look:
+        with ThreadPoolExecutor(max_workers=max(1, min(DETAIL_WORKERS, len(look)))) as pool:
+            for vid, data in zip(look, pool.map(_get_one, look)):
+                if data:
+                    out[vid] = data
+                    _cache_put(vid, data, now)
+                else:
+                    missing.append(vid)
+    out.missing = missing
+    return out
 
 
 def _severity_of(vuln: dict) -> str:
@@ -494,13 +720,28 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
         return empty, 0
 
     matches = _query_batch(deps)
+    complete = getattr(matches, "complete", True)
     if not matches:
         clean = FindingList()
+        if not complete:
+            # Nothing was answered. That is NOT "no vulnerabilities": say the check could not run, and report no package as checked.
+            cov = dict(cov)
+            cov["scope"] = "unavailable"
+            cov["incomplete"] = True
+            clean.coverage = cov
+            return clean, 0
         clean.coverage = cov
         return clean, len(deps)
+    if not complete:
+        cov = dict(cov)
+        cov["incomplete"] = True              # some packages were not answered: what follows may be missing known problems
 
     all_ids = sorted({vid for ids in matches.values() for vid in ids})
     details = _fetch_details(all_ids)
+    unloaded = set(getattr(details, "missing", ()) or ())
+    if unloaded:
+        cov = dict(cov)
+        cov["details_missing"] = len(unloaded)
 
     findings: List[Vulnerability] = []
     for (name, ecosystem), (version, is_dev) in deps.items():
@@ -508,6 +749,13 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
         for vid in package_ids:
             vuln = details.get(vid)
             if not vuln:
+                # Never drop a known problem because its description could not be loaded: list it, severity unknown.
+                findings.append(Vulnerability(
+                    id=vid, aliases=[], package=name, ecosystem=ecosystem, version_found=version, severity="unknown",
+                    summary="Details for this advisory could not be loaded just now.", fixed_version=None,
+                    plain=(f"Your app uses {name} version {version}, which has a known, publicly documented security issue ({vid}). "
+                           "The database did not return the details this time, so how serious it is, and the fix, are not shown."),
+                    action=f"Look up {vid} for what it is and which version of {name} fixes it.", is_dev=is_dev))
                 continue
             severity = _severity_of(vuln)
             fixed = _fixed_version(vuln, ecosystem, version)
@@ -549,8 +797,17 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
 
 # ── Handing findings to Claude / the UI — same shape as the secret scanner ──
 
+_UNAVAILABLE_BLOCK = (
+    "\n\nDEPENDENCY VULNERABILITY CHECK: could NOT be completed. The public vulnerability database did not answer. "
+    "Do not say the dependencies are safe, clean or free of known problems, and do not invent findings. Say plainly in the "
+    "Libraries write-up that this check could not run this time and should be run again later.\n\n"
+)
+
+
 def to_prompt_block(vulns: List[Vulnerability], packages_checked: int) -> str:
     """Facts for the prompt. Claude explains and prioritises these — it does not re-detect them."""
+    if packages_checked == 0 and (getattr(vulns, "coverage", None) or {}).get("scope") == "unavailable":
+        return _UNAVAILABLE_BLOCK
     if packages_checked == 0:
         return (
             "\n\nDEPENDENCY VULNERABILITY CHECK: no dependency manifest (package.json, "
@@ -629,6 +886,8 @@ def to_teaser_block(vulns: List[Vulnerability], packages_checked: int) -> str:
     deep scan once it exists. This block explicitly tells Claude not to name
     specifics, so the teaser can't leak through the layer write-up."""
     noun = "dependency" if packages_checked == 1 else "dependencies"
+    if packages_checked == 0 and (getattr(vulns, "coverage", None) or {}).get("scope") == "unavailable":
+        return _UNAVAILABLE_BLOCK
     if packages_checked == 0:
         return (
             "\n\nDEPENDENCY VULNERABILITY CHECK: no dependency manifest found to check. "

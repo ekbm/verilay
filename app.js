@@ -1640,6 +1640,9 @@ function authzFindingsHTML(data) {
 
 function osvFindingsHTML(data) {
   var osv = data.osv_scan;
+  if (osv && osv.coverage && osv.coverage.scope === 'unavailable') {
+    return '<div style="border:0.5px solid #EF9F27;background:#FEF9C3;border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px"><strong>&#9888; The dependency check could not run this time</strong><div style="color:#92400E;font-size:12px;line-height:1.5;margin-top:6px">' + esc(osv.coverage.note || '') + '</div></div>';
+  }
   if (!osv || !osv.packages_checked) return '';
 
   var h = '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px">';

@@ -129,6 +129,8 @@ def _rule_rows(data):
         covered = cov.get("summary") or f'{_n(osv.get("packages_checked"))} packages checked'
         osv_result = (f'{_n(osv.get("vulnerabilities_found"))} known vulnerabilities '
                       f'({_n(osv.get("critical"))} serious) in {covered}')
+    elif cov.get("scope") == "unavailable":
+        osv_result = "Could not be completed this time: the vulnerability database did not answer"
     else:
         osv_result = "No dependency list found, or not run for this report"
     rows.append(("Known-vulnerable libraries",
