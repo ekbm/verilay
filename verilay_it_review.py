@@ -127,7 +127,7 @@ def _rule_rows(data):
     if osv_checked:
         # What was covered, in plain words ("N packages you installed directly" when no full list was read).
         covered = cov.get("summary") or f'{_n(osv.get("packages_checked"))} packages checked'
-        osv_result = (f'{_n(osv.get("vulnerabilities_found"))} known vulnerabilities '
+        osv_result = (f'{_n(osv.get("vulnerabilities_found"))} vulnerable packages '
                       f'({_n(osv.get("critical"))} serious) in {covered}')
     elif cov.get("scope") == "unavailable":
         osv_result = "Could not be completed this time: the vulnerability database did not answer"
@@ -251,7 +251,7 @@ def _fix_items(data):
     osv = data.get("osv_scan") or {}
     if _n(osv.get("vulnerabilities_found")):
         items.append(("critical" if _n(osv.get("critical")) else "warning",
-                      f'{_n(osv.get("vulnerabilities_found"))} known vulnerabilities in libraries',
+                      f'{_n(osv.get("vulnerabilities_found"))} vulnerable packages in libraries',
                       "dependency files",
                       "Update the affected packages to their fixed versions, then scan again."))
     for f in ((data.get("crypto_scan") or {}).get("findings") or []):

@@ -2,6 +2,16 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 24, 2026: A fuller dependency check, counted per package
+
+`Fix` · `Improve`
+
+**Fixed:** when the public vulnerability database does not answer, the report now says the check could not be completed. Before, that could read as “no known vulnerabilities”.
+
+**Improved:** Verilay now describes every known problem it finds, not only the first few, and checks each version of a package your app uses. It reads more package lists: yarn.lock, pnpm-lock.yaml, poetry.lock, uv.lock, Pipfile.lock and Bun’s text lockfile (bun.lock). Bun’s older binary bun.lockb cannot be read, and the report says so.
+
+**Improved:** the numbers and the grade now count packages, not separate advisories. One old library with 57 known problems is one thing to fix, so it counts once. Every advisory is still listed in the detail, and packages used only while building the app still do not count. Apps with a large package list will often show more known problems than before, because more of the list is now read.
+
 ## October 23, 2026: Live-address scans now say how to fix the site’s setup
 
 `New` · `Improve`

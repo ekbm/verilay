@@ -127,10 +127,10 @@ def render_glance_html(data):
     osv = data.get("osv_scan") or {}
     checked = _i(osv.get("packages_checked"))
     vulns = osv.get("vulnerabilities")
-    found = len(vulns) if isinstance(vulns, list) else _i(osv.get("vulnerabilities_found"))
+    found = _i(osv.get("vulnerabilities_found")) if osv.get("vulnerabilities_found") is not None else (len(vulns) if isinstance(vulns, list) else 0)
     if checked:
-        rows.append(_row("Dependencies", 100, f"{_n(checked)} packages &middot; {_n(found)} known "
-                         + ("issue" if found == 1 else "issues")))
+        rows.append(_row("Dependencies", 100, f"{_n(checked)} packages &middot; {_n(found)} "
+                         + ("vulnerable package" if found == 1 else "vulnerable packages")))
     else:
         rows.append(_row("Dependencies", 0, "No package list found in the files read"))
 

@@ -42,6 +42,10 @@ shown a fraction of them):
   * Every VERSION of a package is checked, not one per name. A project often holds two versions of the same package (Replit listed
     @xmldom/xmldom 0.8.11 and 0.9.10 separately); only the last one in the file used to be looked at.
   * Lock files are no longer thrown away before this check (the file loader skipped everything ending in ".lock").
+  * (24 Oct 2026, Moses) COUNTING: the grade and every headline number count PACKAGES, each package version once at its worst severity,
+    not advisories. One old library such as pillow can carry 57 advisories and is fixed by ONE upgrade; counting 57 made a handful of
+    upgrades look like a mountain and turned any app with a modest dependency tree into an F. Every advisory is still listed in the
+    detailed findings. Dev-only packages still never count.
 """
 
 import json
@@ -895,10 +899,29 @@ def severity_counts(vulns: List[Vulnerability]) -> Tuple[int, int]:
          drive the grade, since it doesn't reach a live user or production
          runtime. Unknown/unconfirmed dev status defaults to counting the
          finding — never hide real risk behind an uncertain classification."""
-    counted = _countable(vulns)
-    critical = sum(1 for v in counted if v.severity == "critical")
-    warning = sum(1 for v in counted if v.severity in ("high", "moderate", "low", "unknown"))
-    return critical, warning
+    pk = _by_package(vulns)
+    critical = sum(1 for s in pk.values() if s == "critical")
+    return critical, len(pk) - critical
+
+
+def _by_package(vulns: List[Vulnerability]) -> Dict[Tuple[str, str, str], str]:
+    """{(ecosystem, package, version): the worst severity found for it}, for findings that count (not dev-only). A package version is one
+    thing to fix, however many advisories it carries."""
+    out: Dict[Tuple[str, str, str], str] = {}
+    for v in _countable(vulns):
+        key = (v.ecosystem, v.package, v.version_found)
+        cur = out.get(key)
+        if cur is None or SEVERITY_ORDER.get(v.severity, 4) < SEVERITY_ORDER.get(cur, 4):
+            out[key] = v.severity
+    return out
+
+
+def package_counts(vulns: List[Vulnerability]) -> dict:
+    """The numbers every page uses: packages (each version once) that count, split serious / less severe; packages only in build tools;
+    and the number of separate advisories behind them. {"counted", "critical", "warnings", "dev_only", "advisories"}"""
+    crit, warn = severity_counts(vulns)
+    dev = {(v.ecosystem, v.package, v.version_found) for v in vulns if v.is_dev} - set(_by_package(vulns))
+    return {"counted": crit + warn, "critical": crit, "warnings": warn, "dev_only": len(dev), "advisories": len(_countable(vulns))}
 
 
 def _countable(vulns: List[Vulnerability]) -> List[Vulnerability]:
@@ -940,7 +963,8 @@ def to_teaser_block(vulns: List[Vulnerability], packages_checked: int) -> str:
     crit, warn = severity_counts(vulns)
     return (
         f"\n\nCONFIRMED DEPENDENCY CHECK (OSV.dev) — {packages_checked} {noun} checked. "
-        f"Found {len(counted)} known vulnerabilities ({crit} serious, {warn} less severe) in this "
+        f"Found {crit + warn} packages with known vulnerabilities ({crit} with a serious problem, {warn} less severe; "
+        f"{len(counted)} separate advisories in all, and one upgrade of a package clears all of that package's advisories) in this "
         "app's dependencies, verified against the public OSV.dev database. This is a FREE-TIER "
         "summary — you know the count and severity split, NOT which specific packages or CVEs. "
         "Report ONLY the count and severity split in the Libraries findings. Do NOT name specific "
@@ -955,12 +979,14 @@ def to_teaser_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
     only, no package names or CVE ids. Pairs with to_teaser_block above; keeps
     the same restraint in the API response as in the prompt, so a curious
     visitor reading the raw response doesn't see what the narrative withholds."""
-    crit, warn = severity_counts(vulns)
+    pc = package_counts(vulns)
     return {
         "packages_checked": packages_checked,
-        "vulnerabilities_found": len(_countable(vulns)),
-        "critical": crit,
-        "warnings": warn,
+        "vulnerabilities_found": pc["counted"],      # PACKAGES with a known problem (each version once); the page words it that way
+        "advisories_found": pc["advisories"],
+        "dev_only_packages": pc["dev_only"],
+        "critical": pc["critical"],
+        "warnings": pc["warnings"],
         "coverage": _coverage_of(vulns, packages_checked),
     }
 
@@ -972,9 +998,14 @@ def to_report_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
     complete list. "critical"/"high" here are literal OSV severity counts for
     display, unrelated to severity_counts()'s grade-floor bucketing (which
     excludes dev-only and moves high out of the critical bucket)."""
+    pc = package_counts(vulns)
     return {
         "packages_checked": packages_checked,
         "coverage": _coverage_of(vulns, packages_checked),
+        "vulnerabilities_found": pc["counted"],      # packages, each version once (the same number the grade uses)
+        "advisories_found": len(vulns),
+        "dev_only_packages": pc["dev_only"],
+        "critical_packages": pc["critical"],
         "critical": sum(1 for v in vulns if v.severity == "critical"),
         "high": sum(1 for v in vulns if v.severity == "high"),
         "vulnerabilities": [

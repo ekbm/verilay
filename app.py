@@ -74,6 +74,7 @@ from verilay_authz_check import (
 from verilay_osv_check import (
     check_dependencies,
     severity_counts as osv_severity_counts,
+    package_counts as osv_package_counts,
     to_teaser_block as osv_to_teaser_block,
     to_teaser_dict as osv_to_teaser_dict,
     to_report_dict as osv_to_report_dict,
@@ -153,7 +154,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-23.3"
+ANALYSIS_VERSION = "2026-10-24.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -2565,26 +2566,32 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
             }]
         else:
             sev = "critical" if crit > 0 else "warning"
-            vuln_noun = "package has" if len(osv_vulns) == 1 else "packages have"
+            _pc = osv_package_counts(osv_vulns)
+            n_pk = _pc["counted"] or _pc["dev_only"]       # packages (each version once); build-tool-only ones when nothing else
+            vuln_noun = "package has" if n_pk == 1 else "packages have"
+            _dev_note = (f" A further {_pc['dev_only']} {'package is' if _pc['dev_only'] == 1 else 'packages are'} used only while building the app, not by your visitors."
+                         if _pc["counted"] and _pc["dev_only"] else "")
             summary = (
-                f"Checked {cs['summary']} against OSV.dev — found {len(osv_vulns)} with known "
-                f"vulnerabilities ({crit} serious, {warn} less severe)." + scope_note
+                (f"Checked {cs['summary']} against OSV.dev — found {n_pk} with known vulnerabilities ({crit} serious, {warn} less severe; "
+                 f"{_pc['advisories']} separate advisories in all)." if _pc["counted"] else
+                 f"Checked {cs['summary']} against OSV.dev — {n_pk} of them, used only while building the app, have known vulnerabilities; none that your visitors' browsers or your server run.")
+                + _dev_note + scope_note
             )
             layer["status"] = sev
             layer["expert"]["summary"] = summary
             layer["expert"]["findings"] = [{
                 "severity": sev,
-                "title": f"{len(osv_vulns)} {vuln_noun} known vulnerabilities",
+                "title": f"{n_pk} {vuln_noun} known vulnerabilities",
                 "detail": summary, "file": "",
                 "why_it_matters": "Outdated libraries are one of the most common ways AI-built apps get compromised.",
             }]
             layer["learner"]["findings_plain"] = [{
                 "severity": sev,
-                "plain_title": f"{len(osv_vulns)} of your code libraries have known security problems",
+                "plain_title": f"{n_pk} of your code libraries have known security problems",
                 "plain_detail": (
                     f"Verilay checked {cs['summary']} against a public "
-                    f"database of known security problems and found {len(osv_vulns)} with a documented "
-                    "issue." + scope_note
+                    f"database of known security problems and found {n_pk} with a documented "
+                    "issue. Updating a library fixes all of the problems listed for it at once." + scope_note
                 ),
                 "real_world_impact": "A known, published weakness in one of your libraries could be used against your app.",
                 "action": "Ask your AI builder to check for outdated dependencies and update them to their patched versions.",
@@ -5463,6 +5470,15 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 24, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">A fuller dependency check, counted per package</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> when the public vulnerability database does not answer, the report now says the check could not be completed. Before, that could read as &ldquo;no known vulnerabilities&rdquo;.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> Verilay now describes every known problem it finds, not only the first few, and checks each version of a package your app uses. It reads more package lists: yarn.lock, pnpm-lock.yaml, poetry.lock, uv.lock, Pipfile.lock and Bun&rsquo;s text lockfile (bun.lock). Bun&rsquo;s older binary bun.lockb cannot be read, and the report says so.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the numbers and the grade now count packages, not separate advisories. One old library with 57 known problems is one thing to fix, so it counts once. Every advisory is still listed in the detail, and packages used only while building the app still do not count. Apps with a large package list will often show more known problems than before, because more of the list is now read.</p>
   </div>
 
   <div class="entry">
