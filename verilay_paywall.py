@@ -1294,6 +1294,7 @@ def _admin_sections():
     # can be screenshotted/shown as evidence of results without any
     # extra reformatting on his end.
     import verilay_self_monitor as self_monitor
+    import verilay_livewatch as livewatch
     mon_rows = self_monitor.admin_summary()
     if mon_rows:
         grade_color = {"A": "#1D9E75", "B": "#4A90D9", "C": "#EF9F27",
@@ -1350,17 +1351,18 @@ def _admin_sections():
                 f'<td style="{td};text-align:center">{r.get("warnings") if r.get("warnings") is not None else "—"}</td>'
                 f'<td style="{td}">{checked}</td>'
                 f'<td style="{td}">{status}</td>'
+                f'<td style="{td}">{livewatch.summary_html(r)}</td>'
                 f'<td style="{td}">{scan_link}</td>'
                 f'</tr>'
             )
 
         mon_table = (
             '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;'
-            'min-width:640px">'
+            'min-width:760px">'
             '<tr>'
             f'<th style="{th}">App</th><th style="{th}">Repo</th><th style="{th}">Grade</th>'
             f'<th style="{th};text-align:center">Critical</th><th style="{th};text-align:center">Warnings</th>'
-            f'<th style="{th}">Last checked</th><th style="{th}">Status</th><th style="{th}"></th>'
+            f'<th style="{th}">Last checked</th><th style="{th}">Status</th><th style="{th}">Live site</th><th style="{th}"></th>'
             '</tr>'
             + "".join(_cell(r) for r in mon_rows)
             + '</table></div>'

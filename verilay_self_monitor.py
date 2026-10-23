@@ -50,6 +50,7 @@ from datetime import datetime, timedelta, timezone
 import verilay_deepwatch as deepwatch
 import verilay_notify as notify
 import verilay_usage as usage
+import verilay_livewatch as livewatch
 
 CHECK_INTERVAL_HOURS = 24
 RESCAN_UNCHANGED_DAYS = 30   # even when the code is the same, look again after this long: new vulnerabilities are published for old code
@@ -94,9 +95,19 @@ def start_scheduler():
     def _loop():
         while True:
             maybe_tick()
+            live_round()
             time.sleep(SCHEDULER_TICK_SECONDS)
 
     threading.Thread(target=_loop, daemon=True).start()
+
+
+def live_round():
+    """The free daily look at one monitored app's LIVE site (verilay_livewatch.py): headers, https redirect, certificate. No AI, no code.
+    At most one app per call; never raises."""
+    try:
+        livewatch.tick(_sb(), notify.send_live_watch_alert)
+    except Exception as e:
+        print(f"[self-monitor] live-site round skipped: {type(e).__name__}: {e}", flush=True)
 
 
 REFRESH_EVERY_SECONDS = 600

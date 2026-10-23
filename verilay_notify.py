@@ -112,6 +112,34 @@ def send_self_monitor_alert(app_name, repo, score, critical, warnings, prev_crit
         return False
 
 
+def send_live_watch_alert(app_name, url, problems):
+    """Best-effort, returns True/False, never raises. Sent to the admin when a protection on a monitored app's LIVE site gets worse
+    (a header gone, http no longer sent to https, a certificate close to expiry). Never a daily "all fine"; a problem that stays is
+    mentioned again after a week (see verilay_livewatch.py)."""
+    if not configured() or not SELF_MONITOR_ALERT_EMAIL or not problems:
+        return False
+    lines = "\n".join(f"  - {_one_line(p, 160)}" for p in problems)
+    body = (
+        f"Something changed on the live site of {app_name} ({_one_line(url, 120)}):\n\n{lines}\n\n"
+        f"This is separate from the code check: it is what the running site actually sends to a browser. "
+        f"You will not get this email every day. If a problem stays, you get a reminder after a week.\n\n"
+        f"- Verilay"
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = f"Verilay: a protection on {_one_line(app_name, 60)} changed"
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = SELF_MONITOR_ALERT_EMAIL
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
+        print(f"[notify] Live-site alert sent for {app_name}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[notify] Live-site alert failed for {app_name}: {e}", flush=True)
+        return False
+
+
 def _one_line(s, limit=200):
     """Header-safe: no line breaks, capped."""
     return " ".join(str(s or "").split())[:limit]

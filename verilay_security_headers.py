@@ -10,6 +10,8 @@ house with no lock on the door. The headers are cheap and none of them can break
   Permissions-Policy          the page cannot ask for the camera, microphone, location or payment screen
   Content-Security-Policy     ONLY the parts that cannot break a page: no framing, no <base> tag tricks, no plugins
   Cross-Origin-Opener-Policy  another window cannot reach into Verilay's window
+  Cross-Origin-Resource-Policy  other sites cannot load Verilay's PAGES or data as if they were their own resources (a leak route).
+                              Only on HTML and JSON: images such as the badge and the checked-app stamp are MEANT to be shown on other sites.
 
 NOT included, on purpose: a Content-Security-Policy that limits scripts and styles. Verilay's pages carry their scripts and styles inline,
 so a strict policy would need a large rewrite (or "unsafe-inline", which protects little). That is a separate piece of work.
@@ -25,6 +27,8 @@ HEADERS = {
     "Content-Security-Policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
     "Cross-Origin-Opener-Policy": "same-origin",
 }
+CORP = "same-origin"
+CORP_TYPES = ("text/html", "application/json")      # pages and data only; images, badges and stamps stay embeddable on other sites
 HSTS = "max-age=15552000"          # 180 days; no includeSubDomains and no preload until Moses decides to commit to that
 SECURITY_CONTACT = "mailto:moses@verilay.dev"
 POLICY_URL = "https://github.com/ekbm/verilay/blob/main/SECURITY.md"
@@ -54,6 +58,8 @@ def init(app):
     def _add_security_headers(resp):
         for name, value in HEADERS.items():
             resp.headers.setdefault(name, value)
+        if (resp.mimetype or "") in CORP_TYPES:
+            resp.headers.setdefault("Cross-Origin-Resource-Policy", CORP)
         if _is_https(request):
             resp.headers.setdefault("Strict-Transport-Security", HSTS)
         return resp
