@@ -43,8 +43,15 @@ SKIP_SUFFIXES = (
     ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp", ".avif",
     ".woff", ".woff2", ".ttf", ".eot", ".otf",
     ".mp4", ".mp3", ".wav", ".mov", ".pdf", ".zip", ".tar", ".gz",
-    ".lock", ".map", ".min.js", ".min.css", ".wasm",
+    ".lock", ".lockb", ".map", ".min.js", ".min.css", ".wasm",
 )
+
+# Package lists the dependency check needs (verilay_osv_check.py). The secret scan and the other scanners still skip them (scan_file
+# applies _should_skip itself), but the file LOADERS must keep them: they used to be thrown away with every other ".lock" file, so the
+# dependency check never saw them. They may also be much larger than ordinary source files.
+DEPENDENCY_LOCKFILES = ("yarn.lock", "poetry.lock", "uv.lock", "pipfile.lock", "bun.lock", "bun.lockb",
+                        "package-lock.json", "pnpm-lock.yaml")
+MAX_LOCKFILE_BYTES = 12_000_000
 
 # Files that legitimately contain fake secrets
 EXAMPLE_FILES = (".env.example", ".env.sample", ".env.template", "env.example")
@@ -247,6 +254,24 @@ def _should_skip(path: str) -> bool:
     return False
 
 
+def _is_dependency_lockfile(path: str) -> bool:
+    return path.lower().rsplit("/", 1)[-1] in DEPENDENCY_LOCKFILES
+
+
+def _should_skip_load(path: str) -> bool:
+    """Whether the loaders drop this file. Same as _should_skip, except the package lists the dependency check reads are kept."""
+    low = path.lower()
+    if any(part in SKIP_DIRS for part in low.split("/")):
+        return True
+    if _is_dependency_lockfile(path):
+        return False
+    return low.endswith(SKIP_SUFFIXES)
+
+
+def _size_limit(path: str) -> int:
+    return MAX_LOCKFILE_BYTES if _is_dependency_lockfile(path) else MAX_SCAN_BYTES
+
+
 def scan_file(path: str, content: str) -> List[Finding]:
     if _should_skip(path) or len(content) > MAX_SCAN_BYTES:
         return []
@@ -445,7 +470,7 @@ def fetch_all_files_tarball(owner: str, repo: str, token: str = "",
                 continue
             # Strip the "owner-repo-sha/" prefix GitHub adds
             path = member.name.split("/", 1)[1] if "/" in member.name else member.name
-            if _should_skip(path) or member.size > MAX_SCAN_BYTES:
+            if _should_skip_load(path) or member.size > _size_limit(path):
                 continue
             try:
                 fh = tf.extractfile(member)
@@ -493,7 +518,7 @@ def fetch_all_files_zip(zip_file, max_files: int = 4000) -> Dict[str, str]:
             if len(out) >= max_files:
                 break
             path = info.filename[len(prefix):]
-            if not path or _should_skip(path) or info.file_size > MAX_SCAN_BYTES:
+            if not path or _should_skip_load(path) or info.file_size > _size_limit(path):
                 continue
             if total + info.file_size > MAX_ZIP_UNCOMPRESSED_BYTES:
                 break

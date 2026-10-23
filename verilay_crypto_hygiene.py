@@ -54,7 +54,7 @@ SKIP_SUFFIXES = (
     ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp", ".avif",
     ".woff", ".woff2", ".ttf", ".eot", ".otf",
     ".mp4", ".mp3", ".wav", ".mov", ".pdf", ".zip", ".tar", ".gz",
-    ".lock", ".map", ".min.js", ".min.css", ".wasm",
+    ".lock", ".lockb", ".map", ".min.js", ".min.css", ".wasm",
 )
 
 MAX_SCAN_BYTES = 2_000_000

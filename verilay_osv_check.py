@@ -37,7 +37,11 @@ shown a fraction of them):
     Now every advisory is looked up (in parallel, kept for 24 hours), and one whose details cannot be loaded is still listed, with
     unknown severity.
   * The package list is sent in chunks, because the database accepts a limited number of packages per request.
-  * More package lists are read: poetry.lock, uv.lock and Pipfile.lock (Python apps from Replit and similar), yarn.lock, pnpm-lock.yaml.
+  * More package lists are read: poetry.lock, uv.lock and Pipfile.lock (Python apps from Replit and similar), yarn.lock, pnpm-lock.yaml,
+    and Bun's text lockfile bun.lock. (Bun's older binary bun.lockb cannot be read; a report now says so.)
+  * Every VERSION of a package is checked, not one per name. A project often holds two versions of the same package (Replit listed
+    @xmldom/xmldom 0.8.11 and 0.9.10 separately); only the last one in the file used to be looked at.
+  * Lock files are no longer thrown away before this check (the file loader skipped everything ending in ".lock").
 """
 
 import json
@@ -94,7 +98,7 @@ _VERSION_TOKEN = re.compile(r"\d+(?:\.\d+){1,3}(?:[-.][0-9A-Za-z.]+)?")
 _UNRESOLVABLE_NPM = ("*", "latest", "x", "next")
 
 
-def _npm_manifest_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _npm_manifest_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """package.json — version RANGES, not exact. Fallback when no lockfile.
     Returns {name: (version, is_dev)} — is_dev comes straight from which of
     the two top-level keys the entry was declared under. This only ever
@@ -105,7 +109,7 @@ def _npm_manifest_deps(content: str) -> Dict[str, Tuple[str, bool]]:
         data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return {}
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     for key in ("dependencies", "devDependencies"):
         is_dev_key = (key == "devDependencies")
         for name, spec in (data.get(key) or {}).items():
@@ -120,12 +124,11 @@ def _npm_manifest_deps(content: str) -> Dict[str, Tuple[str, bool]]:
                 # A name listed under both keys (unusual but possible) reaches
                 # production via the "dependencies" copy — never let a dev
                 # declaration hide that.
-                prev = deps.get(name)
-                deps[name] = (m.group(0), (prev[1] and is_dev_key) if prev else is_dev_key)
+                _set_dep(deps, name, m.group(0), is_dev_key)
     return deps
 
 
-def _npm_lockfile_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _npm_lockfile_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """package-lock.json — exact RESOLVED versions, plus each entry's own
     `dev` flag. Preferred source when present. Handles both v1 ("dependencies")
     and v2/v3 ("packages") shapes.
@@ -142,7 +145,7 @@ def _npm_lockfile_deps(content: str) -> Dict[str, Tuple[str, bool]]:
         data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return {}
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     if "packages" in data:  # lockfile v2/v3
         for path, info in data["packages"].items():
             if not path or not isinstance(info, dict):
@@ -158,12 +161,15 @@ def _npm_lockfile_deps(content: str) -> Dict[str, Tuple[str, bool]]:
             # is NOT dev-only, the package reaches production overall; never
             # let one dev-only copy mask a real prod-facing one under the
             # same name.
-            prev = deps.get(name)
-            deps[name] = (version, (prev[1] and is_dev) if prev else is_dev)
-    elif "dependencies" in data:  # lockfile v1
-        for name, info in data["dependencies"].items():
-            if isinstance(info, dict) and info.get("version"):
-                deps[name] = (info["version"], bool(info.get("dev")))
+            _set_dep(deps, name, version, is_dev)
+    elif "dependencies" in data:  # lockfile v1: nested "dependencies" hold other versions of the same package
+        def walk(block):
+            for name, info in (block or {}).items():
+                if isinstance(info, dict):
+                    if info.get("version"):
+                        _set_dep(deps, name, info["version"], bool(info.get("dev")))
+                    walk(info.get("dependencies"))
+        walk(data["dependencies"])
     return deps
 
 
@@ -172,7 +178,7 @@ _PY_LINE = re.compile(
 )
 
 
-def _pypi_requirements_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _pypi_requirements_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """requirements.txt. Only truly PINNED (==) versions are used.
 
     Unlike npm, Python projects almost never commit a lockfile with the
@@ -192,7 +198,7 @@ def _pypi_requirements_deps(content: str) -> Dict[str, Tuple[str, bool]]:
     signal the way an npm lockfile does (no separate dev-requirements.txt
     convention is handled), so every PyPI dependency counts toward risk.
     Defaulting to "counts" rather than guessing "safe" is deliberate."""
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     for line in content.splitlines():
         line = line.split("#", 1)[0].split(";", 1)[0].strip()
         if not line or line.startswith("-"):
@@ -202,14 +208,15 @@ def _pypi_requirements_deps(content: str) -> Dict[str, Tuple[str, bool]]:
             continue
         name, op, version = m.groups()
         if name and version and op == "==":
-            deps[name] = (version, False)
+            _set_dep(deps, name, version, False)
     return deps
 
 
 def _set_dep(deps, name, version, is_dev):
-    """Same rule as the npm lockfile reader: if ANY copy of a package is not dev-only, it counts as reaching production."""
-    prev = deps.get(name)
-    deps[name] = (version, (prev[1] and is_dev) if prev else is_dev)
+    """Record one package at one exact version. If ANY copy of that package version is not dev-only, it counts as reaching production."""
+    key = (name, version)
+    prev = deps.get(key)
+    deps[key] = (prev and is_dev) if prev is not None else is_dev
 
 
 def _toml_packages(content: str) -> list:
@@ -223,9 +230,9 @@ def _toml_packages(content: str) -> list:
     return pk if isinstance(pk, list) else []
 
 
-def _poetry_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _poetry_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """poetry.lock (Python): every package with its exact resolved version. Older files mark dev tools with category = "dev"."""
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     for p in _toml_packages(content):
         if not isinstance(p, dict):
             continue
@@ -235,9 +242,9 @@ def _poetry_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
     return deps
 
 
-def _uv_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _uv_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """uv.lock (Python, the Replit default): exact versions. The project itself and local packages are left out; dev status is unknown."""
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     for p in _toml_packages(content):
         if not isinstance(p, dict):
             continue
@@ -250,13 +257,13 @@ def _uv_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
     return deps
 
 
-def _pipfile_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _pipfile_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """Pipfile.lock (Python): "default" is what ships, "develop" is tooling."""
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return {}
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     if not isinstance(data, dict):
         return deps
     for section, is_dev in (("default", False), ("develop", True)):
@@ -271,9 +278,9 @@ _YARN_HEADER = re.compile(r'^"?((?:@[^/@"\s]+/)?[^@"\s,:]+)@')
 _YARN_VERSION = re.compile(r'^\s+version:?\s+"?([^"\s]+)"?\s*$')
 
 
-def _yarn_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _yarn_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """yarn.lock, classic and Berry formats. Dev status is not recorded in this file, so every package counts."""
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     name = None
     for line in content.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -295,9 +302,9 @@ _PNPM_NEW = re.compile(r"^  '?/?((?:@[^/@'\s]+/)?[^@'\s/]+)@(\d[^:'\s(]*)")
 _PNPM_V5 = re.compile(r"^  '?/((?:@[^/'\s]+/)?[^/'\s]+)/(\d[^:_'\s(]*)")
 
 
-def _pnpm_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
+def _pnpm_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """pnpm-lock.yaml: the "packages" section lists name and exact version. Dev status is not read, so every package counts."""
-    deps: Dict[str, Tuple[str, bool]] = {}
+    deps: Dict[Tuple[str, str], bool] = {}
     in_packages = False
     for line in content.splitlines():
         if line and not line.startswith((" ", "\t", "#")):
@@ -311,11 +318,31 @@ def _pnpm_lock_deps(content: str) -> Dict[str, Tuple[str, bool]]:
     return deps
 
 
+def _bun_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
+    """bun.lock (Bun's text lockfile): each entry in "packages" starts with "name@version". Workspace, git, file and alias entries are
+    left out. Dev status is not recorded per package, so every package counts."""
+    try:
+        data = json.loads(re.sub(r",(\s*[}\]])", r"\1", content))     # the file allows trailing commas
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    deps: Dict[Tuple[str, str], bool] = {}
+    pk = data.get("packages") if isinstance(data, dict) else None
+    if not isinstance(pk, dict):
+        return deps
+    for _key, val in pk.items():
+        spec = val[0] if isinstance(val, list) and val and isinstance(val[0], str) else None
+        m = re.match(r"^(@[^/@]+/[^@]+|[^@]+)@(.+)$", spec or "")
+        if m and re.match(r"^\d", m.group(2)):
+            _set_dep(deps, m.group(1), m.group(2), False)
+    return deps
+
+
 # path suffix -> (parser, ecosystem, is_lockfile)
 _MANIFEST_PARSERS: List[Tuple[str, callable, str, bool]] = [
     ("package-lock.json", _npm_lockfile_deps, "npm", True),
     ("yarn.lock", _yarn_lock_deps, "npm", True),
     ("pnpm-lock.yaml", _pnpm_lock_deps, "npm", True),
+    ("bun.lock", _bun_lock_deps, "npm", True),
     ("package.json", _npm_manifest_deps, "npm", False),
     ("poetry.lock", _poetry_lock_deps, "PyPI", True),
     ("uv.lock", _uv_lock_deps, "PyPI", True),
@@ -324,13 +351,12 @@ _MANIFEST_PARSERS: List[Tuple[str, callable, str, bool]] = [
 ]
 
 
-def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], Tuple[str, bool]]:
-    """Returns {(name, ecosystem): (version, is_dev)}. Lockfiles win over
-    manifests for the same ecosystem when both are present, since they carry
-    the exact resolved version rather than a range — and, for npm, the only
-    reliable per-package dev/prod signal for TRANSITIVE dependencies too."""
-    from_manifest: Dict[Tuple[str, str], Tuple[str, bool]] = {}
-    from_lockfile: Dict[Tuple[str, str], Tuple[str, bool]] = {}
+def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str, str], bool]:
+    """Returns {(name, ecosystem, version): is_dev}. A package that appears in a lock file is taken from the lock file, with EVERY exact
+    version it lists (a project can hold several versions of one package). A package only named in package.json / requirements.txt
+    is taken from there. Lock files also carry the only reliable dev/prod signal for packages that other packages pull in."""
+    from_manifest: Dict[Tuple[str, str, str], bool] = {}
+    from_lockfile: Dict[Tuple[str, str, str], bool] = {}
     for path, content in files.items():
         if not isinstance(content, str):
             continue
@@ -339,11 +365,14 @@ def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str], Tuple[s
             if fname != suffix:
                 continue
             target = from_lockfile if is_lockfile else from_manifest
-            for name, version_and_dev in parser(content).items():
-                target[(name, ecosystem)] = version_and_dev
+            for (name, version), is_dev in parser(content).items():
+                key = (name, ecosystem, version)
+                prev = target.get(key)
+                target[key] = (prev and is_dev) if prev is not None else is_dev
 
-    merged = dict(from_manifest)
-    merged.update(from_lockfile)  # lockfile entries override manifest entries
+    locked_names = {(name, eco) for (name, eco, _v) in from_lockfile}
+    merged = {k: d for k, d in from_manifest.items() if (k[0], k[1]) not in locked_names}
+    merged.update(from_lockfile)
     return merged
 
 
@@ -390,11 +419,13 @@ def dependency_coverage(files: Dict[str, str]) -> dict:
     try:
         locks: Dict[str, Dict[str, str]] = {}
         mans: Dict[str, Dict[str, str]] = {}
-        unreadable = unpinned = 0
+        unreadable = unpinned = binary_locks = 0
         for path, content in files.items():
             if not isinstance(content, str):
                 continue
             folder, _, fname = path.rpartition("/")
+            if fname == "bun.lockb":
+                binary_locks += 1
             for suffix, parser, eco, is_lock in _MANIFEST_PARSERS:
                 if fname != suffix:
                     continue
@@ -431,9 +462,10 @@ def dependency_coverage(files: Dict[str, str]) -> dict:
             overall = "direct"
         else:
             overall = "partial"
-        return {"scope": overall, "ecosystems": ecos, "unpinned_skipped": unpinned, "unreadable_lockfiles": unreadable}
+        return {"scope": overall, "ecosystems": ecos, "unpinned_skipped": unpinned, "unreadable_lockfiles": unreadable,
+                "binary_locks": binary_locks if overall != "full" else 0}
     except Exception:
-        return {"scope": "unknown", "ecosystems": [], "unpinned_skipped": 0, "unreadable_lockfiles": 0}
+        return {"scope": "unknown", "ecosystems": [], "unpinned_skipped": 0, "unreadable_lockfiles": 0, "binary_locks": 0}
 
 
 def coverage_summary(coverage: Optional[dict], packages_checked: int) -> dict:
@@ -445,6 +477,9 @@ def coverage_summary(coverage: Optional[dict], packages_checked: int) -> dict:
     pk = f"{n} package" + ("" if n == 1 else "s")
     scope = (coverage or {}).get("scope") or "unknown"
     extra = " A package list file was found but could not be read." if (coverage or {}).get("unreadable_lockfiles") else ""
+    if (coverage or {}).get("binary_locks"):
+        extra += (" A bun.lockb file was found, but it is a binary format Verilay cannot read. To check the full list, add a package-lock.json "
+                  "(run: npm install --package-lock-only) or save Bun's text lockfile (run: bun install --save-text-lockfile).")
     if scope == "unavailable":
         return {"scope": scope, "summary": "0 packages checked",
                 "note": "The public vulnerability database did not answer, so none of your packages could be checked. "
@@ -513,15 +548,15 @@ def _post_chunk(queries):
     return None
 
 
-def _query_batch(deps: Dict[Tuple[str, str], Tuple[str, bool]]) -> Dict[Tuple[str, str], List[str]]:
-    """Which advisories affect which packages. Sent in chunks. Returns {(name, ecosystem): [vuln_id, ...]}; the result's
+def _query_batch(deps: Dict[Tuple[str, str, str], bool]) -> Dict[Tuple[str, str, str], List[str]]:
+    """Which advisories affect which packages. Sent in chunks. Returns {(name, ecosystem, version): [vuln_id, ...]}; the result's
     .complete is False when any chunk could not be answered, so the caller never reads silence as "all clear"."""
     out = _Matches()
     if not deps:
         return out
     keys = list(deps.keys())
     queries = [{"package": {"name": name, "ecosystem": ecosystem}, "version": version}
-               for (name, ecosystem), (version, _is_dev) in deps.items()]
+               for (name, ecosystem, version) in deps.keys()]
     for i in range(0, len(keys), BATCH_SIZE):
         results = _post_chunk(queries[i:i + BATCH_SIZE])
         if results is None:
@@ -744,8 +779,8 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
         cov["details_missing"] = len(unloaded)
 
     findings: List[Vulnerability] = []
-    for (name, ecosystem), (version, is_dev) in deps.items():
-        package_ids = _dedupe_advisory_ids(matches.get((name, ecosystem), []), details)
+    for (name, ecosystem, version), is_dev in deps.items():
+        package_ids = _dedupe_advisory_ids(matches.get((name, ecosystem, version), []), details)
         for vid in package_ids:
             vuln = details.get(vid)
             if not vuln:
