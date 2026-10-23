@@ -36,7 +36,7 @@ POST /auth/session              (used by the page above)
 GET  /logout
 GET  /account                   purchases and saved reports
 GET  /deep/<owner>/<repo>       the deep scan — gated, engine live
-GET  /billing-health            is everything wired up? no secrets in the output
+GET  /billing-health            is everything wired up? no secrets in the output (admin only: sign in first)
 ```
 
 ---
@@ -184,7 +184,7 @@ Railway rebuilds and installs `stripe` from `requirements.txt`.
 
 ## Step 9 — Check the deploy
 
-Visit **`https://verilay.dev/billing-health`**. It reports no secrets, only
+Sign in as the admin, then visit **`https://verilay.dev/billing-health`** (anyone else gets "Not found"). It reports no secrets, only
 whether each piece is present:
 
 ```json

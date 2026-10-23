@@ -1920,8 +1920,13 @@ def billing_health():
 
     Worth having because every failure here is silent from the outside: a missing
     webhook secret looks exactly like a working site right up to the first sale.
+
+    ADMIN ONLY since 23 Oct 2026 (404 for everyone else): it states whether the paywall is on, that Stripe is in live mode,
+    which settings exist and the Stripe account id, none of which a visitor needs.
     """
-    return jsonify({
+    if not _is_admin_user(accounts.current_user()):
+        return "Not found", 404
+    resp = jsonify({
         "paywall_enabled": billing.PAYWALL_ENABLED,
         "stripe_sdk": billing._HAS_STRIPE,
         "stripe_key": bool(billing.STRIPE_SECRET_KEY),
@@ -1948,3 +1953,5 @@ def billing_health():
                          and accounts.configured() and _sb() is not None
                          and os.getenv("SECRET_KEY", "").strip()),
     })
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
