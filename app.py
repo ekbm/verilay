@@ -3578,11 +3578,15 @@ def stats():
 
 @app.route("/self-monitor-health")
 def self_monitor_health():
-    """Diagnostic view into the self-monitoring teaser — added because
-    Railway's log viewer isn't always easy to search, and this table never
-    holds anything more sensitive than an access/infra error string (see
-    verilay_self_monitor.health_data's docstring)."""
-    return jsonify(self_monitor.health_data())
+    """Diagnostic view into the self-monitoring teaser — added because Railway's log viewer isn't always easy to search.
+
+    ADMIN ONLY since 22 Oct 2026 (404 for everyone else). It used to be public, but it lists each of our own apps with its grade,
+    its repository name and the time of its last check, and the landing page deliberately shows none of those."""
+    if not _request_is_admin():
+        return "Not found", 404
+    resp = jsonify(self_monitor.health_data())
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # Blog routes — paste this into app.py before the sitemap route

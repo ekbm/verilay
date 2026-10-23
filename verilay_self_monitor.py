@@ -636,7 +636,7 @@ def health_data():
 
 def admin_summary():
     """Full detail, including raw critical/warning COUNTS — unlike
-    health_data() (used by the public /self-monitor-health endpoint), this
+    health_data() (used by the admin-only /self-monitor-health endpoint), this
     deliberately breaks the "never show real counts publicly" rule the rest
     of this module follows. Only ever call this from a route already gated
     to Moses himself (e.g. /account's is_admin check) — never from a public
