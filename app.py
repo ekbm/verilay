@@ -3612,6 +3612,79 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "scanner-and-ai-builder-disagree-github-sync",
+        "title": "Why Your Security Scanner and Your AI Builder Disagree (and the GitHub Sync Trap)",
+        "date": "October 24, 2026",
+        "category": "Story",
+        "excerpt": "My scanner said 38 problems, Replit said one. Both were right. What fixing two AI-built apps really took, and why your GitHub sync matters.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p><em>Finding the problem was the easy part.</em></p>
+
+<h2>It started with monitoring</h2>
+<p>I don&rsquo;t just scan my own apps once. Verilay checks them for me every day: the code on GitHub and the live site. If something changes, a grade drops, or a new problem appears, it emails me. That&rsquo;s <strong>monitoring</strong>, and it&rsquo;s the part of Verilay I rely on most.</p>
+<p>This week, two of those emails arrived on the same morning. One app is built with Lovable, the other with Replit. Both grades had dropped to an F.</p>
+<p>Nothing in the apps had changed overnight. Verilay had got better at reading the lists of packages your app depends on, so it could suddenly see problems that had been sitting there all along. Between the two apps: almost 90 packages with known security problems.</p>
+
+<h2>Then the deep scan</h2>
+<p>The daily check is quick on purpose. It reads enough to notice a change, not your whole codebase. So for the full picture, I ran a <strong>deep scan</strong>: Verilay reads every file, checks every layer of the app, and writes one full report with a ready-to-paste fix prompt for each problem.</p>
+<p>Now I knew what was wrong.</p>
+<p>That sounds like the hard part. It wasn&rsquo;t.</p>
+<p>The hard part was everything after.</p>
+
+<h2>Then the fix</h2>
+<p>For each problem, Verilay gives you a prompt to paste into your AI builder. So I did what anyone would do. I copied it, pasted one into Lovable and the other into Replit.</p>
+<p>Here&rsquo;s what I expected: &ldquo;Done, all fixed.&rdquo;</p>
+<p>Here&rsquo;s what I got instead: questions.</p>
+
+<h2>The back-and-forth</h2>
+<p><strong>Replit came back with a different number.</strong> Verilay said 38 packages in that app had problems. Replit ran its own check and found only one. For a moment I wondered which of them to believe, and I&rsquo;m the person who built the scanner.</p>
+<p>Then I remembered. A few days earlier, Replit had emailed me its own security alert, and I&rsquo;d fixed most of those packages right there in Replit. But those fixes had never been synced to GitHub, and GitHub is what Verilay reads. Verilay had scanned the old code, correctly. Replit was looking at the new code. Both were right.</p>
+<p>That left the one real problem: a package that checks incoming data could be fed a huge list and run out of memory.</p>
+<p><strong>The proper fix was risky.</strong> Fixing that one package properly meant a big upgrade that could break forms, the database setup and error messages. Replit asked whether to go ahead. I didn&rsquo;t know that either. In the end we chose a smaller, safer move: block oversized lists before they ever reach the package, and leave the big upgrade for a calmer day.</p>
+<p><strong>The safe fix nearly broke the app.</strong> Before publishing, I asked Replit one more thing: will these new limits get in the way of normal use? They would have. &ldquo;Select all&rdquo; on more than 100 documents would have failed. So would a long blog post. Nobody would have noticed until a real user hit it and saw &ldquo;Failed to save&rdquo;. We raised the limits and added clear messages.</p>
+<p><strong>Lovable asked me to make a call.</strong> On the other app, it updated the safe packages one at a time, checking the app still built after each one. Then it stopped and asked whether to carry on with the major upgrades. Most of those were tools that only run while the app is being built. Visitors never download them. But I only knew that because I asked Lovable to sort everything into &ldquo;visitors get this&rdquo; and &ldquo;build tools only&rdquo; first. After that sort, two problems were left that actually mattered, and both got fixed.</p>
+<p><strong>The builder found things the scan didn&rsquo;t.</strong> While it was in there, Lovable found two more weak spots in the backend that my scan hadn&rsquo;t flagged, and tightened them up as well.</p>
+<p><strong>And at the very end, the same trap again.</strong> The new fix was published, but it hadn&rsquo;t been pushed to GitHub either. If I&rsquo;d rescanned straight away, Verilay would have said &ldquo;not fixed&rdquo;, and I&rsquo;d have started all over again. Lesson learned twice in one day: whatever your builder fixes, make sure it reaches GitHub before you scan.</p>
+
+<h2>A tip if anything checks your GitHub</h2>
+<p>This goes for Verilay&rsquo;s monitoring and for any other tool that watches your repo: it can only see what&rsquo;s on GitHub. If your builder&rsquo;s changes don&rsquo;t reach GitHub, the tool keeps checking old code. It will warn you about problems you&rsquo;ve already fixed, and it will miss anything new.</p>
+<p>So turn on syncing with GitHub in your builder, and check it&rsquo;s actually working:</p>
+<ul>
+<li><strong>Connect your project to GitHub</strong> in your builder&rsquo;s settings, and switch on automatic syncing if your builder offers it.</li>
+<li><strong>If it doesn&rsquo;t sync on its own,</strong> push your changes yourself after every fix. In Replit, I had to do that from its Git panel.</li>
+<li><strong>Check now and then:</strong> open your repo on GitHub and look at the date of the latest change. If it&rsquo;s older than your last edit in the builder, the sync isn&rsquo;t happening.</li>
+</ul>
+
+<h2>What I learned</h2>
+<p>Over two sessions I went back and forth with the builders more than a dozen times. Every step needed a judgement call:</p>
+<ul>
+<li>Which of these numbers do I believe?</li>
+<li>Is it safe to say yes to this question?</li>
+<li>Will this fix break something my users rely on?</li>
+<li>Is it actually fixed, or did the builder just say so?</li>
+</ul>
+<p>A developer answers those in seconds. If you built your app with AI because you don&rsquo;t write code, each one is a wall. And that&rsquo;s where most people stop. Not at the scan. At the second reply from their builder.</p>
+<p>I also learned something less comfortable: <strong>my own scanner made the first step harder than it needed to be.</strong> On the Lovable app, the first thing the builder did was shrink Verilay&rsquo;s list, because Verilay counted build tools as if your visitors downloaded them. That&rsquo;s on me, and it&rsquo;s the next thing I&rsquo;m fixing. A scan should tell you what actually reaches your users first.</p>
+
+<h2>Coming soon: fixing it end to end, with Verilay</h2>
+<p>Verilay will always give you the free prompt. If you&rsquo;re comfortable working with your builder, that&rsquo;s all you need.</p>
+<p>For everyone else, I&rsquo;m building <strong>fix sessions</strong>: a guided way to see a problem through to the end, as a paid option alongside the free prompt.</p>
+<ul>
+<li>Verilay checks your GitHub code is up to date, then sorts the problems into what your visitors get, what&rsquo;s exposed on your backend, and what&rsquo;s only a build tool.</li>
+<li>You send the prompt to your builder, then paste its reply back into Verilay.</li>
+<li>Verilay tells you what the builder changed, what it skipped, and what else it touched. When the builder asks you a question, Verilay tells you how to answer.</li>
+<li>Before you publish, Verilay asks your builder to check the fix won&rsquo;t break normal use.</li>
+<li>Then Verilay rescans your code and gives you a fix record: <strong>Fixed</strong>, <strong>Protected</strong> (blocked for now, proper fix later), or <strong>Left on purpose</strong>.</li>
+</ul>
+<p>&ldquo;Fixed&rdquo; will mean one thing only: Verilay rescanned your code and the problem is gone. Not that your builder said so, and not that your whole app is now secure.</p>
+<p>So the full loop looks like this: <strong>monitoring</strong> notices something changed, a <strong>deep scan</strong> shows you exactly what, and a <strong>fix session</strong> sees it through to &ldquo;Fixed&rdquo;.</p>
+<p>If you&rsquo;d like to be one of the first to try fix sessions, email me at <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>. If you&rsquo;d like Verilay to watch your apps the way it watches mine, <a href="/monitoring">tell me on the monitoring page</a>. Until then, the free scan and its prompts are at <a href="/">verilay.dev</a>.</p>
+""",
+    },
+    {
         "slug": checklist.SLUG,
         "title": checklist.BLOG_TITLE,
         "date": "October 20, 2026",
