@@ -654,17 +654,12 @@ function proLockedHTML(data) {
 function proOfferHTML(data) {
   var h = (currentReport && currentReport.health) || {};
   var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
-  var lead = more ? more + ' more fix prompt' + (more === 1 ? ' is' : 's are') + ' waiting in Verilay Pro' : 'Want a fix prompt for every finding?';
-  var left = (data.pro_launch && data.pro_launch.left) || 0;
-  return '<div id="pro-locked" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.9rem 1rem;margin:.85rem 0">' +
-    '<div style="display:flex;gap:10px;align-items:flex-start"><i class="ti ti-lock" style="font-size:20px;color:var(--pu);flex-shrink:0;margin-top:1px"></i>' +
-    '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pu)">Launch offer</div>' +
-    '<div style="font-size:15px;font-weight:600;color:var(--put);margin-top:2px">' + lead + '</div>' +
-    '<div style="font-size:13px;color:var(--put);margin-top:3px;line-height:1.55">Pro gives a ready-to-paste fix prompt for every finding, fuller explanations ' +
-    'and reads up to 50 files. It is free while the launch lasts (' + left + ' left), then A$4.99 a scan. Take your time with this report first: ' +
-    'it stays here when you look at Pro.</div>' +
-    '<a id="pro-see" class="btn-sm" href="/pricing#pro" target="_blank" rel="noopener" style="display:inline-block;margin-top:.6rem;text-decoration:none">See Verilay Pro</a>' +
-    '</div></div></div>';
+  var lead = more ? more + ' more fix prompt' + (more === 1 ? ' is' : 's are') + ' waiting in Verilay Pro.' : 'Want a fix prompt for every finding?';
+  return '<div id="pro-locked" style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:var(--put);' +
+    'background:var(--pul);border-radius:8px;padding:.5rem .8rem;margin:.6rem 0">' +
+    '<i class="ti ti-sparkles" style="font-size:14px;color:var(--pu)"></i><span>' + lead + ' Try it free: answer a quick survey, ' +
+    'run Pro on this app and compare the difference.</span>' +
+    '<a id="pro-see" href="/pricing#pro" target="_blank" rel="noopener" style="color:var(--pu);font-weight:600;white-space:nowrap">Try Verilay Pro &rarr;</a></div>';
 }
 // Which kind of report this is, in its own colour at the top: Free (grey), Verilay Pro (purple), Deep scan (green).
 // Moses, 25 Oct 2026: a free and a Pro report of the same app should be told apart at a glance.
