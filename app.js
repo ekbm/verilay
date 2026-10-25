@@ -443,21 +443,31 @@ function compareResultHTML(r) {
     (r.signed_in ? '' : ' <a href="/login" style="color:var(--pu);font-weight:600">Sign in</a> to keep your scans and comparisons on any device.') + '</div>';
   return html + '</div>';
 }
-// "Went up a grade? Tell us what you changed." Optional, only after a comparison that improved (the server checks
-// that too). The answer stays private: it is emailed to Verilay and kept with the report, never shown on it.
+// "Went up a grade? Did Verilay's fix prompts help?" Optional, only after a comparison that improved (the server
+// checks that too). One tap is enough; an opinion and how they fixed it are optional (many would rather not say how).
+// The answer stays private: it is emailed to Verilay and kept with the report, never shown on it.
+var _STORY_CHOICES = [['yes', 'Yes'], ['partly', 'A bit'], ['no', 'No'], ['unused', 'Didn&rsquo;t use them']];
 function storyFormHTML(r) {
   var n = (r.no_longer_found || []).length;
   var better = r.grade_before && r.grade_after && r.grade_before !== r.grade_after;
-  var title = better ? 'Went from ' + esc(r.grade_before) + ' to ' + esc(r.grade_after) + '? Tell us what you changed.'
-    : n + (n === 1 ? ' issue' : ' issues') + ' no longer found? Tell us what you changed.';
+  var lead = better ? 'Went from ' + esc(r.grade_before) + ' to ' + esc(r.grade_after) + '?'
+    : n + (n === 1 ? ' issue' : ' issues') + ' no longer found?';
   var field = 'width:100%;box-sizing:border-box;border:0.5px solid var(--bdr);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white;color:var(--txt)';
+  var lab = 'display:block;font-size:12px;font-weight:600;color:var(--put);margin:.75rem 0 3px';
   var tick = 'display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--txt);margin-top:.5rem;cursor:pointer';
+  var pills = _STORY_CHOICES.map(function(c) {
+    return '<button type="button" class="story-choice" data-v="' + c[0] + '" aria-pressed="false" style="border:0.5px solid var(--pu);' +
+      'background:white;color:var(--put);border-radius:20px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">' + c[1] + '</button>';
+  }).join('');
   return '<div id="story-box" style="background:var(--pul);border-radius:8px;padding:.85rem 1rem;margin-top:1rem">' +
-    '<div style="font-size:15px;font-weight:600;color:var(--put)">' + title + '</div>' +
-    '<div style="font-size:12px;color:var(--put);margin:2px 0 .65rem">Optional. A sentence or two helps other builders, and helps us make the fix prompts better.</div>' +
-    '<label for="story-text" style="display:block;font-size:12px;font-weight:600;color:var(--put);margin-bottom:3px">What did you change?</label>' +
-    '<textarea id="story-text" maxlength="1000" rows="3" placeholder="e.g. Moved the Supabase key into a server function and added a sign-in check to the admin page" style="' + field + ';resize:vertical"></textarea>' +
-    '<label for="story-email" style="display:block;font-size:12px;font-weight:600;color:var(--put);margin:.6rem 0 3px">Email <span style="font-weight:400">(optional, only if we may follow up)</span></label>' +
+    '<div style="font-size:15px;font-weight:600;color:var(--put)">' + lead + ' Did Verilay&rsquo;s fix prompts help?</div>' +
+    '<div style="font-size:12px;color:var(--put);margin:2px 0 .65rem">Optional, and one tap is enough. It tells us which prompts work.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap" role="group" aria-label="Did the fix prompts help?">' + pills + '</div>' +
+    '<label for="story-opinion" style="' + lab + '">What did you think? What could be better? <span style="font-weight:400">(optional)</span></label>' +
+    '<textarea id="story-opinion" maxlength="1000" rows="2" placeholder="e.g. The prompt for the key was spot on, the one for the admin page was too vague" style="' + field + ';resize:vertical"></textarea>' +
+    '<details style="margin-top:.6rem"><summary style="font-size:13px;color:var(--pu);cursor:pointer;font-weight:600">Add how you fixed it (optional)</summary>' +
+      '<textarea id="story-text" maxlength="1000" rows="2" placeholder="Only if you are happy to share" style="' + field + ';resize:vertical;margin-top:.4rem"></textarea></details>' +
+    '<label for="story-email" style="' + lab + '">Email <span style="font-weight:400">(optional, only if we may follow up)</span></label>' +
     '<input id="story-email" type="email" maxlength="254" autocomplete="email" style="' + field + '">' +
     '<input id="story-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
     '<label style="' + tick + '"><input type="checkbox" id="story-quote" style="margin-top:2px">You can quote this on verilay.dev, without my name</label>' +
@@ -468,14 +478,27 @@ function storyFormHTML(r) {
 function bindStoryForm() {
   var btn = document.getElementById('story-send');
   if (!btn) return;
+  var helped = '';
+  document.querySelectorAll('.story-choice').forEach(function(b) {
+    b.onclick = function() {
+      helped = b.getAttribute('data-v');
+      document.querySelectorAll('.story-choice').forEach(function(o) {
+        var on = o === b;
+        o.setAttribute('aria-pressed', on ? 'true' : 'false');
+        o.style.background = on ? 'var(--pu)' : 'white';
+        o.style.color = on ? '#fff' : 'var(--put)';
+      });
+    };
+  });
   btn.onclick = async function() {
     var status = document.getElementById('story-status');
+    var opinion = (document.getElementById('story-opinion').value || '').trim();
     var text = (document.getElementById('story-text').value || '').trim();
-    if (!text) { status.textContent = 'Tell us in a few words what you changed.'; return; }
+    if (!helped && !opinion && !text) { status.textContent = 'Choose an answer, or tell us what you think.'; return; }
     btn.disabled = true; btn.textContent = 'Sending...'; status.textContent = '';
     try {
       var resp = await fetch('/improvement-story', {method: 'POST', headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
-        body: JSON.stringify({report_id: savedReportId, changed: text,
+        body: JSON.stringify({report_id: savedReportId, helped: helped, opinion: opinion, changed: text,
           email: (document.getElementById('story-email').value || '').trim(),
           quote_ok: document.getElementById('story-quote').checked,
           early_access: document.getElementById('story-early').checked,

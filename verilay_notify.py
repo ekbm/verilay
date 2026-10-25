@@ -250,17 +250,20 @@ def send_improvement_story_alert(report_id, story, repo=""):
         return False
     _STORY_ALERTS.append(now)
     s = story or {}
-    lines = ["Someone told us what they changed after a better Verilay scan.", "",
+    helped = {"yes": "Yes", "partly": "A bit", "no": "No", "unused": "Didn't use them"}.get(s.get("helped"), "(not answered)")
+    lines = ["Someone answered the feedback question after a better Verilay scan.", "",
+             f"Did the fix prompts help? {helped}",
              f"App: {_one_line(repo, 120) or '(no name)'}",
              f"Grade: {_one_line(s.get('grade_before') or 'n/a', 4)} -> {_one_line(s.get('grade_after') or 'n/a', 4)}"
              f" ({int(s.get('no_longer_found') or 0)} issues no longer found)",
              f"Email: {_one_line(s.get('email'), 254) or '(not given)'}",
              f"May be quoted (without their name): {'yes' if s.get('quote_ok') else 'no'}",
              f"Wants early access to fix sessions: {'yes' if s.get('early_access') else 'no'}",
-             "", "What they changed:", str(s.get("changed") or "")[:1000],
+             "", "What they think / what could be better:", str(s.get("opinion") or "(nothing written)")[:1000],
+             "", "How they fixed it (optional):", str(s.get("changed") or "(not shared)")[:1000],
              "", f"Report: https://verilay.dev/report/{_one_line(report_id, 40)}", "", "— Verilay"]
     msg = MIMEText("\n".join(lines))
-    msg["Subject"] = _one_line(f"What they changed: {repo or 'a rescanned app'}", 120)
+    msg["Subject"] = _one_line(f"Fix prompt feedback: {repo or 'a rescanned app'}", 120)
     msg["From"] = FROM_ADDRESS
     msg["To"] = to
     try:

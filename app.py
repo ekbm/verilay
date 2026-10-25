@@ -5108,7 +5108,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
     <li>If you join the waitlist — your email address</li>
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
-    <li>If you tell us what you changed after a scan that improved — your answer, any email you choose to add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
+    <li>If you answer the feedback question after a scan that improved — whether the fix prompts helped, anything you choose to write (your opinion and, only if you want, how you fixed it), any email you add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
     <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
     <li>If you contact an app&rsquo;s builder through the directory — your email and message, which we email to the builder and keep</li>
@@ -5153,7 +5153,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2>Feedback</h2>
   <p>If you rate a report and choose to leave a comment or email, these are stored with that report in Supabase. Email is optional and used only to follow up about the feedback you left — for example to let you know an issue was fixed. You can request deletion by emailing moses@verilay.dev.</p>
-  <p>If you answer &ldquo;tell us what you changed&rdquo; after a scan that improved, your answer is stored with that report and emailed to us. It is never shown on the report. We quote it on verilay.dev only if you ticked that box, and never with your name. An email is optional; if you also ticked early access, it joins our waitlist for fix sessions. You can request deletion by emailing moses@verilay.dev.</p>
+  <p>If you answer &ldquo;did Verilay&rsquo;s fix prompts help?&rdquo; after a scan that improved, your answer is stored with that report and emailed to us. Saying how you fixed it is always optional. It is never shown on the report. We quote it on verilay.dev only if you ticked that box, and never with your name. An email is optional; if you also ticked early access, it joins our waitlist for fix sessions. You can request deletion by emailing moses@verilay.dev.</p>
 
   <h2>Your rights</h2>
   <ul>
@@ -5612,7 +5612,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div><span class="tag new">New</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says &ldquo;no longer found&rdquo;, not &ldquo;fixed&rdquo;, and warns you when the two scans read different files.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Good to know:</strong> when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The <a href="/privacy">privacy page</a> says so.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us what you changed. It is optional, never shown on your report, and only quoted if you say so.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us whether Verilay&rsquo;s fix prompts helped and what could be better. One tap is enough, saying how you fixed it is optional, nothing is shown on your report, and nothing is quoted unless you say so.</p>
   </div>
 
   <div class="entry">
@@ -6080,6 +6080,7 @@ def compare_report_route():
 
 
 _STORY_HITS = {}
+_STORY_HELPED = {"yes": "Yes", "partly": "A bit", "no": "No", "unused": "Didn't use them"}
 _STORY_EMAIL = _re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 
 
@@ -6098,24 +6099,28 @@ def _story_rate_ok(ip, limit=5, window=3600):
 
 @app.route("/improvement-story", methods=["POST"])
 def improvement_story_route():
-    """'Went up a grade? Tell us what you changed.' Optional, after a comparison that shows an improvement. Only the
-    browser (or account) that owns the report can send one, and only when its saved comparison really improved.
-    Kept on that report (never shown on it, never in /report-data), emailed to Moses; with an email and the
-    early-access tick it also joins the waitlist as source "fix-sessions". A message that looks like it holds a key
-    or password is refused, so nobody pastes a secret into it by accident."""
+    """'Went up a grade? Did Verilay's fix prompts help?' Optional, after a comparison that shows an improvement. One
+    tap (yes / a bit / no / didn't use them) is enough; an opinion and how they fixed it are both optional, because
+    many builders would rather not say how. Only the browser (or account) that owns the report can send one, and only
+    when its saved comparison really improved. Kept on that report (never shown on it, never in /report-data), emailed
+    to Moses; with an email and the early-access tick it also joins the waitlist as source "fix-sessions". Text that
+    looks like it holds a key or password is refused, so nobody pastes a secret into it by accident."""
     body = request.get_json(silent=True) or {}
     if body.get("website"):                      # hidden field only a bot fills in: look like success, keep nothing
         return jsonify({"ok": True})
     rid = str(body.get("report_id") or "")[:40]
+    helped = str(body.get("helped") or "")
+    helped = helped if helped in _STORY_HELPED else ""
+    opinion = str(body.get("opinion") or "").strip()[:1000]
     text = str(body.get("changed") or "").strip()[:1000]
     email = str(body.get("email") or "").strip().lower()[:254]
-    if not text:
-        return jsonify({"error": "Tell us in a few words what you changed."}), 400
+    if not (helped or opinion or text):
+        return jsonify({"error": "Choose an answer, or tell us what you think."}), 400
     if email and not _STORY_EMAIL.match(email):
         return jsonify({"error": "That email address does not look right. Leave it empty if you prefer."}), 400
     if not _can_write_report(rid):
         return jsonify({"error": _NOT_ALLOWED}), 403
-    if any(f.severity in ("critical", "warning") for f in scan_file("message.txt", text)):
+    if any(f.severity in ("critical", "warning") for f in scan_file("message.txt", opinion + "\n" + text)):
         return jsonify({"error": "Your message looks like it contains a key or password. Please take it out and send again."}), 400
     data, _owner = _report_auth_info(rid)
     cmp_ = (data or {}).get("comparison") or {}
@@ -6124,7 +6129,7 @@ def improvement_story_route():
     ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "?")
     if not _story_rate_ok(ip):
         return jsonify({"error": "Too many messages from this connection. Please try again later."}), 429
-    story = {"changed": text, "email": email, "quote_ok": bool(body.get("quote_ok")),
+    story = {"helped": helped, "opinion": opinion, "changed": text, "email": email, "quote_ok": bool(body.get("quote_ok")),
              "early_access": bool(body.get("early_access")),
              "grade_before": cmp_.get("grade_before"), "grade_after": cmp_.get("grade_after"),
              "no_longer_found": len(cmp_.get("no_longer_found") or []),

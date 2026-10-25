@@ -10,7 +10,7 @@ Every improvement, fix and new feature of Verilay, in plain English, newest firs
 
 **Good to know:** when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The [privacy page](https://verilay.dev/privacy) says so.
 
-**New:** signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us what you changed. It is optional, never shown on your report, and only quoted if you say so.
+**New:** signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us whether Verilay’s fix prompts helped and what could be better. One tap is enough, saying how you fixed it is optional, nothing is shown on your report, and nothing is quoted unless you say so.
 
 ## October 25, 2026: No grade from an answer that did not arrive
 
