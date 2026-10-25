@@ -6832,13 +6832,13 @@ def pricing_page():
                       ["Daily checks for new package problems and exposed keys",
                        "AI re-review weekly (Basic) or daily (Active, about A$9.99)", "An email when your grade drops"],
                       "Join early access", "/monitoring"),
-        _pricing_card("Verilay self fix", "A$29", "a session", "Planned", False,
+        _pricing_card("Verilay Self Fix session", "A$29", "a session", "Planned", False,
                       ["Verilay guides you through fixing each problem with your AI builder",
                        "Checks your builder's replies", "A rescan shows what is fixed"],
                       "Tell me when it opens", "#fix-interest"),
     ])
-    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay self fix: early access</h2>'
-                '<p>Fix sessions are not open yet. Leave your email and we will tell you once when they open. Nothing else.</p>'
+    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay Self Fix session: early access</h2>'
+                '<p>Self Fix sessions are not open yet. Leave your email and we will tell you once when they open. Nothing else.</p>'
                 '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="fix-email" type="email" maxlength="254" autocomplete="email" '
                 'placeholder="you@example.com" style="flex:1;min-width:200px;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;'
                 'padding:8px 10px;font-size:14px;font-family:inherit">'
@@ -6849,7 +6849,7 @@ var st=document.getElementById('fix-status'),em=(document.getElementById('fix-em
 if(!em){st.textContent='Add your email so we can tell you when it opens.';return;}b.disabled=true;st.textContent='';
 try{var r=await fetch('/pro/early-access',{method:'POST',headers:{'Content-Type':'application/json'},
 body:JSON.stringify({email:em,product:'fix',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
-if(r.ok){st.textContent='You are on the list. We will email you once when Verilay self fix opens.';b.style.display='none';
+if(r.ok){st.textContent='You are on the list. We will email you once when Verilay Self Fix sessions open.';b.style.display='none';
 try{if(typeof plausible==='function')plausible('Fix Early Access Join');}catch(e){}return;}st.textContent=r.error||'It could not be sent. Try again.';}
 catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};})();</script>""")
     body = ("""<style>.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:1rem 0}

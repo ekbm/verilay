@@ -1130,9 +1130,9 @@ def pro_early_access_submit():
             print(f"[pro] waitlist insert skipped (a duplicate is fine): {e}", flush=True)
     if _mon_notify_ok():
         threading.Thread(target=notify.send_monitoring_interest_alert,
-                         args=(email, "", {"Interested in": "Verilay self fix, A$29 a session (early access)" if fix
+                         args=(email, "", {"Interested in": "Verilay Self Fix session, A$29 (early access)" if fix
                                            else "Verilay Pro scan, A$4.99 (early access)"},
-                               "From the Verilay self fix card on the Pricing page." if fix
+                               "From the Verilay Self Fix session card on the Pricing page." if fix
                                else "From the locked fix prompts after a light free scan."), daemon=True).start()
     return jsonify({"ok": True})
 
