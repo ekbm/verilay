@@ -27,8 +27,22 @@ import requests as http      # a name tests can replace
 TABLES = ("ask_usage", "deepscan_jobs", "deepscan_prompts", "monitoring_interest", "private_repo_interest",
           "purchases", "reports", "scan_cache", "self_monitoring", "stats", "waitlist")
 
-# The AI model the scans use. A test checks it matches the model written in app.py.
-MODEL = "claude-sonnet-4-5"
+# The main AI model (deep scans, the monitor of our own apps, the light-scan safety net). Railway setting
+# VERILAY_MAIN_MODEL picks it (25 Oct 2026, to move off Sonnet 4.5 before it retires); unset, or not one of the models
+# below, it stays DEFAULT_MAIN_MODEL, so a typo can never break every deep scan. app.py reads the same function.
+DEFAULT_MAIN_MODEL = "claude-sonnet-4-5"
+KNOWN_MAIN_MODELS = ("claude-sonnet-4-5", "claude-sonnet-5-5")
+
+
+def main_model_setting():
+    want = (os.getenv("VERILAY_MAIN_MODEL", "") or "").strip()
+    if want and want not in KNOWN_MAIN_MODELS:
+        print(f"[models] VERILAY_MAIN_MODEL={want[:40]!r} is not one of {KNOWN_MAIN_MODELS}; using {DEFAULT_MAIN_MODEL}", flush=True)
+        return DEFAULT_MAIN_MODEL
+    return want or DEFAULT_MAIN_MODEL
+
+
+MODEL = main_model_setting()
 ANTHROPIC_VERSION = "2023-06-01"
 
 # Retirement dates Anthropic has announced (platform.claude.com/docs/en/about-claude/model-deprecations, read 21 Oct 2026). When a model is
@@ -165,6 +179,16 @@ def retirement_note(model=None):
     return None
 
 
+def _test_body(model):
+    """A tiny request with the exact settings the scans send for this model (newer models refuse some older settings)."""
+    body = {"model": model, "max_tokens": 8, "messages": [{"role": "user", "content": "Reply with the single word: ok"}]}
+    if "haiku" in model:
+        body.update({"thinking": {"type": "disabled"}, "output_config": {"effort": "low"}})
+    elif model.startswith("claude-sonnet-5"):
+        body.update({"thinking": {"type": "between_tools"}, "output_config": {"effort": "medium"}})
+    return body
+
+
 def check_anthropic():
     key = _deps["anthropic_key"]()
     if not key:
@@ -172,8 +196,7 @@ def check_anthropic():
     try:
         r = http.post("https://api.anthropic.com/v1/messages",
                       headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"},
-                      json={"model": MODEL, "max_tokens": 8, "messages": [{"role": "user", "content": "Reply with the single word: ok"}]},
-                      timeout=25)
+                      json=_test_body(MODEL), timeout=25)
     except Exception as e:
         return _res(WARN, f"could not reach it: {type(e).__name__}", "Anthropic did not answer. Try again in a few minutes and check status.anthropic.com.")
     c = r.status_code
@@ -182,8 +205,8 @@ def check_anthropic():
         return _res(note[0], note[1], note[2]) if note else _res(OK, f"model {MODEL} answers")
     if c == 404:
         return _res(FAIL, f"model {MODEL} was not found",
-                    f"The AI model '{MODEL}' has probably been retired. Every scan will fail. Pick the current model from Anthropic's model list "
-                    "and change it in app.py (and in this file's MODEL line).")
+                    f"The AI model '{MODEL}' has probably been retired. Deep scans will fail. Set VERILAY_MAIN_MODEL on Railway to a current "
+                    "model (for example claude-sonnet-5-5), or remove it to go back to the default.")
     if c in (401, 403):
         return _res(FAIL, f"the key was refused (status {c})", "ANTHROPIC_API_KEY is wrong, revoked, or the account has no credit. Check console.anthropic.com.")
     if c == 400:
@@ -204,11 +227,7 @@ def check_free_model(model=None):
     key = _deps["anthropic_key"]()
     if not key:
         return _res(FAIL, "no ANTHROPIC_API_KEY", "Add ANTHROPIC_API_KEY on Railway.")
-    body = {"model": model, "max_tokens": 8, "messages": [{"role": "user", "content": "Reply with the single word: ok"}]}
-    if "haiku" in model:
-        body.update({"thinking": {"type": "disabled"}, "output_config": {"effort": "low"}})
-    elif model.startswith("claude-sonnet-5"):
-        body.update({"thinking": {"type": "between_tools"}, "output_config": {"effort": "medium"}})
+    body = _test_body(model)
     try:
         r = http.post("https://api.anthropic.com/v1/messages",
                       headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"},

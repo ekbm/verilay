@@ -1179,11 +1179,13 @@ def fetch_url(live_url):
     return files, [], name
 
 # ── Which model each AI call uses (25 Oct 2026) ───────────────────────────────────
-# Deep scans and the monitor of our own apps stay on MAIN_MODEL. Free scans use VERILAY_FREE_MODEL (a Railway setting);
+# Deep scans and the monitor of our own apps use MAIN_MODEL: Sonnet 4.5 unless the Railway setting VERILAY_MAIN_MODEL picks
+# another known model (verilay_platformcheck.main_model_setting; Sonnet 4.5 retires on 30 Nov 2026). Removing the setting
+# switches back. Free scans use VERILAY_FREE_MODEL (a Railway setting);
 # unset, they use MAIN_MODEL too, so nothing changes until the switch is flipped. The admin can try the light free scan
 # on one scan with ?lite=1 on the home page (LITE_MODEL, honoured only for a signed-in admin). With a Haiku model the
 # free review is also slimmed (less code per call, shorter answers): see lite_mode().
-MAIN_MODEL = "claude-sonnet-4-5"
+MAIN_MODEL = platformcheck.main_model_setting()
 LITE_MODEL = "claude-haiku-5-5"
 PRO_MODEL = "claude-sonnet-5-5"     # Verilay Pro scans (free during the launch, see the Pro launch section)
 _MODEL_LOCAL = threading.local()
