@@ -272,8 +272,8 @@ _WHAT_YOU_GET_3 = (
     '<h2 id="compare">Free, Pro and Deep</h2><div style="overflow-x:auto">'
     '<table style="width:100%;min-width:560px;border-collapse:collapse;margin-bottom:.75rem">'
     f'<tr style="border-bottom:0.5px solid #e8e6e0"><th {_TH}></th><th {_TH}>Free</th>'
-    f'<th {_TH}>Pro &middot; A$4.99 a scan<br><span style="font-weight:400">planned, coming soon</span></th><th {_TH}>Deep scan</th></tr>'
-    + _row("Files read", "Up to 25, the ones most likely to matter", "About 50 (planned)", "Up to 150")
+    f'<th {_TH}>Pro<br><span style="font-weight:400">free during the launch (until 30 Nov), then A$4.99 a scan</span></th><th {_TH}>Deep scan</th></tr>'
+    + _row("Files read", "Up to 25, the ones most likely to matter", "Up to 50", "Up to 150")
     + _row("The six areas (login, settings, data, API, pages, packages)", "Short plain-English notes", "Full explanations",
            "Full explanations, every file read")
     + _row("Exposed keys, risky packages, who can see your data", "Checked", "Checked", "Checked, with each package and its fix")
@@ -281,12 +281,13 @@ _WHAT_YOU_GET_3 = (
            "One for every finding, plus one prompt to update every package")
     + _row("Similar apps", "The closest open-source match", "The closest open-source match",
            "Up to 6 to learn from or partner with")
-    + _row("Checking a fix worked", "3 free scans a day", "Pay per scan, no daily limit", "Re-scans of the same app for 30 days")
+    + _row("Checking a fix worked", "3 free scans a day", "One free Pro scan per email during the launch; then pay per scan",
+           "Re-scans of the same app for 30 days")
     + _row("Best for", "A quick health check", "Fixing what the free scan found", "Before launch, or a full review")
     + '</table></div>'
     '<p class="note">The free analysis stays free: every file is still checked for exposed keys, risky packages and who can '
     'see your data, and you get a fix prompt for the most serious problem. Pro adds a ready-to-paste fix prompt for every '
-    'finding. Pro is not on sale yet: its details are our plan and may change before it opens.</p>'
+    'finding. During the launch, Pro is free: answer 4 quick questions after a free scan to unlock one Pro scan.</p>'
 )
 
 
@@ -1493,6 +1494,7 @@ _ADMIN_TOOLS = [
     ]),
     ("Cost and use", [
         ("AI costs", "/admin/costs", "What the AI is costing, split into free scans, monitoring our own apps, deep scans and questions, with the cost of one scan of each."),
+        ("Pro launch survey", "/admin/pro-survey", "The answers people gave to unlock their free Pro scan, with totals, and how many free Pro scans are left."),
         ("Raw AI numbers", "/usage-summary", "The same counts as plain data, per day (technical)."),
         ("Scans so far", "/stats", "The running count of analyses."),
     ]),

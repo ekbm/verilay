@@ -825,6 +825,12 @@ def smart_file_selection(files, max_files=25):
 KEYWORDS = ["auth","login","database","db","schema","route","api","config","secret","supabase","middleware"]
 MAX_FILE_CHARS = 120000
 MAX_FILES = 25
+PRO_FILES = 50          # a Pro scan reads up to this many
+
+
+def max_files_now():
+    """Files to read for the scan running in this thread: PRO_FILES in a Pro scan, else MAX_FILES."""
+    return PRO_FILES if getattr(_MODEL_LOCAL, "tier", None) == "pro" else MAX_FILES
 
 
 def categorise_files(paths):
@@ -990,19 +996,19 @@ def fetch_github(repo_url, vis=None):
     all_files = list(all_files_text.keys())
 
     # Use smart file selection — security-scored prioritisation
-    selected_paths = smart_file_selection(all_files_text, max_files=MAX_FILES)
+    selected_paths = smart_file_selection(all_files_text, max_files=max_files_now())
 
     # Ensure manifests are always first — swap in if missing
     for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
         if manifest in all_files_text and manifest not in selected_paths:
             # Replace last item to stay within MAX_FILES
-            if len(selected_paths) >= MAX_FILES:
+            if len(selected_paths) >= max_files_now():
                 selected_paths[-1] = manifest
             else:
                 selected_paths.insert(0, manifest)
 
     # Slice from what's already in memory -- no further network calls at all.
-    files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:MAX_FILES] if p in all_files_text}
+    files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:max_files_now()] if p in all_files_text}
 
     return files, all_files, f"{owner}/{repo}"
 
@@ -1089,7 +1095,7 @@ def fetch_zip(zip_bytes, filename):
                 c = read_zip(p)
                 if c: files[p] = c
         for rel in name_map:
-            if len(files) >= MAX_FILES: break
+            if len(files) >= max_files_now(): break
             if rel in files: continue
             fname = rel.lower().split("/")[-1]
             for ext in [".ts",".js",".py",".json"]: fname = fname.replace(ext,"")
@@ -1179,6 +1185,7 @@ def fetch_url(live_url):
 # free review is also slimmed (less code per call, shorter answers): see lite_mode().
 MAIN_MODEL = "claude-sonnet-4-5"
 LITE_MODEL = "claude-haiku-5-5"
+PRO_MODEL = "claude-sonnet-5-5"     # Verilay Pro scans (free during the launch, see the Pro launch section)
 _MODEL_LOCAL = threading.local()
 
 
@@ -1198,14 +1205,18 @@ def model_for_call():
 
 
 def with_model(model, fn):
-    """fn wrapped so that, in whatever thread runs it, AI calls use `model` (thread pools do not carry this over)."""
+    """fn wrapped so that, in whatever thread runs it, AI calls use `model` (thread pools do not carry this over). The
+    caller's scan tier and usage source travel with it, so a Pro scan's worker threads are counted as Pro."""
+    tier, source = getattr(_MODEL_LOCAL, "tier", None), usage.current_source()
     def run(*a, **k):
-        prev = getattr(_MODEL_LOCAL, "model", None)
-        _MODEL_LOCAL.model = model
+        prev = (getattr(_MODEL_LOCAL, "model", None), getattr(_MODEL_LOCAL, "tier", None))
+        _MODEL_LOCAL.model, _MODEL_LOCAL.tier = model, tier
+        prev_source = usage.set_source(source)
         try:
             return fn(*a, **k)
         finally:
-            _MODEL_LOCAL.model = prev
+            _MODEL_LOCAL.model, _MODEL_LOCAL.tier = prev
+            usage.set_source(prev_source)
     return run
 
 
@@ -1221,6 +1232,9 @@ def model_params(model):
         return {"temperature": 0}
     if "haiku" in model:
         return {"thinking": {"type": "disabled"}, "extra_body": {"output_config": {"effort": "low"}}}
+    if model.startswith("claude-sonnet-5"):
+        # Sonnet 5.5 refuses "disabled" thinking; "between_tools" turns it off (allowed at effort high or below).
+        return {"extra_body": {"thinking": {"type": "between_tools"}, "output_config": {"effort": "medium"}}}
     return {}
 
 
@@ -1467,6 +1481,213 @@ def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
         return True, max(0, limit - (used + 1))
     except Exception:
         return True, limit  # store error → fail open rather than break the feature
+
+
+# ── Verilay Pro, free during the launch (25 Oct 2026) ────────────────────────────
+# After a light free scan, 4 quick questions (plus an email) unlock one Pro scan of the same app: Sonnet 5.5, up to
+# PRO_FILES files, a fix prompt for every finding. Limits (Railway settings): VERILAY_PRO_LAUNCH_UNTIL (default
+# 2026-11-30), VERILAY_PRO_LAUNCH_CAP (200 unlocks in total), one per email (a keyed hash of the email is kept, never the
+# email in the counter table), at most 2 unlocks per connection per day, and its own daily AI budget
+# VERILAY_PRO_DAILY_BUDGET_USD (US$15). The answers are kept on the free report ("pro_survey", hidden from /report-data)
+# and listed on /admin/pro-survey. The unlock returns a signed one-time ticket the page sends with the Pro scan.
+PRO_SURVEY = {
+    "built": {"lovable": "Lovable", "bolt": "Bolt", "replit": "Replit", "cursor": "Cursor", "v0": "v0",
+              "chat": "ChatGPT or Claude", "self": "I coded it myself", "other": "Other"},
+    "stage": {"idea": "Idea or prototype", "testing": "Testing with friends", "live": "Live with real users",
+              "paying": "Taking payments"},
+    "useful": {"very": "Very", "somewhat": "Somewhat", "not": "Not really"},
+    "pay": {"yes": "Yes", "maybe": "Maybe", "no": "No"},
+}
+PRO_TICKET_SECONDS = 2 * 3600
+_FOREVER = "9999"          # counter bucket that the ask_usage clean-up never reaches
+
+
+def _pro_until():
+    return (os.getenv("VERILAY_PRO_LAUNCH_UNTIL", "2026-11-30") or "2026-11-30").strip()
+
+
+def _pro_cap():
+    try:
+        return max(0, int(os.getenv("VERILAY_PRO_LAUNCH_CAP", "200")))
+    except Exception:
+        return 200
+
+
+def _pro_budget():
+    try:
+        v = float(os.getenv("VERILAY_PRO_DAILY_BUDGET_USD", "15"))
+    except Exception:
+        v = 15.0
+    return v if v > 0 else None
+
+
+def _pro_used():
+    if not _HAS_SUPABASE:
+        return 0
+    try:
+        res = _sb.table("stats").select("value").eq("key", "pro_launch_used").execute()
+        return int(res.data[0]["value"] or 0) if res.data else 0
+    except Exception:
+        return 0
+
+
+def _pro_count_one():
+    if not _HAS_SUPABASE:
+        return
+    try:
+        res = _sb.table("stats").select("value").eq("key", "pro_launch_used").execute()
+        if res.data:
+            _sb.table("stats").update({"value": int(res.data[0]["value"] or 0) + 1}).eq("key", "pro_launch_used").execute()
+        else:
+            _sb.table("stats").insert({"key": "pro_launch_used", "value": 1}).execute()
+    except Exception as e:
+        print(f"[pro] launch counter not updated: {e}", flush=True)
+
+
+def pro_launch_state(now=None):
+    """{'active': bool, 'left': int, 'until': 'YYYY-MM-DD'} for the free-Pro launch offer."""
+    today = (now or datetime.utcnow()).strftime("%Y-%m-%d")
+    left = max(0, _pro_cap() - _pro_used())
+    return {"active": today <= _pro_until() and left > 0, "left": left, "until": _pro_until()}
+
+
+def _counter(key, limit):
+    """One step of a counter in ask_usage: (allowed, used_before). Fails open."""
+    if not _HAS_SUPABASE:
+        return True, 0
+    try:
+        res = _sb.table("ask_usage").select("count").eq("id", key).execute()
+        rows = res.data or []
+        used = rows[0]["count"] if rows else 0
+        if used >= limit:
+            return False, used
+        if rows:
+            _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
+        else:
+            _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
+        return True, used
+    except Exception:
+        return True, 0
+
+
+def _pro_sign(payload):
+    return _hmac.new(str(app.secret_key).encode("utf-8"), payload.encode("utf-8"), _hashlib.sha256).hexdigest()[:40]
+
+
+def make_pro_ticket(report_id, email, now=None):
+    exp = int((now or time.time()) + PRO_TICKET_SECONDS)
+    payload = f"{report_id}|{_pro_sign('email|' + email)[:16]}|{exp}"
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=") + "." + _pro_sign(payload)
+
+
+def pro_ticket_valid(ticket, now=None):
+    """The ticket's payload dict when it is genuine and not expired, else None."""
+    try:
+        body, sig = str(ticket or "").split(".", 1)
+        payload = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode("utf-8")
+        if not _hmac.compare_digest(sig, _pro_sign(payload)):
+            return None
+        rid, eh, exp = payload.split("|")
+        if int(exp) < (now or time.time()):
+            return None
+        return {"report_id": rid, "email_hash": eh, "exp": int(exp), "payload": payload}
+    except Exception:
+        return None
+
+
+_USED_TICKETS = set()     # this worker's memory of used tickets, so a ticket cannot be reused even if the database is down
+
+
+def pro_ticket_claim(ticket):
+    """For starting a Pro scan: the ticket must be genuine, unexpired and not used for a scan before (one scan each)."""
+    t = pro_ticket_valid(ticket)
+    if not t or t["payload"] in _USED_TICKETS:
+        return None
+    ok, _used = _counter(_ask_key(t["payload"], "pro-ticket", _FOREVER), 1)
+    if not ok:
+        return None
+    if len(_USED_TICKETS) > 10000:
+        _USED_TICKETS.clear()
+    _USED_TICKETS.add(t["payload"])
+    return t
+
+
+def pro_gate(now=None):
+    """None when a Pro scan may spend AI today; otherwise the message to show."""
+    budget = _pro_budget()
+    spent = usage.today_cost_usd(now, kinds=("pro",))
+    if budget is not None and spent is not None and spent >= budget:
+        print(f"[pro] paused for today: ~US${spent:.2f} of US${budget:.2f}", flush=True)
+        return ("Verilay Pro has reached today's limit during the free launch. It starts again at midnight UTC. "
+                "Your free report is still yours to keep.")
+    return None
+
+
+@app.route("/pro/unlock", methods=["POST"])
+def pro_unlock_route():
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):
+        return jsonify({"error": "Please try again."}), 400
+    rid = str(body.get("report_id") or "")[:40]
+    if not _can_write_report(rid):
+        return jsonify({"error": "Run a free scan first, then unlock Pro from its results."}), 403
+    state = pro_launch_state()
+    if not state["active"]:
+        return jsonify({"error": "The free Pro launch offer has ended. Thank you for your interest!"}), 410
+    ans = body.get("answers") or {}
+    answers = {k: (ans.get(k) if ans.get(k) in opts else "") for k, opts in PRO_SURVEY.items()}
+    if not all(answers.values()):
+        return jsonify({"error": "Please answer the 4 quick questions."}), 400
+    worth = str(ans.get("worth") or "").strip()[:500]
+    email = str(body.get("email") or "").strip().lower()[:254]
+    if not _STORY_EMAIL.match(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    if any(f.severity in ("critical", "warning") for f in scan_file("message.txt", worth)):
+        return jsonify({"error": "Your answer looks like it contains a key or password. Please take it out."}), 400
+    gate = pro_gate()
+    if gate:
+        return jsonify({"error": gate}), 429
+    ip = get_ip()
+    if not _request_is_admin():
+        ok_ip, _ = _counter(_ask_key(ip, "pro-unlock-day", datetime.utcnow().strftime("%Y-%m-%d")), 2)
+        if not ok_ip:
+            return jsonify({"error": "This connection has already unlocked Pro twice today."}), 429
+        ok_email, _ = _counter(_ask_key(email, "pro-email", _FOREVER), 1)
+        if not ok_email:
+            return jsonify({"error": "This email has already had its free Pro scan during the launch."}), 409
+    data, _owner = _report_auth_info(rid)
+    survey = {"answers": answers, "worth": worth, "email": email,
+              "optin_launch": bool(body.get("optin_launch")), "optin_features": bool(body.get("optin_features")),
+              "at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+              "repo": str((data or {}).get("repo") or "")[:120], "free_grade": ((data or {}).get("health") or {}).get("score")}
+    try:
+        if data is not None:
+            data["pro_survey"] = survey
+            if _HAS_SUPABASE:
+                _sb.table("reports").update({"data": data}).eq("id", rid).execute()
+            elif rid in _reports:
+                _reports[rid]["data"] = data
+        if _HAS_SUPABASE:
+            for flag, source in (("optin_launch", "pro-launch-updates"), ("optin_features", "verilay-features")):
+                if survey[flag]:
+                    try:
+                        _sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": source}).execute()
+                    except Exception:
+                        pass
+    except Exception as e:
+        print(f"[pro] survey not stored on {rid}: {e}", flush=True)
+    _pro_count_one()
+    nice = {PRO_SURVEY_LABELS[k]: PRO_SURVEY[k][v] for k, v in answers.items()}
+    if worth:
+        nice["What would make it worth paying for"] = worth
+    nice["Updates when Pro and fix sessions open"] = "yes" if survey["optin_launch"] else "no"
+    nice["Emails about new Verilay features"] = "yes" if survey["optin_features"] else "no"
+    threading.Thread(target=notify.send_monitoring_interest_alert,
+                     args=(email, survey["repo"], nice, "Free Pro scan unlocked (launch survey)."), daemon=True).start()
+    return jsonify({"ok": True, "ticket": make_pro_ticket(rid, email), "left": max(0, state["left"] - 1)})
+
+
+PRO_SURVEY_LABELS = {"built": "Built with", "stage": "Stage", "useful": "Free scan useful", "pay": "Would pay A$4.99"}
 
 
 # ── Daily limits for free scans (25 Oct 2026) ────────────────────────────────────
@@ -3272,13 +3493,18 @@ def analyse_stream():
     _is_admin = _request_is_admin()   # read now: generate() runs after the request has been handed over
     # One model for this whole scan (see model_for_call). ?lite=1 on the home page lets the admin try the light scan.
     _scan_model = LITE_MODEL if (_is_admin and request.form.get("lite") == "1") else model_for_call()
+    # A Pro scan (free during the launch): a genuine, unused ticket from /pro/unlock.
+    _pro = pro_ticket_claim(request.form.get("pro_ticket", "")) if request.form.get("pro_ticket") else None
+    if _pro:
+        _scan_model = PRO_MODEL
 
     def generate():
         _cx = {}
         _s1_event = None
         _pv_text = None
-        _prev_model = getattr(_MODEL_LOCAL, "model", None)
-        _MODEL_LOCAL.model = _scan_model
+        _prev_model = (getattr(_MODEL_LOCAL, "model", None), getattr(_MODEL_LOCAL, "tier", None))
+        _MODEL_LOCAL.model, _MODEL_LOCAL.tier = _scan_model, ("pro" if _pro else None)
+        _prev_source = usage.set_source("pro" if _pro else None)
         try:
             # ── Fetch files ────────────────────────────────────────────
             yield json.dumps({"event":"status","data":"Reading your project files..."}) + "\n"
@@ -3414,7 +3640,7 @@ def analyse_stream():
 
             # Daily limits, checked here: everything above is free (reading files, the key/package/access checks, a
             # reused result), and step 1 is the first AI call. See free_ai_gate.
-            _gate_msg = free_ai_gate(ip, method, _is_admin)
+            _gate_msg = pro_gate() if _pro else free_ai_gate(ip, method, _is_admin)
             if _gate_msg:
                 _refund_rate_limit(ip)      # no AI was used, so the hourly allowance is given back
                 yield json.dumps({"event":"error","data":_gate_msg}) + "\n"
@@ -3424,6 +3650,8 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             if lite_mode():
                 s1["scan_tier"] = "lite"     # the light free scan: one fix prompt, the rest with Pro (see run_step4)
+            if getattr(_MODEL_LOCAL, "tier", None) == "pro":
+                s1["scan_tier"] = "pro"      # Verilay Pro, free during the launch
             s1["files_read"] = len(files)
             if private_scan is not None:
                 s1["private"] = True      # kept private: never cached, never listed, shown only to this browser
@@ -3668,7 +3896,7 @@ def analyse_stream():
             report_id, manage_token = save_report_with_token(partial)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
-                usage.scan_done("full")
+                usage.scan_done("pro" if _pro else "full")
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
             yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token}}) + "\n"
@@ -3679,7 +3907,8 @@ def analyse_stream():
         except Exception as e:
             yield json.dumps({"event":"error","data":str(e)}) + "\n"
         finally:
-            _MODEL_LOCAL.model = _prev_model
+            _MODEL_LOCAL.model, _MODEL_LOCAL.tier = _prev_model
+            usage.set_source(_prev_source)
 
     # Too many scans running at once on this server? Say so kindly instead of slowing everyone down, and give the
     # visitor back the hourly-allowance hit this request used. The slot is returned when the stream ends for any
@@ -3727,7 +3956,14 @@ def run_step4():
         if len(findings) > 3000:
             findings = findings[:3000] + '...'
         _m4 = LITE_MODEL if (data.get("lite") == "1" and _request_is_admin()) else model_for_call()
-        result = with_model(_m4, analyse_step4)(repo_name, built_with, findings)
+        _p4 = pro_ticket_valid(data.get("pro_ticket", "")) if data.get("pro_ticket") else None
+        if _p4:
+            _m4 = PRO_MODEL
+        _prev_src = usage.set_source("pro" if _p4 else None)
+        try:
+            result = with_model(_m4, analyse_step4)(repo_name, built_with, findings)
+        finally:
+            usage.set_source(_prev_src)
         # Say which part of the app (and which detected technology) each fix is about. A separate small step,
         # checked against closed lists; on any failure the fixes are left exactly as written (verilay_fixtags.py).
         with_model(_m4, fixtags.tag_fixes)(result.get("top_fixes"), data.get("stack"), call_claude_text, findings)
@@ -3736,6 +3972,7 @@ def run_step4():
             result["top_fixes"] = (result.get("top_fixes") or [])[:1]
             result["second_opinion"] = {}
             result["lite"] = True
+            result["pro_launch"] = pro_launch_state()
         if report_id and not _can_write_report(report_id):
             # The fix list is still returned to the person who asked for it, but it is only
             # stored on a report this browser (or signed-in account) created.
@@ -3800,7 +4037,7 @@ def report_data(report_id):
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
-                                                       "improvement_story")}
+                                                       "improvement_story", "pro_survey")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -6466,6 +6703,51 @@ def improvement_story_route():
     return jsonify({"ok": True})
 
 
+@app.route("/admin/pro-survey")
+def admin_pro_survey():
+    """The launch survey answers with simple totals (admin only)."""
+    if not _request_is_admin():
+        return "Not found", 404
+    rows = []
+    if _HAS_SUPABASE:
+        try:
+            rows = (_sb.table("reports").select("id,created_at,survey:data->pro_survey").not_.is_("data->pro_survey", "null")
+                    .order("created_at", desc=True).limit(500).execute().data or [])
+        except Exception as e:
+            print(f"/admin/pro-survey: {e}", flush=True)
+    surveys = [r for r in rows if isinstance(r.get("survey"), dict)]
+    esc = _htmlmod.escape
+    totals = ""
+    for key, opts in PRO_SURVEY.items():
+        counts = {v: 0 for v in opts}
+        for s_ in surveys:
+            v = (s_["survey"].get("answers") or {}).get(key)
+            if v in counts:
+                counts[v] += 1
+        totals += (f'<div class="card"><b>{esc(PRO_SURVEY_LABELS[key])}</b><br>'
+                   + " &middot; ".join(f"{esc(opts[v])}: {n}" for v, n in counts.items()) + "</div>")
+    st = pro_launch_state()
+    lines = "".join(
+        f'<tr><td>{esc(str(r.get("created_at") or "")[:16])}</td><td>{esc(r["survey"].get("repo") or "")}</td>'
+        f'<td>{esc(", ".join(PRO_SURVEY[k].get((r["survey"].get("answers") or {}).get(k, ""), "") for k in PRO_SURVEY))}</td>'
+        f'<td>{esc(r["survey"].get("worth") or "")}</td><td>{esc(r["survey"].get("email") or "")}</td>'
+        f'<td>{"yes" if r["survey"].get("optin_launch") else "no"} / {"yes" if r["survey"].get("optin_features") else "no"}</td></tr>'
+        for r in surveys)
+    body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" '
+            f'content="width=device-width,initial-scale=1"><title>Pro survey</title><style>body{{font-family:-apple-system,sans-serif;'
+            f'background:#f8f8f7;margin:0;padding:24px 16px}}.w{{max-width:1000px;margin:0 auto}}.card{{background:#fff;border:.5px solid #e5e3dc;'
+            f'border-radius:10px;padding:.7rem 1rem;margin:.5rem 0;font-size:14px}}table{{border-collapse:collapse;width:100%;font-size:13px;'
+            f'background:#fff}}td,th{{border-bottom:.5px solid #e5e3dc;padding:6px 8px;text-align:left;vertical-align:top}}</style></head><body>'
+            f'<div class="w"><a href="/admin">&larr; Admin</a><h1>Pro launch survey</h1>'
+            f'<div class="card">{len(surveys)} answers &middot; {st["left"]} free Pro scans left &middot; offer open until {esc(st["until"])}'
+            f' ({"open" if st["active"] else "closed"})</div>{totals}<div style="overflow-x:auto"><table><tr><th>When (UTC)</th><th>App</th>'
+            f'<th>Built with, stage, useful, would pay</th><th>Worth paying for</th><th>Email</th><th>Updates / features</th></tr>{lines}'
+            f'</table></div></div></body></html>')
+    resp = Response(body, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.route("/my-scans")
 def my_scans_route():
     """The signed-in person's own saved scans, for the "compare with an earlier scan" picker: id, name, grade, date
@@ -6732,8 +7014,9 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if raw_data.get("scan_tier") == "lite":
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
-                   'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro (A$4.99, coming '
-                   'soon) will give a ready-to-paste fix prompt for every finding. <a href="/deep-scan#compare" style="color:#3C3489;'
+                   'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro gives a '
+                   'ready-to-paste fix prompt for every finding: free during the launch (unlocked with 4 quick questions after a free '
+                   'scan), then A$4.99 a scan. <a href="/deep-scan#compare" style="color:#3C3489;'
                    'font-weight:600">Compare Free, Pro and Deep</a></div></div>')
     _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
     if _nc:

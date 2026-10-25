@@ -25,11 +25,12 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
-KINDS = ("scan", "ask", "monitor", "deep")
-SCAN_SOURCES = ("monitor", "deep")           # what a scan-type AI call can be attributed to, besides a visitor's free scan
-SCAN_KINDS = ("full", "replayed", "preview", "monitor", "monitor_skipped", "deep")
-LABELS = {"scan": "Free scans (visitors)", "monitor": "Monitoring our own apps", "deep": "Deep scans", "ask": "Ask Verilay questions"}
-UNIT = {"scan": "full", "monitor": "monitor", "deep": "deep"}    # which finished-scan counter divides each cost
+KINDS = ("scan", "ask", "monitor", "deep", "pro")
+SCAN_SOURCES = ("monitor", "deep", "pro")           # what a scan-type AI call can be attributed to, besides a visitor's free scan
+SCAN_KINDS = ("full", "replayed", "preview", "monitor", "monitor_skipped", "deep", "pro")
+LABELS = {"scan": "Free scans (visitors)", "monitor": "Monitoring our own apps", "deep": "Deep scans", "ask": "Ask Verilay questions",
+          "pro": "Pro scans (free during launch)"}
+UNIT = {"scan": "full", "monitor": "monitor", "deep": "deep", "pro": "pro"}    # which finished-scan counter divides each cost
 FLUSH_EVERY_SECONDS = 60
 MAX_PENDING_KEYS = 200
 
@@ -57,6 +58,14 @@ def current_source():
     return getattr(_local, "source", None)
 
 
+def set_source(source):
+    """Set this thread's source (None clears it) and return the previous one, for code that cannot use attribute()
+    (a streaming generator, a worker thread)."""
+    prev = getattr(_local, "source", None)
+    _local.source = source if source in SCAN_SOURCES else None
+    return prev
+
+
 def init(get_sb):
     """Tell the module how to reach the database (a function that returns the client, or None)."""
     global _get_sb
@@ -82,6 +91,7 @@ def _bump(name, amount, now=None):
 # ("<kind>_priced_input_tokens" / "_priced_output_tokens"); every other call is costed with AI_PRICE_* as before.
 MODEL_PRICES = {
     "claude-haiku-5-5": (0.10, 0.50),     # prompts up to 100K tokens (Anthropic price list, Oct 2026)
+    "claude-sonnet-5-5": (2.00, 10.00),
 }
 
 
@@ -230,17 +240,17 @@ def dashboard(days=30, now=None):
     prices = _prices()
     tot = base["totals"]
     cats = []
-    for kind in ("scan", "monitor", "deep", "ask"):
+    for kind in ("scan", "monitor", "deep", "pro", "ask"):
         calls = tot.get(f"{kind}_calls", 0)
         tin, tout = tot.get(f"{kind}_input_tokens", 0), tot.get(f"{kind}_output_tokens", 0)
-        units = tot.get({"scan": "scans_full", "monitor": "scans_monitor", "deep": "scans_deep"}.get(kind, ""), 0)
+        units = tot.get({"scan": "scans_full", "monitor": "scans_monitor", "deep": "scans_deep", "pro": "scans_pro"}.get(kind, ""), 0)
         cost = _cost(tot, prices, (kind,)) if prices else None
         cats.append({"kind": kind, "label": LABELS[kind], "calls": calls, "input_tokens": tin, "output_tokens": tout, "cost_usd": cost,
                      "units": units, "cost_per_unit_usd": round(cost / units, 4) if (cost is not None and units) else None})
     day_rows = []
     for d in base["days"]:
         row = {"date": d["date"], "total_usd": d.get("est_cost_usd")}
-        for kind in ("scan", "monitor", "deep", "ask"):
+        for kind in ("scan", "monitor", "deep", "pro", "ask"):
             row[kind] = _cost(d, prices, (kind,)) if prices else None
         day_rows.append(row)
     total_cost = round(sum(c["cost_usd"] for c in cats), 4) if prices else None
@@ -271,7 +281,7 @@ def budget_usd():
     return v if v > 0 else None
 
 
-def today_cost_usd(now=None):
+def today_cost_usd(now=None, kinds=KINDS):
     """Estimated AI spend so far today (UTC), all kinds together: what the database holds plus what this worker has not
     written yet. The database part is re-read at most once a minute. None when no AI prices are set (nothing is guessed)
     or the database cannot be reached. Never raises."""
@@ -296,7 +306,7 @@ def today_cost_usd(now=None):
             for key, v in _pending.items():
                 if key.startswith(prefix):
                     d[key[len(prefix):]] = d.get(key[len(prefix):], 0) + v
-        return _cost(d, prices)
+        return _cost(d, prices, kinds)
     except Exception:
         return None
 

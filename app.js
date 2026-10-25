@@ -629,6 +629,7 @@ function showLiteTestNote() {
 // ── Verilay Pro (coming soon) ─────────────────────────────────────────────────
 // The light free scan gives one fix prompt; this card says how many more are waiting and takes an early-access email.
 function proLockedHTML(data) {
+  if (data.pro_launch && data.pro_launch.active) return proSurveyHTML(data);
   var h = (currentReport && currentReport.health) || {};
   var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
   var lead = more ? (more + ' more fix prompt' + (more === 1 ? ' is' : 's are') + ' ready for this scan.')
@@ -646,7 +647,102 @@ function proLockedHTML(data) {
     '<button type="button" id="pro-join" class="btn-sm">Join early access</button></div>' +
     '<div id="pro-status" style="font-size:12px;color:var(--put);margin-top:.35rem"></div></div></div></div>';
 }
+// ── Verilay Pro, free during the launch: 4 quick questions unlock one Pro scan of this app ──
+var _PRO_Q = [
+  ['built', 'What did you build your app with?', [['lovable', 'Lovable'], ['bolt', 'Bolt'], ['replit', 'Replit'], ['cursor', 'Cursor'],
+    ['v0', 'v0'], ['chat', 'ChatGPT or Claude'], ['self', 'I coded it myself'], ['other', 'Other']]],
+  ['stage', 'What stage is it at?', [['idea', 'Idea or prototype'], ['testing', 'Testing with friends'], ['live', 'Live with real users'],
+    ['paying', 'Taking payments']]],
+  ['useful', 'How useful was your free scan?', [['very', 'Very'], ['somewhat', 'Somewhat'], ['not', 'Not really']]],
+  ['pay', 'If Pro cost A$4.99 a scan, would you pay for it?', [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No']]]
+];
+function proSurveyHTML(data) {
+  var h = (currentReport && currentReport.health) || {};
+  var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
+  var lead = more ? 'Unlock ' + more + ' more fix prompt' + (more === 1 ? '' : 's') + ' with Verilay Pro, free' : 'Run Verilay Pro on this app, free';
+  var field = 'width:100%;box-sizing:border-box;border:0.5px solid var(--bdr);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white;color:var(--txt)';
+  var qs = _PRO_Q.map(function(q) {
+    return '<div style="margin-top:.7rem"><div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:4px">' + q[1] + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap" role="group" aria-label="' + q[1] + '">' + q[2].map(function(o) {
+        return '<button type="button" class="pro-opt" data-q="' + q[0] + '" data-v="' + o[0] + '" aria-pressed="false" style="border:0.5px solid var(--pu);' +
+          'background:white;color:var(--put);border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer">' + o[1] + '</button>';
+      }).join('') + '</div></div>';
+  }).join('');
+  var left = (data.pro_launch && data.pro_launch.left) || 0;
+  return '<div id="pro-locked" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.95rem 1rem;margin:.85rem 0">' +
+    '<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pu)">Launch offer</div>' +
+    '<div style="font-size:16px;font-weight:700;color:var(--put);margin:.15rem 0">' + lead + '</div>' +
+    '<div style="font-size:13px;color:var(--put);line-height:1.55">A fix prompt for every finding, fuller explanations and up to 50 files read. ' +
+    'Free while the launch lasts (' + left + ' left), then A$4.99 a scan. Answer 4 quick questions to unlock it.</div>' +
+    '<div id="pro-survey">' + qs +
+    '<div style="margin-top:.7rem"><label for="pro-worth" style="font-size:13px;font-weight:600;color:var(--put)">What would make it worth paying for? <span style="font-weight:400">(optional)</span></label>' +
+    '<textarea id="pro-worth" maxlength="500" rows="2" style="' + field + ';resize:vertical;margin-top:4px"></textarea></div>' +
+    '<div style="margin-top:.7rem"><label for="pro-email" style="font-size:13px;font-weight:600;color:var(--put)">Email</label>' +
+    '<input id="pro-email" type="email" maxlength="254" autocomplete="email" style="' + field + ';margin-top:4px"></div>' +
+    '<input id="pro-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
+    '<label style="display:flex;gap:8px;font-size:13px;margin-top:.55rem;cursor:pointer"><input type="checkbox" id="pro-optin-launch">Tell me when Verilay Pro and fix sessions open</label>' +
+    '<label style="display:flex;gap:8px;font-size:13px;margin-top:.35rem;cursor:pointer"><input type="checkbox" id="pro-optin-features">Occasional emails about new Verilay features</label>' +
+    '<button type="button" id="pro-unlock" class="btn-sm" style="margin-top:.75rem;padding:9px 16px">Unlock Pro and run it</button>' +
+    '<div id="pro-status" style="font-size:12px;color:var(--put);margin-top:.4rem"></div>' +
+    '<div style="font-size:11px;color:var(--mut);margin-top:.4rem">One free Pro scan per email during the launch. Your answers help us decide what to build; ' +
+    'your email is used for your Pro report and only what you tick above.</div></div></div>';
+}
+function bindProSurvey() {
+  var btn = document.getElementById('pro-unlock');
+  if (!btn || btn._bound) return;
+  btn._bound = true;
+  var picked = {};
+  try { if (typeof plausible === 'function') plausible('Pro Launch Offer Shown'); } catch (e) {}
+  document.querySelectorAll('.pro-opt').forEach(function(b) {
+    b.onclick = function() {
+      var q = b.getAttribute('data-q');
+      picked[q] = b.getAttribute('data-v');
+      document.querySelectorAll('.pro-opt[data-q="' + q + '"]').forEach(function(o) {
+        var on = o === b;
+        o.setAttribute('aria-pressed', on ? 'true' : 'false');
+        o.style.background = on ? 'var(--pu)' : 'white';
+        o.style.color = on ? '#fff' : 'var(--put)';
+      });
+    };
+  });
+  btn.onclick = async function() {
+    var status = document.getElementById('pro-status');
+    var missing = _PRO_Q.filter(function(q) { return !picked[q[0]]; });
+    if (missing.length) { status.textContent = 'Please answer: ' + missing[0][1]; return; }
+    var email = (document.getElementById('pro-email').value || '').trim();
+    if (!email) { status.textContent = 'Add your email to unlock Pro.'; return; }
+    btn.disabled = true; btn.textContent = 'Unlocking...'; status.textContent = '';
+    try {
+      var r = await fetch('/pro/unlock', {method: 'POST', headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
+        body: JSON.stringify({report_id: savedReportId, answers: Object.assign({worth: (document.getElementById('pro-worth').value || '').trim()}, picked),
+          email: email, optin_launch: document.getElementById('pro-optin-launch').checked,
+          optin_features: document.getElementById('pro-optin-features').checked,
+          website: document.getElementById('pro-website').value})}).then(function(x) { return x.json(); });
+      if (r.ok && r.ticket) {
+        try { if (typeof plausible === 'function') plausible('Pro Launch Unlock'); } catch (e) {}
+        status.textContent = 'Unlocked. Starting your Pro scan...';
+        window._proTicket = r.ticket;
+        window.scrollTo({top: 0, behavior: 'smooth'});
+        setTimeout(runAnalysis, 600);
+        return;
+      }
+      status.textContent = r.error || 'It could not be unlocked. Try again.';
+    } catch (e) { status.textContent = 'It could not be unlocked. Try again.'; }
+    btn.disabled = false; btn.textContent = 'Unlock Pro and run it';
+  };
+}
+function showProBadge() {
+  var top = document.getElementById('report-content');
+  if (!top || document.getElementById('pro-badge')) return;
+  var b = document.createElement('div');
+  b.id = 'pro-badge';
+  b.style.cssText = 'display:inline-block;background:var(--pu);color:#fff;font-size:12px;font-weight:600;border-radius:20px;padding:4px 12px;margin-bottom:10px';
+  b.textContent = 'Verilay Pro \u00b7 free during launch';
+  top.insertBefore(b, top.firstChild);
+}
+
 function bindProEarlyAccess() {
+  bindProSurvey();
   var btn = document.getElementById('pro-join');
   if (!btn || btn._bound) return;
   btn._bound = true;
@@ -1207,6 +1303,9 @@ async function runAnalysis() {
   var fd = new FormData();
   fd.append('method', currentMethod);
   if (liteTestMode()) fd.append('lite', '1');   // admin-only test of the light free scan (the server checks the admin)
+  // A Pro scan (free during the launch): the one-time ticket from the survey. Kept for this run's Part 2.
+  window._proRunTicket = window._proTicket || null;
+  if (window._proTicket) { fd.append('pro_ticket', window._proTicket); window._proTicket = null; }
   if (currentMethod === 'github') {
     var url = document.getElementById('gh-url').value.trim();
     if (!url) { showErr('Please enter a GitHub URL'); return; }
@@ -1313,6 +1412,7 @@ function handleStreamEvent(evt) {
       startTrickle(15, 48);
       currentReport = evt.data;
       renderReport(evt.data);
+      if (evt.data && evt.data.scan_tier === 'pro') showProBadge();
       // Track analysis completion in Plausible
       if (window.plausible) {
         plausible('Analysis Complete', {props: {
@@ -2710,6 +2810,7 @@ async function runPart2() {
         built_with: currentReport ? (currentReport.built_with||'') : '',
         findings_summary: findings,
         lite: liteTestMode() ? '1' : '',
+        pro_ticket: window._proRunTicket || '',
         stack: currentReport ? (currentReport.stack||[]).map(function(s) { return s && s.name; }).filter(Boolean) : [],
         report_id: savedReportId || ''
       })

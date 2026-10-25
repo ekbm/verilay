@@ -194,16 +194,21 @@ def check_anthropic():
     return _res(FAIL, f"unexpected status {c}")
 
 
-def check_free_model():
-    """The light free scan's model (VERILAY_FREE_MODEL), sent with the exact settings the scans use for it (thinking off,
-    low effort), so a refused setting or a missing model shows here before visitors' free scans fail."""
-    model = (os.getenv("VERILAY_FREE_MODEL", "") or "").strip()
+PRO_MODEL = "claude-sonnet-5-5"      # Verilay Pro scans (app.py PRO_MODEL)
+
+
+def check_free_model(model=None):
+    """A second model (the light free scan's VERILAY_FREE_MODEL, or the Pro model), sent with the exact settings the scans
+    use for it, so a refused setting or a missing model shows here before those scans fail."""
+    model = model or (os.getenv("VERILAY_FREE_MODEL", "") or "").strip()
     key = _deps["anthropic_key"]()
     if not key:
         return _res(FAIL, "no ANTHROPIC_API_KEY", "Add ANTHROPIC_API_KEY on Railway.")
     body = {"model": model, "max_tokens": 8, "messages": [{"role": "user", "content": "Reply with the single word: ok"}]}
     if "haiku" in model:
         body.update({"thinking": {"type": "disabled"}, "output_config": {"effort": "low"}})
+    elif model.startswith("claude-sonnet-5"):
+        body.update({"thinking": {"type": "between_tools"}, "output_config": {"effort": "medium"}})
     try:
         r = http.post("https://api.anthropic.com/v1/messages",
                       headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"},
@@ -212,10 +217,10 @@ def check_free_model():
         return _res(WARN, f"could not reach it: {type(e).__name__}", "Anthropic did not answer. Try again in a few minutes.")
     c = r.status_code
     if c == 200:
-        return _res(OK, f"model {model} answers (free scans)")
+        return _res(OK, f"model {model} answers")
     if c in (400, 404):
         return _res(FAIL, f"model {model} was refused (status {c})",
-                    "Free scans will fail. Remove VERILAY_FREE_MODEL on Railway to go back to the main model, then check the model name.")
+                    "Scans on this model will fail. For free scans remove VERILAY_FREE_MODEL on Railway; for Pro, change PRO_MODEL in app.py.")
     if c == 429 or c >= 500:
         return _res(WARN, f"busy or rate limited (status {c})", "Probably temporary. Run this page again in a few minutes.")
     return _res(FAIL, f"unexpected status {c}")
@@ -401,6 +406,7 @@ def _plan():
            ("Payments (Stripe)", check_stripe)]
     if (os.getenv("VERILAY_FREE_MODEL", "") or "").strip() and os.getenv("VERILAY_FREE_MODEL", "").strip() != MODEL:
         out.insert(4, ("AI model (free scans)", check_free_model))
+    out.insert(4, ("AI model (Pro scans)", lambda: check_free_model(PRO_MODEL)))
     out += [(f"Table: {t}", (lambda t=t: check_table(t))) for t in TABLES]
     out.append(("What we are running on", check_versions))
     return out
