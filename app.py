@@ -4053,7 +4053,7 @@ def report_data(report_id):
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
-                                                       "improvement_story", "pro_survey")}
+                                                       "improvement_story", "pro_survey", "compare_feedback")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -6599,9 +6599,12 @@ def compare_report_route():
         prev_at = str((row or {}).get("created_at") or "")[:32]
     except Exception:
         pass
+    made_at = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
     result.update({"previous_at": prev_at or str(old_data.get("generated_at") or "")[:32],
                    "previous_repo": str(old_data.get("repo") or "")[:120],
-                   "made_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")})
+                   "made_at": made_at,
+                   "before": comparemod.scan_meta(old_data, prev_at or old_data.get("generated_at")),
+                   "after": comparemod.scan_meta(new_data, new_data.get("generated_at") or made_at)})
     new_data["comparison"] = result
     try:
         if _HAS_SUPABASE:
@@ -6611,7 +6614,190 @@ def compare_report_route():
     except Exception as e:
         print(f"Comparison not stored on {new_id}: {e}", flush=True)
     return jsonify(dict(result, headline=comparemod.headline(result), signed_in=bool(_current_uid()),
-                        improved=comparemod.improved(result)))
+                        improved=comparemod.improved(result), page="/compare/" + new_id))
+
+
+# ── The compare page (25 Oct 2026) ─────────────────────────────────────────────────────────────────────────────────
+# Its own page, opened in a new tab from a small line on the report. Free: everything that costs no AI (the
+# comparison itself). Pro: Ask Verilay about the two scans (an AI call each), open to everyone while the free Pro launch
+# runs, then included when the newer scan is a Pro or deep scan. The optional questions show only to the browser that
+# owns the report and only here.
+_CMP_Q1 = {"fixed": "Fixed things from the report", "features": "Added new features", "nothing": "Nothing yet", "pro": "Just trying Pro"}
+_CMP_Q2 = {"free_vs_pro": ("Was the Pro report worth it?", {"yes": "Yes", "somewhat": "Somewhat", "no": "No"}),
+           "rescan": ("Did the fix prompts work in your AI builder?", {"yes": "Yes", "some": "Some", "no": "No"})}
+
+
+def _compare_ask_open(data):
+    if pro_launch_state()["active"]:
+        return True
+    return bool((data or {}).get("scan_tier") == "pro" or (data or {}).get("is_deep_scan"))
+
+
+def _compare_suggestions(sit, result):
+    gb, ga = (result or {}).get("grade_before"), (result or {}).get("grade_after")
+    if sit == "free_vs_pro":
+        return ["What did Pro find that matters most?", "Which of these should I fix first?", "Is Pro worth it for my app?"]
+    first = f"Why did my grade go from {gb} to {ga}?" if gb and ga and gb != ga else "What changed between these two scans?"
+    return [first, "Which of these should I fix first?", "Is my app safe to launch now?"]
+
+
+@app.route("/compare/<report_id>")
+def compare_page(report_id):
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", report_id or ""):
+        return "Not found", 404
+    data, _owner = _report_auth_info(report_id)
+    if not data or data.get("private"):
+        return "Not found", 404
+    result = data.get("comparison") or {}
+    esc = _htmlmod.escape
+    sit = comparemod.situation(result)
+    body = comparemod.render_page_body(result, str(data.get("repo") or ""))
+    body += (f'<p style="font-size:13px;margin-top:1rem"><a href="/report/{esc(report_id)}" style="color:#534AB7;font-weight:600">'
+             'Open the newer report &rarr;</a></p>')
+    if not _current_uid():
+        body += ('<p class="sub">Only scans made in the same browser can be compared. <a href="/login" style="color:#534AB7;'
+                 'font-weight:600">Sign in</a> to compare scans from any device.</p>')
+    if result.get("comparable"):
+        if _compare_ask_open(data):
+            chips = "".join(f'<button type="button" class="opt ask-chip">{esc(q)}</button>' for q in _compare_suggestions(sit, result))
+            body += ('<div class="ccard" id="cmp-ask"><h2>Ask Verilay about these two scans</h2>'
+                     '<p class="sub">Plain-English answers about what changed and what to do next.'
+                     + (' Part of Verilay Pro, free during the launch.' if pro_launch_state()["active"] else '') + '</p>'
+                     f'<div class="opts">{chips}</div><div class="arow"><input id="ask-q" maxlength="1000" placeholder="Type your question..." '
+                     'aria-label="Your question"><button type="button" id="ask-go" class="btn">Ask</button></div>'
+                     '<div id="ask-out"></div></div>')
+        else:
+            body += ('<div class="ccard" id="cmp-ask"><h2>Ask Verilay about these two scans</h2><p class="sub">Part of Verilay Pro: '
+                     'run a Pro scan of this app and you can ask Verilay what changed and what to fix first. '
+                     '<a href="/pricing#pro" style="color:#534AB7;font-weight:600">See Verilay Pro</a></p></div>')
+        q2 = _CMP_Q2.get(sit)
+        opts = lambda qid, d: "".join(f'<button type="button" class="opt cq" data-q="{qid}" data-v="{k}">{esc(v)}</button>' for k, v in d.items())
+        body += ('<div class="ccard" id="cmp-q" style="display:none;background:#EEEDFE;border-color:#c9c5f2" data-sit="' + esc(sit) + '">'
+                 '<h2>Help us make Verilay better <span style="font-weight:400;font-size:13px">(optional)</span></h2>'
+                 f'<div class="q"><div class="ql">What did you change since the last scan?</div><div class="opts">{opts("changed", _CMP_Q1)}</div></div>'
+                 + (f'<div class="q"><div class="ql">{esc(q2[0])}</div><div class="opts">{opts("second", q2[1])}</div></div>' if q2 else "")
+                 + '<div class="q"><label class="ql" for="cq-text">Anything else? <span style="font-weight:400">(optional)</span></label>'
+                 '<textarea id="cq-text" rows="2" maxlength="500" placeholder="What would make this comparison more useful?"></textarea></div>'
+                 '<input id="cq-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">'
+                 '<button type="button" id="cq-send" class="btn">Send</button><div id="cq-status" class="sub"></div>'
+                 '<p class="sub">Your answers go to Verilay and are kept with this report. They are not shown on it.</p></div>')
+    script = r"""<script>(function(){
+var rid=%s,tok='';try{tok=localStorage.getItem('verilay_tok_'+rid)||'';}catch(e){}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+var q=document.getElementById('ask-q'),go=document.getElementById('ask-go'),out=document.getElementById('ask-out');
+async function ask(text){if(!text)return;go.disabled=true;out.innerHTML='<p class="sub">Thinking...</p>';
+ try{var r=await fetch('/compare/'+rid+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:text})}).then(function(x){return x.json();});
+  out.innerHTML=r.ok?'<div class="ans"><div class="sub" style="margin:0 0 .3rem">'+esc(text)+'</div>'+esc(r.answer).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')+'</div>':'<p class="sub">'+esc(r.error||'That could not be answered. Try again.')+'</p>';}
+ catch(e){out.innerHTML='<p class="sub">That could not be answered. Try again.</p>';}go.disabled=false;}
+if(go){go.onclick=function(){ask((q.value||'').trim());};q.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();ask((q.value||'').trim());}};
+ document.querySelectorAll('.ask-chip').forEach(function(b){b.onclick=function(){q.value=b.textContent;ask(b.textContent);};});}
+var box=document.getElementById('cmp-q');if(!box||!tok)return;box.style.display='block';var picked={};
+box.querySelectorAll('.cq').forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-q');picked[k]=b.getAttribute('data-v');
+ box.querySelectorAll('.cq[data-q="'+k+'"]').forEach(function(o){o.classList.toggle('on',o===b);});};});
+var send=document.getElementById('cq-send'),st=document.getElementById('cq-status');
+send.onclick=async function(){var t=(document.getElementById('cq-text').value||'').trim();
+ if(!picked.changed&&!picked.second&&!t){st.textContent='Choose an answer, or write a line.';return;}send.disabled=true;
+ try{var r=await fetch('/compare/'+rid+'/feedback',{method:'POST',headers:{'Content-Type':'application/json','X-Report-Token':tok},
+  body:JSON.stringify({changed:picked.changed||'',second:picked.second||'',text:t,website:document.getElementById('cq-website').value})}).then(function(x){return x.json();});
+  if(r.ok){box.innerHTML='<h2>Thank you</h2><p class="sub">That helps us decide what to build next.</p>';return;}st.textContent=r.error||'It could not be sent. Try again.';}
+ catch(e){st.textContent='It could not be sent. Try again.';}send.disabled=false;};
+})();</script>""" % json.dumps(report_id)
+    style = """<style>.cpair{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin:.8rem 0}
+.cside{border-radius:10px;padding:.7rem .8rem}.carrow{align-self:center;font-size:20px;color:#6b6966}
+.chead{border-radius:10px;padding:.8rem .95rem;font-size:14px;margin:.6rem 0;line-height:1.55}.chead strong{display:block;font-size:16px;margin-bottom:2px}
+.ctiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:.7rem 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:.5rem 0}.chip{font-size:12px;border-radius:20px;padding:3px 10px;border:.5px solid #e5e3dc;background:#fff}
+.chip.ok{background:#E1F5EE;border-color:#9fe1cb;color:#085041}.chip.no{background:#F1EFE8;color:#6b6966;text-decoration:line-through}
+.ccard{background:#fff;border:.5px solid #e5e3dc;border-radius:12px;padding:1rem;margin:1rem 0}.ccard h2{margin:0 0 .25rem;font-size:16px}
+.sub{font-size:13px;color:#6b6966;margin:.2rem 0 .5rem}.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{border:.5px solid #534AB7;background:#fff;color:#3C3489;border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer}
+.opt.on{background:#534AB7;color:#fff}.arow{display:flex;gap:8px;flex-wrap:wrap;margin-top:.6rem}
+.arow input{flex:1;min-width:180px;border:.5px solid #d3d1c7;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit}
+.ans{background:#F6F5F2;border-radius:8px;padding:.7rem .85rem;margin-top:.7rem;font-size:14px;line-height:1.6}
+.q{margin-top:.75rem}.ql{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.ccard textarea{width:100%;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit}
+@media (max-width:520px){.cpair{grid-template-columns:1fr}.carrow{transform:rotate(90deg);justify-self:center}}</style>"""
+    page = style + body + script
+    if _HAS_PAYWALL:
+        return paywall._page("Compare scans", page, robots="noindex,nofollow")
+    return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Compare scans - Verilay</title></head><body>" + page + "</body></html>"
+
+
+@app.route("/compare/<report_id>/ask", methods=["POST"])
+def compare_ask(report_id):
+    """Ask Verilay about the two scans: the newer report's context plus the comparison. Pro (open during the launch)."""
+    try:
+        data = get_report_data(report_id) if _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", report_id or "") else None
+        if not data or data.get("private") or not (data.get("comparison") or {}).get("comparable"):
+            return jsonify({"ok": False, "error": "There is no comparison on this report."}), 404
+        if not _compare_ask_open(data):
+            return jsonify({"ok": False, "error": "Asking about a comparison is part of Verilay Pro."}), 403
+        question = str((request.get_json(silent=True) or {}).get("question") or "").strip()[:1000]
+        if not question:
+            return jsonify({"ok": False, "error": "Please type a question."}), 400
+        allowed, remaining = ask_rate_check(_client_ip(), scope=f"compare:{report_id}", limit=ASK_REPORT_RATE_LIMIT)
+        if not allowed:
+            return jsonify({"ok": False, "limit_reached": True,
+                            "error": f"You've reached the limit of {ASK_REPORT_RATE_LIMIT} questions per hour about this comparison."}), 429
+        prompt = (f"Here is the person's newer Verilay scan report:\n\n{build_report_context_summary(data)}\n\n"
+                  f"And how it compares with their earlier scan of the same app:\n{comparemod.summary_text(data.get('comparison'))}\n\n"
+                  "A finding missing from the newer scan may not be fixed: the scans can read different files and the AI can "
+                  "word things differently. When the earlier scan checked fewer areas, its grade was not a full grade.\n\n"
+                  f"Their question: {sanitise_for_prompt(question)}")
+        answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500)
+        return jsonify({"ok": True, "answer": answer, "remaining": remaining})
+    except Exception:
+        return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
+
+
+@app.route("/compare/<report_id>/feedback", methods=["POST"])
+def compare_feedback(report_id):
+    """The optional questions on the compare page. Only the browser (or account) that owns the report; kept on it (never
+    shown, never in /report-data) and emailed to Moses."""
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):
+        return jsonify({"ok": True})
+    if not _can_write_report(report_id):
+        return jsonify({"error": _NOT_ALLOWED}), 403
+    data, _owner = _report_auth_info(report_id)
+    cmp_ = (data or {}).get("comparison") or {}
+    if not cmp_.get("comparable"):
+        return jsonify({"error": "There is no comparison on this report."}), 400
+    sit = comparemod.situation(cmp_)
+    changed = str(body.get("changed") or "")
+    changed = changed if changed in _CMP_Q1 else ""
+    q2 = _CMP_Q2.get(sit)
+    second = str(body.get("second") or "")
+    second = second if q2 and second in q2[1] else ""
+    text = str(body.get("text") or "").strip()[:500]
+    if not (changed or second or text):
+        return jsonify({"error": "Choose an answer, or write a line."}), 400
+    if any(f.severity in ("critical", "warning") for f in scan_file("message.txt", text)):
+        return jsonify({"error": "Your message looks like it contains a key or password. Please take it out and send again."}), 400
+    if not _story_rate_ok(get_ip()):
+        return jsonify({"error": "Too many messages from this connection. Please try again later."}), 429
+    fb = {"situation": sit, "changed": changed, "second": second, "text": text,
+          "grade_before": cmp_.get("grade_before"), "grade_after": cmp_.get("grade_after"),
+          "at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
+    data["compare_feedback"] = fb
+    try:
+        if _HAS_SUPABASE:
+            _sb.table("reports").update({"data": data}).eq("id", report_id).execute()
+        elif report_id in _reports:
+            _reports[report_id]["data"] = data
+    except Exception as e:
+        print(f"[compare] feedback not stored on {report_id}: {e}", flush=True)
+        return jsonify({"error": "Your answer could not be saved. Please try again."}), 500
+    nice = {"Situation": sit, "Grade": f"{cmp_.get('grade_before') or '?'} -> {cmp_.get('grade_after') or '?'}"}
+    if changed:
+        nice["What changed"] = _CMP_Q1[changed]
+    if second:
+        nice[q2[0]] = q2[1][second]
+    if text:
+        nice["Anything else"] = text
+    threading.Thread(target=notify.send_monitoring_interest_alert,
+                     args=("", str(data.get("repo") or ""), nice, "Compare page feedback."), daemon=True).start()
+    return jsonify({"ok": True})
 
 
 _STORY_HITS = {}
@@ -7131,11 +7317,15 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 </div>""")
 
     out = _B["offer"]
-    # "Compared with your earlier scan" (verilay_compare.py), when the person asked for it on the results page.
-    try:
-        out.append(comparemod.render_html(raw_data.get("comparison")))
-    except Exception as _e:
-        app.logger.warning("comparison card skipped: %s", _e)
+    # "Compared with your earlier scan": one small line to the compare page (25 Oct 2026), not the whole comparison.
+    _cmp = raw_data.get("comparison") or {}
+    if _cmp and not raw_data.get("private"):
+        _cw = comparemod._when(_cmp.get("previous_at"))
+        out.append('<div class="card" id="comparison" style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;'
+                   'background:#F1EFE8;border-color:#e5e3dc;color:#444441"><span>Compared with your earlier scan'
+                   + (f' ({_htmlmod.escape(_cw)}' + (f', grade {_htmlmod.escape(str(_cmp.get("grade_before")))}' if _cmp.get("grade_before") else "") + ')' if _cw else "")
+                   + f'.</span><a href="/compare/{_htmlmod.escape(report_id)}" target="_blank" rel="noopener" style="color:#534AB7;'
+                   'font-weight:600;white-space:nowrap">See the comparison &rarr;</a></div>')
 
     out = _B["head"]
     # A live-address preview: what it looked at, the headers and outside scripts it could read, tests to try, and the next step.

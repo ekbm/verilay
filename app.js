@@ -352,177 +352,48 @@ async function showCompareOffer() {
   var best = cands[0];
   var card = document.createElement('div');
   card.id = 'compare-card';
-  card.style.cssText = 'background:var(--sur);border:0.5px solid var(--pu);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px';
+  // One small line (25 Oct 2026): the comparison opens on its own page, in a new tab, so this report stays as it is.
+  card.style.cssText = 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:#444441;background:#F1EFE8;' +
+    'border-radius:8px;padding:.5rem .8rem;margin-bottom:10px';
   var opts = cands.map(function(h, i) {
     return '<option value="' + i + '">' + esc(h.repo) + ' · ' + esc(_compareWhen(h.timestamp)) + ' · grade ' + esc(h.score) +
       (signedIn ? ' · ' + esc(h._src || 'this browser') : '') + '</option>';
   }).join('');
-  var hint = signedIn
-    ? 'Pick the earlier scan of this same app, from this browser or your account.'
-    : 'Only scans made in this browser are listed. <a href="/login" style="color:var(--pu);font-weight:600">Sign in</a> to compare scans from any device.';
-  card.innerHTML =
-    '<div style="font-size:14px;font-weight:600;color:var(--put)"><i class="ti ti-arrows-diff" style="margin-right:6px"></i>' +
-      (best._same ? 'You scanned ' + esc(best.repo) + ' before. See what changed?' : 'Compare with an earlier scan?') + '</div>' +
-    '<div style="font-size:12px;color:var(--mut);margin-top:2px">' + hint + '</div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.6rem">' +
-      '<select id="compare-pick" style="flex:1;min-width:0;border:0.5px solid var(--bdr);border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit;background:white;color:var(--txt)">' + opts + '</select>' +
-      '<button type="button" id="compare-go" class="btn-sm">Compare</button>' +
-    '</div>' +
-    '<div id="compare-result"></div>';
+  card.innerHTML = '<i class="ti ti-arrows-diff" style="font-size:14px;color:var(--pu)"></i><span>' +
+      (best._same ? 'You scanned this app before (' + esc(_compareWhen(best.timestamp)) + ', grade ' + esc(best.score) + ').'
+                  : 'Compare with an earlier scan?') + '</span>' +
+    (cands.length > 1 ? '<select id="compare-pick" aria-label="Earlier scan" style="max-width:100%;border:0.5px solid var(--bdr);border-radius:6px;' +
+      'padding:3px 6px;font-size:12px;font-family:inherit;background:white;color:var(--txt)">' + opts + '</select>' : '') +
+    '<a href="#" id="compare-go" style="color:var(--pu);font-weight:600;white-space:nowrap">Compare the two scans &rarr;</a>' +
+    '<span id="compare-result" style="flex-basis:100%;font-size:12px;color:var(--rdt)"></span>';
   anchor.parentNode.insertBefore(card, anchor.nextSibling);
-  document.getElementById('compare-go').onclick = function() {
-    runCompare(cands[parseInt(document.getElementById('compare-pick').value, 10) || 0]);
+  document.getElementById('compare-go').onclick = function(ev) {
+    ev.preventDefault();
+    var pick = document.getElementById('compare-pick');
+    runCompare(cands[pick ? (parseInt(pick.value, 10) || 0) : 0]);
   };
 }
 async function runCompare(prev) {
   var out = document.getElementById('compare-result');
   var btn = document.getElementById('compare-go');
-  if (!prev || !out) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Comparing...'; }
+  if (!prev || !out || !btn || btn._busy) return;
+  btn._busy = true; btn.textContent = 'Comparing...'; out.textContent = '';
+  var win = null;
+  try { win = window.open('', '_blank'); } catch (e) {}       // opened now, inside the click, so pop-up blockers allow it
   try {
     var h = reportHeaders(savedReportId, {'Content-Type': 'application/json', 'X-Previous-Token': reportToken(prev.id)});
     var resp = await fetch('/compare-report', {method: 'POST', headers: h,
       body: JSON.stringify({report_id: savedReportId, previous_id: prev.id})});
     var r = await resp.json();
-    out.innerHTML = r.error ? '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">' + esc(r.error) + '</div>'
-      : compareResultHTML(r) + (r.improved ? storyFormHTML(r) : '');
-    if (!r.error && r.improved) bindStoryForm();
+    if (r.error) { out.textContent = r.error; if (win) win.close(); }
+    else if (win) { win.location = r.page || ('/compare/' + savedReportId); }
+    else { window.location.href = r.page || ('/compare/' + savedReportId); }
   } catch (e) {
-    out.innerHTML = '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">The comparison could not be made. Try again.</div>';
+    out.textContent = 'The comparison could not be made. Try again.';
+    if (win) win.close();
   }
-  if (btn) { btn.disabled = false; btn.textContent = 'Compare'; }
+  btn._busy = false; btn.innerHTML = 'Compare the two scans &rarr;';
 }
-// Same look as verilay_compare.render_html on the saved report page: number tiles, grade badges, one row per issue
-// (plain title, grey "where" line, a small severity tag), and the fine print in one quiet box.
-var _CMP_GROUPS = [['no_longer_found', 'No longer found', '#1D9E75', '#EAF3DE'],
-                   ['still_found', 'Still there', '#92400E', '#FEF3C7'],
-                   ['new_found', 'New in this scan', '#A32D2D', '#FCEBEB']];
-var _CMP_SEV = {critical: ['#A32D2D', '#FCEBEB'], warning: ['#92400E', '#FEF3C7']};
-var _CMP_GRADE = {A: '#1D9E75', B: '#4A90D9', C: '#EF9F27', D: '#E24B4A', F: '#A32D2D'};
-function _cmpGrade(g) {
-  return '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;' +
-    'font-size:14px;font-weight:700;color:#fff;background:' + (_CMP_GRADE[g] || '#999') + '">' + esc(g || '–') + '</span>';
-}
-function compareResultHTML(r) {
-  var html = '<div style="margin-top:.85rem;border-top:0.5px solid var(--bdr);padding-top:.85rem">';
-  if (!r.comparable) return html + '<div style="font-size:14px;line-height:1.55">' + esc(r.reason || 'These scans could not be compared.') + '</div></div>';
-  if (r.grade_before || r.grade_after) {
-    html += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);margin-bottom:.75rem">Grade ' +
-      _cmpGrade(r.grade_before) + '<span style="font-size:16px">&rarr;</span>' + _cmpGrade(r.grade_after) + '</div>';
-  }
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + _CMP_GROUPS.map(function(g) {
-    var n = (r[g[0]] || []).length;
-    return '<div style="background:' + g[3] + ';border-radius:8px;padding:.6rem .5rem;text-align:center">' +
-      '<div style="font-size:22px;font-weight:700;color:' + g[2] + ';line-height:1.1">' + n + '</div>' +
-      '<div style="font-size:12px;color:#444;margin-top:2px">' + g[1] + '</div></div>';
-  }).join('') + '</div>';
-  _CMP_GROUPS.forEach(function(g) {
-    var rows = r[g[0]] || [];
-    if (!rows.length) return;
-    html += '<div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:1rem 0 .15rem">' +
-      g[1] + ' &middot; ' + rows.length + '</div>';
-    rows.forEach(function(f) {
-      var sc = _CMP_SEV[f.severity] || ['#444', '#eee'];
-      var where = [f.area, f.file].filter(Boolean).map(esc).join(' &middot; ');
-      if (g[0] === 'still_found' && f.before && f.before !== f.severity) where += ' &middot; was ' + esc(f.before);
-      html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:.55rem 0;border-top:0.5px solid var(--bdr)">' +
-        '<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--txt);line-height:1.4">' + esc(f.title) + '</div>' +
-        '<div style="font-size:12px;color:var(--mut);margin-top:2px">' + where + '</div></div>' +
-        '<span style="flex-shrink:0;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;color:' + sc[0] + ';background:' + sc[1] + '">' +
-        esc(f.severity) + '</span></div>';
-    });
-  });
-  if ((r.checks || []).length) {
-    html += '<div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:1rem 0 .15rem">Automatic checks</div>' +
-      r.checks.map(function(c) {
-        return '<div style="display:flex;justify-content:space-between;padding:.45rem 0;border-top:0.5px solid var(--bdr);font-size:14px">' +
-          '<span>' + esc(c.label) + '</span><span style="color:var(--mut)">' + (c.before | 0) + ' &rarr; <strong style="color:var(--txt)">' + (c.after | 0) + '</strong></span></div>';
-      }).join('');
-  }
-  var notes = [];
-  if (r.files_note) notes.push(esc(r.files_note));
-  if ((r.not_compared || []).length) notes.push('Not compared, because one of the scans did not check them: ' + esc(r.not_compared.join(', ')) + '.');
-  notes.push('&ldquo;No longer found&rdquo; means this scan did not report it. The AI can word the same issue differently between scans, so check the list before treating anything as fixed.');
-  html += '<div style="background:#F6F5F2;border-radius:8px;padding:.6rem .8rem;margin-top:1rem;font-size:12px;color:var(--mut);line-height:1.55">' +
-    notes.map(function(n) { return '<div style="margin:.15rem 0">' + n + '</div>'; }).join('') + '</div>';
-  html += '<div style="font-size:12px;color:var(--mut);margin-top:.65rem">Saved on this report, so the link shows it too.' +
-    (r.signed_in ? '' : ' <a href="/login" style="color:var(--pu);font-weight:600">Sign in</a> to keep your scans and comparisons on any device.') + '</div>';
-  return html + '</div>';
-}
-// "Went up a grade? Did Verilay's fix prompts help?" Optional, only after a comparison that improved (the server
-// checks that too). One tap is enough; an opinion and how they fixed it are optional (many would rather not say how).
-// The answer stays private: it is emailed to Verilay and kept with the report, never shown on it.
-var _STORY_CHOICES = [['yes', 'Yes'], ['partly', 'A bit'], ['no', 'No'], ['unused', 'Didn&rsquo;t use them']];
-function storyFormHTML(r) {
-  var n = (r.no_longer_found || []).length;
-  var better = r.grade_before && r.grade_after && r.grade_before !== r.grade_after;
-  var lead = better ? 'Went from ' + esc(r.grade_before) + ' to ' + esc(r.grade_after) + '?'
-    : n + (n === 1 ? ' issue' : ' issues') + ' no longer found?';
-  var field = 'width:100%;box-sizing:border-box;border:0.5px solid var(--bdr);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white;color:var(--txt)';
-  var lab = 'display:block;font-size:12px;font-weight:600;color:var(--put);margin:.75rem 0 3px';
-  var tick = 'display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--txt);margin-top:.5rem;cursor:pointer';
-  var pills = _STORY_CHOICES.map(function(c) {
-    return '<button type="button" class="story-choice" data-v="' + c[0] + '" aria-pressed="false" style="border:0.5px solid var(--pu);' +
-      'background:white;color:var(--put);border-radius:20px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">' + c[1] + '</button>';
-  }).join('');
-  return '<div id="story-box" style="background:var(--pul);border-radius:8px;padding:.85rem 1rem;margin-top:1rem">' +
-    '<div style="font-size:15px;font-weight:600;color:var(--put)">' + lead + ' Did Verilay&rsquo;s fix prompts help?</div>' +
-    '<div style="font-size:12px;color:var(--put);margin:2px 0 .65rem">Optional, and one tap is enough. It tells us which prompts work.</div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap" role="group" aria-label="Did the fix prompts help?">' + pills + '</div>' +
-    '<label for="story-opinion" style="' + lab + '">What did you think? What could be better? <span style="font-weight:400">(optional)</span></label>' +
-    '<textarea id="story-opinion" maxlength="1000" rows="2" placeholder="e.g. The prompt for the key was spot on, the one for the admin page was too vague" style="' + field + ';resize:vertical"></textarea>' +
-    '<details style="margin-top:.6rem"><summary style="font-size:13px;color:var(--pu);cursor:pointer;font-weight:600">Add how you fixed it (optional)</summary>' +
-      '<textarea id="story-text" maxlength="1000" rows="2" placeholder="Only if you are happy to share" style="' + field + ';resize:vertical;margin-top:.4rem"></textarea></details>' +
-    '<label for="story-email" style="' + lab + '">Email <span style="font-weight:400">(optional, only if we may follow up)</span></label>' +
-    '<input id="story-email" type="email" maxlength="254" autocomplete="email" style="' + field + '">' +
-    '<input id="story-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
-    '<label style="' + tick + '"><input type="checkbox" id="story-quote" style="margin-top:2px">You can quote this on verilay.dev, without my name</label>' +
-    '<label style="' + tick + '"><input type="checkbox" id="story-early" style="margin-top:2px">I&rsquo;d like early access to guided fix sessions (needs an email)</label>' +
-    '<div style="display:flex;align-items:center;gap:10px;margin-top:.75rem"><button type="button" id="story-send" class="btn-sm">Send</button>' +
-    '<span id="story-status" style="font-size:12px;color:var(--put)"></span></div></div>';
-}
-function bindStoryForm() {
-  var btn = document.getElementById('story-send');
-  if (!btn) return;
-  var helped = '';
-  document.querySelectorAll('.story-choice').forEach(function(b) {
-    b.onclick = function() {
-      helped = b.getAttribute('data-v');
-      document.querySelectorAll('.story-choice').forEach(function(o) {
-        var on = o === b;
-        o.setAttribute('aria-pressed', on ? 'true' : 'false');
-        o.style.background = on ? 'var(--pu)' : 'white';
-        o.style.color = on ? '#fff' : 'var(--put)';
-      });
-    };
-  });
-  btn.onclick = async function() {
-    var status = document.getElementById('story-status');
-    var opinion = (document.getElementById('story-opinion').value || '').trim();
-    var text = (document.getElementById('story-text').value || '').trim();
-    if (!helped && !opinion && !text) { status.textContent = 'Choose an answer, or tell us what you think.'; return; }
-    btn.disabled = true; btn.textContent = 'Sending...'; status.textContent = '';
-    try {
-      var resp = await fetch('/improvement-story', {method: 'POST', headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
-        body: JSON.stringify({report_id: savedReportId, helped: helped, opinion: opinion, changed: text,
-          email: (document.getElementById('story-email').value || '').trim(),
-          quote_ok: document.getElementById('story-quote').checked,
-          early_access: document.getElementById('story-early').checked,
-          website: document.getElementById('story-website').value})});
-      var r = await resp.json();
-      if (r.ok) {
-        document.getElementById('story-box').innerHTML = '<div style="font-size:14px;font-weight:600;color:var(--put)">Thank you!</div>' +
-          '<div style="font-size:13px;color:var(--put);margin-top:2px">Your answer reached us. It is not shown on your report.</div>';
-        return;
-      }
-      status.textContent = r.error || 'It could not be sent. Try again.';
-    } catch (e) {
-      status.textContent = 'It could not be sent. Try again.';
-    }
-    btn.disabled = false; btn.textContent = 'Send';
-  };
-}
-
 // ── Monitoring early-access offer ─────────────────────────────────────────────
 // After a COMPLETE scan graded A: "keep it that way". A test of interest and price; nothing is for sale. A ZIP scan
 // gets the same offer worded as an invitation to connect GitHub (a ZIP cannot be watched). Closing it hides it for
