@@ -2213,6 +2213,13 @@ def layers_with_retry(call, layer_names, label):
         diag = f"{len(text or '')} chars, stop: {info.get('stop') or 'unknown'}"
         print(f"[{label}] attempt {attempt}: no readable answer for {', '.join(missing)} ({diag}); "
               f"starts: {' '.join((text or '')[:120].split())!r}", flush=True)
+        if attempt == 1 and lite_mode():
+            # Light free scan: the small model sometimes answers a group in a shape that cannot be read (seen on
+            # Verilay's own repository, full of AI prompts). Redo just this group once on the main model, so the visitor
+            # still gets a complete report; only these rare answers cost more.
+            print(f"[{label}] light answer unreadable: redoing this group on {MAIN_MODEL}", flush=True)
+            call = with_model(MAIN_MODEL, call)
+            continue
         retry = (len(missing) == len(layer_names) and (text or "").strip()
                  and info.get("stop") not in ("refusal", "max_tokens"))
         if attempt == 1 and retry:
@@ -6480,6 +6487,7 @@ def sitemap():
         ("https://verilay.dev/about", "monthly", "0.5"),
         ("https://verilay.dev/checklist", "monthly", "0.6"),
         ("https://verilay.dev/monitoring", "monthly", "0.6"),
+        ("https://verilay.dev/pricing", "monthly", "0.7"),
         ("https://verilay.dev/apps", "daily", "0.8"),
     ]
     try:
@@ -6721,6 +6729,66 @@ def admin_pro_survey():
     return resp
 
 
+# ── Pricing page (25 Oct 2026) ────────────────────────────────────────────────────
+# Every option side by side, kept apart from the deep-scan sales page. Only what exists is offered for use or sale;
+# planned products are marked as planned and lead to early access. The Pro card follows the launch state.
+def _pricing_card(title, price, unit, state, state_ok, points, button, href, star=False):
+    esc = _htmlmod.escape
+    return (f'<div class="pc{" star" if star else ""}"><h3>{esc(title)}</h3><div class="price">{esc(price)}'
+            f'{(" <small>" + esc(unit) + "</small>") if unit else ""}</div>'
+            f'<div class="state {"ok" if state_ok else "soon"}">{esc(state)}</div><ul>'
+            + "".join(f"<li>{p}</li>" for p in points) +
+            f'</ul><a class="btn{"" if star else " ghost"}" href="{esc(href)}">{esc(button)}</a></div>')
+
+
+@app.route("/pricing")
+def pricing_page():
+    light_on = "haiku" in free_model()
+    st = pro_launch_state()
+    if light_on and st["active"]:
+        pro_price, pro_unit, pro_state, pro_ok = "Free", "during the launch", f"Then A$4.99 a scan · {st['left']} free scans left", True
+        pro_btn, pro_href = "Run a free scan to unlock it", "/"
+    else:
+        pro_price, pro_unit, pro_state, pro_ok = "A$4.99", "a scan", "Coming soon", False
+        pro_btn, pro_href = "Join early access", "/#analyse"
+    cards = "".join([
+        _pricing_card("Free scan", "A$0", "", "Available", True,
+                      ["All six areas checked: login, settings, data, API, pages, packages",
+                       "Exposed keys, risky packages and who can see your data",
+                       "A fix prompt for the most serious problem" if light_on else "Fix prompts for your AI builder",
+                       "Up to 3 scans a day"], "Run a free scan", "/"),
+        _pricing_card("Verilay Pro", pro_price, pro_unit, pro_state, pro_ok,
+                      ["<strong>A ready-to-paste fix prompt for every finding</strong>", "Fuller explanations",
+                       "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November"],
+                      pro_btn, pro_href, star=True),
+        _pricing_card("Deep scan", "A$19", "one-off", "Available", True,
+                      ["Up to 150 files read", "Every risky package named, with its fix", "Up to 6 similar projects",
+                       "Re-scans of the same app for 30 days"], "See the deep scan", "/deep-scan"),
+        _pricing_card("Monitoring", "A$3.99", "a month", "Planned · early access", False,
+                      ["Daily checks for new package problems and exposed keys",
+                       "AI re-review weekly (Basic) or daily (Active, about A$9.99)", "An email when your grade drops"],
+                      "Join early access", "/monitoring"),
+        _pricing_card("Fix session", "A$29", "a session", "Planned", False,
+                      ["Verilay guides you through fixing each problem with your AI builder",
+                       "Checks your builder's replies", "A rescan shows what is fixed"],
+                      "Ask to be told when it opens", "/monitoring"),
+    ])
+    body = ("""<style>.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:1rem 0}
+.pc{background:#fff;border:.5px solid #e5e3dc;border-radius:12px;padding:1rem;display:flex;flex-direction:column}
+.pc.star{border:1.5px solid #534AB7}.pc h3{margin:0;font-size:16px}.pc .price{font-size:24px;font-weight:700;margin:.4rem 0 .1rem}
+.pc .price small{font-size:13px;font-weight:400;color:#6b6966}.pc .state{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.pc .state.ok{color:#1D9E75}.pc .state.soon{color:#92400E}.pc ul{padding-left:1.1rem;margin:.6rem 0 .9rem;font-size:13px;line-height:1.55;flex:1}
+.pc .btn{text-align:center}.pc .btn.ghost{background:transparent;color:#534AB7;border:.5px solid #534AB7}</style>
+<div class="eyebrow">Pricing</div><h1>Free to start, pay for depth</h1>
+<p>Every scan starts free. Pay only when you want more detail, every fix prompt, or someone keeping watch.</p>"""
+            f'<div class="pgrid">{cards}</div>'
+            '<p class="note">Prices in Australian dollars, plus any applicable tax at checkout. Planned products are not on sale yet: '
+            'their details are our plan and may change before they open.</p>')
+    if _HAS_PAYWALL:
+        return paywall._page("Pricing", body)
+    return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Pricing - Verilay</title></head><body>" + body + "</body></html>"
+
+
 @app.route("/my-scans")
 def my_scans_route():
     """The signed-in person's own saved scans, for the "compare with an earlier scan" picker: id, name, grade, date
@@ -6862,6 +6930,10 @@ Run a new analysis &rarr;</a>
 
     repo_safe = str(data.get("repo") or "Report")  # data is already escaped
     out = []
+    # Report tidy-up (25 Oct 2026): sections go into groups and are written in this order: the summary and numbers,
+    # what was found, the automatic checks, how to fix it, one offer (the comparison), then everything else in one
+    # collapsed "More details" box. Nothing is removed; only the order and the grouping change.
+    _B = {"head": out, "found": [], "checks": [], "fix": [], "offer": [], "more": [], "foot": []}
     out.append(f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -6953,24 +7025,32 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 
     # Score grid
     _crit, _warn, _pass = (("&ndash;",) * 3) if is_preview else (h.get('critical',0), h.get('warnings',0), h.get('passing',0))
+    # The fourth box says how much of the app was actually checked ("6 of 6"), which a reader can act on; the old
+    # "No issues seen" count of passing findings was easy to misread next to the grade (Moses, 25 Oct 2026).
+    _areas_total = len(layers) or 6
+    _areas_ok = sum(1 for l in layers if l.get("status") != "not_checked" and l.get("name") not in (data.get("layers_not_checked") or []))
+    _areas = "&ndash;" if is_preview else f"{_areas_ok} of {_areas_total}"
     out.append(f"""<div class="sg">
   <div class="sb"><div class="sn" style="color:{score_color}">{score_display}</div><div class="sl">{"Score, not graded" if is_preview else "Score"}</div></div>
   <div class="sb"><div class="sn" style="color:#E24B4A">{_crit}</div><div class="sl">Critical</div></div>
   <div class="sb"><div class="sn" style="color:#EF9F27">{_warn}</div><div class="sl">Warnings</div></div>
-  <div class="sb"><div class="sn" style="color:#1D9E75">{_pass}</div><div class="sl">No issues seen</div></div>
+  <div class="sb"><div class="sn" style="color:{'#1D9E75' if is_preview or _areas_ok == _areas_total else '#5F5E5A'}">{_areas}</div><div class="sl">Areas checked</div></div>
 </div>""")
 
+    out = _B["offer"]
     # "Compared with your earlier scan" (verilay_compare.py), when the person asked for it on the results page.
     try:
         out.append(comparemod.render_html(raw_data.get("comparison")))
     except Exception as _e:
         app.logger.warning("comparison card skipped: %s", _e)
 
+    out = _B["head"]
     # A live-address preview: what it looked at, the headers and outside scripts it could read, tests to try, and the next step.
     if is_preview and data.get("input_method") == "url":
         out.append(livecheck.render_html(raw_data.get("live_check"), livecheck.served_count(raw_data.get("files_analysed"), raw_data.get("files_read"))))
         out.append(sitecheck.render_html(raw_data.get("site_setup"), raw_data.get("live_check")))
 
+    out = _B["fix"]
     # "Fix these first" -- moved from the very bottom of the page (2026-10-10). On a
     # deep scan it sat ~84% of the way down, collapsed, after a 41-item list.
     # Deep reports saved before 2026-10-10 carry no per-package fixes (the AI wrote
@@ -6991,6 +7071,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                    'ready-to-paste fix prompt for every finding: free during the launch (unlocked with 4 quick questions after a free '
                    'scan), then A$4.99 a scan. <a href="/deep-scan#compare" style="color:#3C3489;'
                    'font-weight:600">Compare Free, Pro and Deep</a></div></div>')
+    out = _B["head"]          # the "not checked" note belongs with the grade it explains
     _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
     if _nc:
         out.append('<div class="card" style="background:#F1EFE8;border-color:#D3D1C7"><div style="font-size:13px;'
@@ -7000,6 +7081,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                    'an area not checked is never graded above B. Run the analysis again to check them.'
                    '</div></div>')
 
+    out = _B["more"]
     # Scan at a glance: what each check covered, in numbers (verilay_glance.py)
     try:
         out.append(render_glance_html(data))
@@ -7070,6 +7152,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             + '</div></div>'
         )
 
+    out = _B["checks"]
     # Verified findings — the deterministic secret scan. Always full detail,
     # free or paid: this check has been free for everyone since it shipped.
     scan = data.get("secret_scan") or {}
@@ -7192,6 +7275,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                 + _dep_advice + selfcheck.render(["old_packages"]) + '</div>'
             )
 
+    out = _B["more"]
     # Ask AI button
     import urllib.parse as _urlparse
     _critical = [f'{l.get("name")}: {f2.get("title","")}' for l in layers for f2 in l.get("expert",{}).get("findings",[]) if f2.get("severity") in ["critical","warning"]]
@@ -7199,13 +7283,14 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _ask_url = "https://claude.ai/new?q=" + _urlparse.quote(_ask_q)
     out.append(f'<div style="margin:.75rem 0;padding:.85rem 1rem;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><div style="font-size:13px;font-weight:600;color:#3C3489;margin-bottom:2px">🤖 Confused about a finding?</div><div style="font-size:12px;color:#3C3489">Ask AI to explain any issue in plain English and suggest how to fix it.</div></div><a href="{_ask_url}" target="_blank" class="ask-ai-cta" style="font-size:12px;padding:7px 16px;border-radius:20px;background:#534AB7;color:#fff;text-decoration:none;white-space:nowrap;font-weight:500;transition:transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)">Ask AI about this report →</a></div>')
 
+    out = _B["found"]
     # Layers — <details> rather than a plain <div>: this page has no JS at
     # all, so this is the ONLY way to let a non-developer open one layer at
     # a time instead of facing every layer's full findings list expanded
     # at once. Collapsed by default, native browser disclosure triangle,
     # no custom JS needed.
     if layers:
-        out.append('<div class="st">Layer Analysis</div>')
+        out.append('<div class="st">What we found, by area</div>')
         for layer in layers:
             status = layer.get("status","passing")
             ex = layer.get("expert",{})
@@ -7224,6 +7309,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                 f'</summary>{analogy}<div style="font-size:13px;color:#555;margin-bottom:.5rem">{ex.get("summary","")}</div>{findings_html}{concept}</details>'
             )
 
+    out = _B["more"]
     # (Recommended fixes now render near the top -- see render_fixes_html above.)
 
     # Similar projects: the list on deep scans; one pointer line on free reports of
@@ -7238,10 +7324,15 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if so.get("summary_prompt"):
         out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
 
+    out = _B["foot"]
     out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">' + ('' if is_preview else 'Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br>') + '<strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
-    return "".join(out)
+    _more = "".join(_B["more"])
+    _more_html = ('<details class="card" id="more-details" style="margin-top:1rem"><summary style="cursor:pointer;font-size:14px;'
+                  'font-weight:600;color:#3C3489">More details: scan stats, tech stack, how your app fits together, similar '
+                  'projects, second opinions</summary><div style="margin-top:.75rem">' + _more + '</div></details>') if _more.strip() else ""
+    return "".join(_B["head"] + _B["found"] + _B["checks"] + _B["fix"] + _B["offer"] + [_more_html] + _B["foot"])
 
 
 @app.route("/report/<report_id>/it-review")
@@ -7900,7 +7991,7 @@ _PLAUSIBLE_SNIPPET = (
     '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
 )
 _ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer", "/checklist",
-                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos")
+                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos", "/pricing")
 
 
 @app.after_request
@@ -8295,7 +8386,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
       <a href="/about" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">About</a>
       <a href="/blog" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Blog</a>
       <a href="https://github.com/ekbm/verilay" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">GitHub</a>
-      <a href="/deep-scan" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Pricing</a>
+      <a href="/pricing" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);text-decoration:none">Pricing</a>
     </div>
     <button id="btn-start-hero" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:5px 14px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;font-weight:500;white-space:nowrap">
       Analyse my app
@@ -8315,7 +8406,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <a href="/apps" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Checked apps</a>
     <a href="/about" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">About</a>
     <a href="/blog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
-    <a href="/deep-scan" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Pricing</a>
+    <a href="/pricing" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Pricing</a>
     <a href="/changelog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
     <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0">GitHub</a>
   </div>
@@ -8968,6 +9059,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     </div>
   </div>
 
+  <!-- What we found, by area (renderReport): right after the verdict, before the fixes -->
+  <div id="report-sections"></div>
+
   <div class="p2-banner" id="p2-banner">
     <div style="display:flex;align-items:flex-start;gap:12px">
       <i class="ti ti-sparkles" style="font-size:22px;color:var(--pu);flex-shrink:0;margin-top:2px"></i>
@@ -8993,8 +9087,8 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
   <div id="p2-results"></div>
 
-  <!-- Collapsible groups (layers, checks, similar projects, diagram, ask) are rendered here by renderReport -->
-  <div id="report-sections"></div>
+  <!-- "More": checks, similar apps, diagram, Ask Verilay, share and IT pack (renderMoreBox), under the fixes -->
+  <div id="report-more"></div>
 
   <!-- Layers injected here by appendLayers -->
   <div id="layers-container"></div>

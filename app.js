@@ -543,6 +543,7 @@ function showMonitoringOffer() {
   var score = (rep.health || {}).score;
   if (score !== 'A' || rep.preview_only || (window._incompleteLayers || []).length || !savedReportId) return;
   if (_monOfferHidden() || document.getElementById('mon-offer')) return;
+  if (document.getElementById('compare-card')) return;     // one offer at a time: comparing comes first after a rescan
   var isZip = (rep.input_method || currentMethod) === 'zip';
   var repo = !isZip && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(rep.repo || '') ? rep.repo : '';
   var field = 'width:100%;box-sizing:border-box;border:0.5px solid var(--bdr);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white;color:var(--txt)';
@@ -1814,9 +1815,17 @@ function healthFromLayers(layers, data) {
   return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
 }
 
+// "4 of 6": areas with a real result (not "Not checked"), out of the six.
+function areasCheckedText() {
+  var names = Object.keys(currentLayers || {});
+  var inc = window._incompleteLayers || [];
+  var ok = names.filter(function(k) { return currentLayers[k] && currentLayers[k].status !== 'not_checked' && inc.indexOf(k) === -1; }).length;
+  return ok + ' of 6';
+}
 function healthCardsHTML(h, hasLayers, isPreview) {
-  // The third label is what readers see. "passing" would read as "everything is fine"; the scan only knows it saw no issues.
-  var hlbls = ['critical', 'warnings', 'no issues seen', 'score'];
+  // The third box says how much of the app was checked ("6 of 6"). The old "no issues seen" count was easy to misread
+  // next to the grade; "passing" was never used because the scan can only say what it saw.
+  var hlbls = ['critical', 'warnings', 'areas checked', 'score'];
   if (isPreview) {
     return hlbls.map(function(lbl) {
       var val = lbl === 'score' ? 'n/a' : '–';
@@ -1831,7 +1840,7 @@ function healthCardsHTML(h, hasLayers, isPreview) {
       return '<div class="hc" style="background:var(--bll)"><div style="font-size:18px;font-weight:600;color:var(--blt)">' + val + '</div><div style="font-size:12px;color:var(--blt);margin-top:1px">' + sub + '</div></div>';
     }).join('');
   }
-  var hvals = [h.critical || 0, h.warnings || 0, h.passing || 0, h.score || '?'];
+  var hvals = [h.critical || 0, h.warnings || 0, areasCheckedText(), h.score || '?'];
   var scoreBgCol = h.score === 'A' ? ['#E1F5EE', '#085041'] :
                    h.score === 'B' ? ['#EFF6FF', '#1D4ED8'] :
                    h.score === 'C' ? ['#FEF9C3', '#854D0E'] :
@@ -2338,6 +2347,40 @@ function layerFailed(evt, names) {
   updateHealthDisplay();
 }
 
+// The "More" box under the fixes: one button per section; a button opens its section and closes the others. The share
+// banner (with the directory card that sits next to it) is moved into "Share and IT pack" so its existing code keeps working.
+function renderMoreBox(more) {
+  var box = document.getElementById('report-more');
+  if (!box) return;
+  var banner = document.getElementById('share-banner'), rpt = document.getElementById('rpt');
+  if (banner && rpt && box.contains(banner)) rpt.appendChild(banner);       // keep it alive while the box is redrawn
+  var dir = document.getElementById('directory-card');
+  if (dir && rpt && box.contains(dir)) rpt.appendChild(dir);
+  box.innerHTML = '<div class="more-box" style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0">' +
+    '<div style="font-size:15px;font-weight:600;margin-bottom:.55rem">More</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:.4rem">' + more.map(function(m) {
+      return '<button type="button" class="more-pill" data-sec="' + m[0] + '" style="font-size:13px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);' +
+        'background:var(--sur);color:var(--mut);cursor:pointer;font-family:inherit">' + esc(m[1]) + '</button>';
+    }).join('') + '</div>' + more.map(function(m) { return m[2]; }).join('') + '</div>';
+  var slot = document.getElementById('share-slot');
+  if (slot && dir) slot.appendChild(dir);
+  if (slot && banner) slot.appendChild(banner);
+  box.querySelectorAll('.more-pill').forEach(function(p) {
+    p.onclick = function() {
+      var id = p.getAttribute('data-sec');
+      box.querySelectorAll('details.sec').forEach(function(d) { d.open = (d.id === id); });
+      box.querySelectorAll('.more-pill').forEach(function(o) {
+        var on = o === p;
+        o.style.background = on ? 'var(--pu)' : 'var(--sur)';
+        o.style.color = on ? '#fff' : 'var(--mut)';
+        o.style.borderColor = on ? 'var(--pu)' : 'var(--bdr)';
+      });
+      var d = document.getElementById(id);
+      if (d) d.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    };
+  });
+}
+
 function renderReport(data) {
   currentReport = data;
   // Load verifications from saved report data
@@ -2368,19 +2411,20 @@ function renderReport(data) {
 
   html += '<div id="verdict-banner">' + (!isPreview && hasLayers ? verdictBannerHTML(h.score, data.prev_score) : '') + '</div>';
 
-  // Static site recommendation
+  // Static site recommendation: shown under "Checks we ran" (report tidy-up, 25 Oct 2026), not at the top.
+  var staticHtml = '';
   var pr = data.prod_ready || {};
   if (pr.static_recommendation === 'yes' || pr.static_recommendation === 'partial') {
-    html += '<div style="background:#EFF6FF;border:0.5px solid #3B82F6;border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
-    html += '<i class="ti ti-topology-star" style="color:#3B82F6;font-size:16px;margin-top:1px;flex-shrink:0"></i>';
-    html += '<div>';
-    html += '<div style="font-size:14px;font-weight:600;color:#1D4ED8;margin-bottom:2px">💡 Could this be a static site?</div>';
+    staticHtml += '<div style="background:#EFF6FF;border:0.5px solid #3B82F6;border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px">';
+    staticHtml += '<i class="ti ti-topology-star" style="color:#3B82F6;font-size:16px;margin-top:1px;flex-shrink:0"></i>';
+    staticHtml += '<div>';
+    staticHtml += '<div style="font-size:14px;font-weight:600;color:#1D4ED8;margin-bottom:2px">💡 Could this be a static site?</div>';
     if (pr.static_recommendation === 'yes') {
-      html += '<div style="font-size:13px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'This app may not need a database or server — it could be simpler and cheaper to host as a static site on Netlify or Vercel for free.') + '</div>';
+      staticHtml += '<div style="font-size:13px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'This app may not need a database or server — it could be simpler and cheaper to host as a static site on Netlify or Vercel for free.') + '</div>';
     } else {
-      html += '<div style="font-size:13px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'Parts of this app could potentially be simplified. A static approach would reduce complexity and security risk.') + '</div>';
+      staticHtml += '<div style="font-size:13px;color:#1D4ED8;line-height:1.55">' + esc(pr.static_reason || 'Parts of this app could potentially be simplified. A static approach would reduce complexity and security risk.') + '</div>';
     }
-    html += '</div></div>';
+    staticHtml += '</div></div>';
   }
 
   // (Scope/limitations notice consolidated into the files-coverage block below.)
@@ -2438,7 +2482,7 @@ function renderReport(data) {
 
   var diagramHtml = '<div id="architecture-diagram-section">' + architectureDiagramHTML(data) + '</div>';
 
-  var checksHtml = filesCoverageHTML(data) + fileBreakdownHTML(data);
+  var checksHtml = staticHtml + filesCoverageHTML(data) + fileBreakdownHTML(data);
   var discoveryInner = window._discoveryHtml || discoveryTeaserHTML(data);
 
   html += '<div class="tabs" id="main-tabs">';
@@ -2497,15 +2541,21 @@ function renderReport(data) {
 
   var layersHtml = '<div id="layer-errors">' + layerErrorsHTML() + '</div>' + html;
   var incomplete = window._incompleteLayers || [];
-  var sections = secHtml('sec-layers', 'What we found, by layer', isPreview ? 'Needs your code (GitHub or ZIP)' : (hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…'), layersHtml, !isPreview);
-  if (checksHtml) sections += secHtml('sec-checks', 'Checks we ran', checksSummaryText(data), checksHtml, false);
+  // Report tidy-up (25 Oct 2026): the page keeps what someone came for (the verdict above, the areas here, the fix
+  // prompts below) and moves everything else into one "More" box under the fixes. Same sections, same ids.
+  var sections = secHtml('sec-layers', 'What we found, by area', isPreview ? 'Needs your code (GitHub or ZIP)' : (hasLayers ? layersSummaryText(h, incomplete) : 'Analysing…'), layersHtml, !isPreview);
   if (isPreview && data.live_view) sections = secHtml('sec-live', 'About this live-site preview', 'What it saw, and tests to try', liveCheckHTML(data), true) + sections;
-  if (discoveryInner) sections += secHtml('sec-similar', 'Similar open-source projects', window._discoverySum || 'See what already exists',
-                                          '<div id="discovery-slot">' + discoveryInner + '</div>', false);
-  sections += secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false);
-  sections += secHtml('sec-ask', 'Ask Verilay about your results', 'Plain-English answers', askHtml, false);
+  var more = [];
+  if (checksHtml) more.push(['sec-checks', 'Checks we ran', secHtml('sec-checks', 'Checks we ran', checksSummaryText(data), checksHtml, false)]);
+  if (discoveryInner) more.push(['sec-similar', 'Similar apps', secHtml('sec-similar', 'Similar open-source projects', window._discoverySum || 'See what already exists',
+                                          '<div id="discovery-slot">' + discoveryInner + '</div>', false)]);
+  more.push(['sec-diagram', 'How your app fits together', secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false)]);
+  more.push(['sec-ask', 'Ask Verilay', secHtml('sec-ask', 'Ask Verilay about your results', 'Plain-English answers', askHtml, false)]);
+  more.push(['sec-share', 'Share and IT pack', secHtml('sec-share', 'Share and IT pack', 'Share link, README badge, app directory, IT Review Pack',
+    '<div id="share-slot"></div><div style="font-size:13px;margin-top:.4rem"><a href="#" onclick="var b=document.getElementById(\'btn-it-review\');if(b)b.click();return false;" style="color:var(--pu);font-weight:600">Open the IT Review Pack</a> &middot; a printable checklist for IT teams approving this app</div>', false)]);
   document.getElementById('report-content').innerHTML = topHtml;
   document.getElementById('report-sections').innerHTML = sections;
+  renderMoreBox(more);
   document.getElementById('rpt').classList.add('vis');
 
   // Wire New analysis buttons after report is rendered
@@ -3415,6 +3465,8 @@ function updateVerifiedScore() {
 function showWaitlistNudge(count) {
   var existing = document.getElementById('waitlist-nudge');
   if (existing) return;
+  // One offer at a time: no waitlist nudge while another offer is on screen.
+  if (document.getElementById('compare-card') || document.getElementById('mon-offer') || document.getElementById('pro-locked')) return;
 
   var nudge = document.createElement('div');
   nudge.id = 'waitlist-nudge';
