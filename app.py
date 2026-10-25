@@ -1684,7 +1684,11 @@ def pro_unlock_route():
     nice["Emails about new Verilay features"] = "yes" if survey["optin_features"] else "no"
     threading.Thread(target=notify.send_monitoring_interest_alert,
                      args=(email, survey["repo"], nice, "Free Pro scan unlocked (launch survey)."), daemon=True).start()
-    return jsonify({"ok": True, "ticket": make_pro_ticket(rid, email), "left": max(0, state["left"] - 1)})
+    method = str((data or {}).get("input_method") or "github")
+    repo = str((data or {}).get("repo") or "")
+    scan = repo if method == "github" and _re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repo) else ""
+    return jsonify({"ok": True, "ticket": make_pro_ticket(rid, email), "left": max(0, state["left"] - 1),
+                    "method": method, "scan": scan})
 
 
 PRO_SURVEY_LABELS = {"built": "Built with", "stage": "Stage", "useful": "Free scan useful", "pay": "Would pay A$4.99"}
@@ -6741,13 +6745,67 @@ def _pricing_card(title, price, unit, state, state_ok, points, button, href, sta
             f'</ul><a class="btn{"" if star else " ghost"}" href="{esc(href)}">{esc(button)}</a></div>')
 
 
+def _pro_survey_section(rid):
+    """The launch survey on /pricing: 4 questions, an optional comment, email and two unticked opt-ins. Posts to
+    /pro/unlock with the free report's id and its manage token (kept in this browser), then returns to the home page."""
+    esc = _htmlmod.escape
+    qs = "".join(
+        f'<div class="q"><div class="ql">{esc(q)}</div><div class="opts" role="group" aria-label="{esc(q)}">'
+        + "".join(f'<button type="button" class="pro-opt" data-q="{k}" data-v="{v}" aria-pressed="false">{esc(lbl)}</button>'
+                  for v, lbl in PRO_SURVEY[k].items()) + '</div></div>'
+        for k, q in (("built", "What did you build your app with?"), ("stage", "What stage is it at?"),
+                     ("useful", "How useful was your free scan?"), ("pay", "If Pro cost A$4.99 a scan, would you pay for it?")))
+    return (f'<div id="pro-unlock-box" class="psurvey" data-rid="{esc(rid)}"><h2>Get your free Verilay Pro scan</h2>'
+            '<p>Answer 4 quick questions. Then we take you back to run Pro on the same app; it opens as a new report.</p>'
+            + qs +
+            '<div class="q"><label class="ql" for="pro-worth">What would make it worth paying for? <span style="font-weight:400">(optional)</span></label>'
+            '<textarea id="pro-worth" maxlength="500" rows="2"></textarea></div>'
+            '<div class="q"><label class="ql" for="pro-email">Email</label><input id="pro-email" type="email" maxlength="254" autocomplete="email"></div>'
+            '<input id="pro-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">'
+            '<label class="chk"><input type="checkbox" id="pro-optin-launch">Tell me when Verilay Pro and fix sessions open</label>'
+            '<label class="chk"><input type="checkbox" id="pro-optin-features">Occasional emails about new Verilay features</label>'
+            '<button type="button" id="pro-unlock" class="btn">Unlock Pro</button><div id="pro-status"></div>'
+            '<p class="note">One free Pro scan per email during the launch. Your answers help us decide what to build; your email is '
+            'used for your Pro report and only what you tick above.</p></div>'
+            """<script>(function(){
+var box=document.getElementById('pro-unlock-box');if(!box)return;var rid=box.getAttribute('data-rid'),picked={};
+var tok='';try{tok=localStorage.getItem('verilay_tok_'+rid)||'';}catch(e){}
+var st=document.getElementById('pro-status'),btn=document.getElementById('pro-unlock');
+if(!tok){st.textContent='Open this page from your free report in the same browser to unlock Pro.';btn.disabled=true;}
+box.querySelectorAll('.pro-opt').forEach(function(b){b.onclick=function(){var q=b.getAttribute('data-q');picked[q]=b.getAttribute('data-v');
+box.querySelectorAll('.pro-opt[data-q="'+q+'"]').forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false');});};});
+var QS=['built','stage','useful','pay'];
+btn.onclick=async function(){
+ var miss=QS.filter(function(q){return !picked[q];});if(miss.length){st.textContent='Please answer all 4 questions.';return;}
+ var email=(document.getElementById('pro-email').value||'').trim();if(!email){st.textContent='Add your email to unlock Pro.';return;}
+ btn.disabled=true;btn.textContent='Unlocking...';st.textContent='';
+ try{var r=await fetch('/pro/unlock',{method:'POST',headers:{'Content-Type':'application/json','X-Report-Token':tok},
+  body:JSON.stringify({report_id:rid,answers:Object.assign({worth:(document.getElementById('pro-worth').value||'').trim()},picked),email:email,
+  optin_launch:document.getElementById('pro-optin-launch').checked,optin_features:document.getElementById('pro-optin-features').checked,
+  website:document.getElementById('pro-website').value})}).then(function(x){return x.json();});
+  if(r.ok&&r.ticket){try{if(typeof plausible==='function')plausible('Pro Launch Unlock');}catch(e){}
+   try{sessionStorage.setItem('verilay_pro_ticket',r.ticket);sessionStorage.setItem('verilay_pro_method',r.method||'github');}catch(e){}
+   st.textContent='Unlocked. Taking you to run your Pro scan...';
+   location.href='/?pro=1'+(r.scan?'&scan='+encodeURIComponent(r.scan):'');return;}
+  st.textContent=r.error||'It could not be unlocked. Try again.';}catch(e){st.textContent='It could not be unlocked. Try again.';}
+ btn.disabled=false;btn.textContent='Unlock Pro';};
+})();</script>""")
+
+
 @app.route("/pricing")
 def pricing_page():
     light_on = "haiku" in free_model()
     st = pro_launch_state()
+    rid = request.args.get("from", "")
+    rid = rid if _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid) else ""
+    survey = ""
     if light_on and st["active"]:
         pro_price, pro_unit, pro_state, pro_ok = "Free", "during the launch", f"Then A$4.99 a scan · {st['left']} free scans left", True
-        pro_btn, pro_href = "Run a free scan to unlock it", "/"
+        if rid:
+            pro_btn, pro_href = "Get my free Pro scan", "#pro-unlock-box"
+            survey = _pro_survey_section(rid)
+        else:
+            pro_btn, pro_href = "Run a free scan to unlock it", "/"
     else:
         pro_price, pro_unit, pro_state, pro_ok = "A$4.99", "a scan", "Coming soon", False
         pro_btn, pro_href = "Join early access", "/#analyse"
@@ -6778,10 +6836,15 @@ def pricing_page():
 .pc.star{border:1.5px solid #534AB7}.pc h3{margin:0;font-size:16px}.pc .price{font-size:24px;font-weight:700;margin:.4rem 0 .1rem}
 .pc .price small{font-size:13px;font-weight:400;color:#6b6966}.pc .state{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .pc .state.ok{color:#1D9E75}.pc .state.soon{color:#92400E}.pc ul{padding-left:1.1rem;margin:.6rem 0 .9rem;font-size:13px;line-height:1.55;flex:1}
-.pc .btn{text-align:center}.pc .btn.ghost{background:transparent;color:#534AB7;border:.5px solid #534AB7}</style>
+.pc .btn{text-align:center}.pc .btn.ghost{background:transparent;color:#534AB7;border:.5px solid #534AB7}
+.psurvey{background:#EEEDFE;border:.5px solid #534AB7;border-radius:12px;padding:1rem 1.1rem;margin:1.25rem 0;scroll-margin-top:1rem}
+.psurvey h2{margin:0 0 .3rem;font-size:18px}.psurvey .q{margin-top:.75rem}.psurvey .ql{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
+.psurvey .opts{display:flex;gap:6px;flex-wrap:wrap}.pro-opt{border:.5px solid #534AB7;background:#fff;color:#3C3489;border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer}
+.pro-opt[aria-pressed="true"]{background:#534AB7;color:#fff}.psurvey textarea,.psurvey input[type=email]{width:100%;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit}
+.psurvey .chk{display:flex;gap:8px;font-size:13px;margin-top:.5rem;cursor:pointer}.psurvey .btn{margin-top:.8rem}#pro-status{font-size:13px;margin-top:.4rem}</style>
 <div class="eyebrow">Pricing</div><h1>Free to start, pay for depth</h1>
 <p>Every scan starts free. Pay only when you want more detail, every fix prompt, or someone keeping watch.</p>"""
-            f'<div class="pgrid">{cards}</div>'
+            f'<div class="pgrid" id="pro">{cards}</div>{survey}'
             '<p class="note">Prices in Australian dollars, plus any applicable tax at checkout. Planned products are not on sale yet: '
             'their details are our plan and may change before they open.</p>')
     if _HAS_PAYWALL:
@@ -6999,15 +7062,24 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 </div>
 <div class="wrap">""")
 
-    # Summary card
-    deep_badge = ('<div style="display:inline-block;background:#EEEDFE;color:#3C3489;font-size:11px;'
-                  'font-weight:600;padding:3px 10px;border-radius:20px;margin-bottom:.5rem">Deep scan report</div>'
-                  f' <a href="/apps/list/{_htmlmod.escape(report_id)}" style="font-size:12px;color:#534AB7;'
-                  'margin-left:6px">List this app in Checked apps &rarr;</a>'
-                  if data.get("is_deep_scan") else "")
+    # Summary card, in the colour of the kind of report: Free (grey), Verilay Pro (purple), Deep scan (green), so a
+    # free and a Pro report of the same app are told apart at a glance (Moses, 25 Oct 2026). Same colours as app.js.
+    _tier = "deep" if data.get("is_deep_scan") else ("pro" if data.get("scan_tier") == "pro" else "free")
+    _tlabel, _tbg, _tline, _ttext = {"free": ("Free scan report", "#F1EFE8", "#888780", "#444441"),
+                                     "pro": ("Verilay Pro report", "#EEEDFE", "#534AB7", "#3C3489"),
+                                     "deep": ("Deep scan report", "#E1F5EE", "#1D9E75", "#085041")}[_tier]
+    _twhat = {"deep": "Up to 150 files read, every risky package named",
+              "pro": "Up to 50 files read, a fix prompt for every finding",
+              "free": ("A quick check, with a fix prompt for the most serious problem" if data.get("scan_tier") == "lite"
+                       else "A quick check of your code")}[_tier]
+    deep_badge = (f'<div class="tier-band" data-tier="{_tier}" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;'
+                  f'margin-bottom:.6rem"><span style="background:{_tline};color:#fff;font-size:12px;font-weight:700;padding:3px 11px;'
+                  f'border-radius:20px">{_tlabel}</span><span style="font-size:12px;color:{_ttext}">{_twhat}</span></div>'
+                  + (f'<a href="/apps/list/{_htmlmod.escape(report_id)}" style="display:inline-block;font-size:12px;color:#534AB7;'
+                     'margin-bottom:.5rem">List this app in Checked apps &rarr;</a>' if data.get("is_deep_scan") else ""))
     scan_line = (f'<div style="font-size:13px;color:#444;margin-bottom:.4rem">Scanned {scan_when}</div>'
                  if scan_when else "")
-    out.append(f"""<div class="card">
+    out.append(f"""<div class="card" style="background:{_tbg};border-left:4px solid {_tline}">
   {deep_badge}
   <div class="vl-display" style="font-size:22px;margin-bottom:.25rem;overflow-wrap:break-word;word-break:break-word">{data.get('repo','')}</div>
   {scan_line}
@@ -7068,9 +7140,9 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
                    'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro gives a '
-                   'ready-to-paste fix prompt for every finding: free during the launch (unlocked with 4 quick questions after a free '
-                   'scan), then A$4.99 a scan. <a href="/deep-scan#compare" style="color:#3C3489;'
-                   'font-weight:600">Compare Free, Pro and Deep</a></div></div>')
+                   'ready-to-paste fix prompt for every finding: free during the launch (4 quick questions on the Pricing page), then '
+                   f'A$4.99 a scan. <a href="/pricing?from={_htmlmod.escape(report_id)}#pro" style="color:#3C3489;'
+                   'font-weight:600">See Verilay Pro</a></div></div>')
     out = _B["head"]          # the "not checked" note belongs with the grade it explains
     _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
     if _nc:
