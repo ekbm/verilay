@@ -1788,7 +1788,6 @@ def _layer_default(name):
 ALL_LAYER_NAMES = ["Auth", "Config", "Database", "API", "Frontend", "Libraries"]
 
 
-_KEY_MARKUP = " \t*#->`_"
 UNANSWERED_DETAIL = ("Verilay's AI review did not return a readable answer for this area, so it cannot say whether "
                      "it is healthy. Do not read this as a pass. Running the analysis again usually fixes this.")
 
@@ -1850,6 +1849,64 @@ def layers_with_retry(call, layer_names, label):
     return result
 
 
+_CORE_KEYS = ("STATUS", "SUMMARY", "F1_TITLE", "F1_SEV", "WHAT")
+# A key line in any of the shapes the model has been seen to use: "KEY: value", "**KEY:** value", "- KEY = value",
+# '"KEY": "value",' (JSON-ish), "| KEY | value |" (a table row), "Key Name: value". Keys need at least two word parts.
+_KV_LINE = _re.compile(r"""^[\s>*#`"'\-\d.)]*([A-Za-z][A-Za-z0-9]*(?:[_ ][A-Za-z0-9]+)+)["'*`_\s]*(?::|=)\s*(.*)$""")
+
+
+def _clean_value(val):
+    val = val.strip()
+    if val.endswith(","):
+        val = val[:-1].rstrip()
+    val = val.strip("*`_").strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+        val = val[1:-1]
+    return val.replace('\\"', '"').strip()
+
+
+def _flatten_json(obj, prefix="", out=None):
+    out = {} if out is None else out
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _flatten_json(v, f"{prefix}{str(k).upper().replace(' ', '_')}_" if isinstance(v, dict) else
+                          f"{prefix}{str(k).upper().replace(' ', '_')}", out)
+    elif prefix:
+        out[prefix.rstrip("_")] = "" if obj is None else str(obj)
+    return out
+
+
+def _read_key_values(text):
+    """{KEY: value} from a layer answer, tolerating the shapes the model slips into (see _KV_LINE), and a reply that
+    is one JSON object (also inside a ```json block). Seen live 25 Oct 2026: full answers on Verilay's own repository,
+    whose files contain Verilay's prompts and a lot of JSON, came back in a shape the old reader skipped entirely."""
+    kv = {}
+    raw = (text or "").strip()
+    body = raw
+    if body.startswith("```"):
+        body = body.split("\n", 1)[1] if "\n" in body else ""
+        body = body.rsplit("```", 1)[0]
+    if body.lstrip().startswith("{"):
+        try:
+            kv.update({k.upper(): v for k, v in _flatten_json(json.loads(body)).items()})
+        except Exception:
+            pass
+    for line in raw.split("\n"):
+        line = line.strip()
+        if not line or line.startswith("```"):
+            continue
+        if line.startswith("|") and line.count("|") >= 3:
+            cells = [c.strip().strip("*`") for c in line.strip("|").split("|")]
+            if len(cells) >= 2 and _re.fullmatch(r"[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+", cells[0] or ""):
+                kv.setdefault(cells[0].upper(), _clean_value(cells[1]))
+            continue
+        m = _KV_LINE.match(line)
+        if m:
+            key = m.group(1).upper().replace(" ", "_")
+            kv.setdefault(key, _clean_value(m.group(2)))
+    return kv
+
+
 def parse_flat_response(text, layer_names):
     """Parse flat key:value Claude response into layer structure.
 
@@ -1858,19 +1915,14 @@ def parse_flat_response(text, layer_names):
     "No issues found", so an answer that failed to arrive looked like a clean bill of health and could
     grade an app A (seen live 24 Oct 2026). Markdown around a key ("**AUTH_STATUS:** critical",
     "- AUTH_STATUS: critical") is tolerated, since that is the most likely way a real answer goes unread."""
-    kv = {}
-    for line in (text or "").strip().split("\n"):
-        if ":" in line:
-            key, _, val = line.partition(":")
-            clean_key = key.strip(_KEY_MARKUP).upper()
-            if clean_key != key.strip().upper():
-                val = val.strip().strip("*`_").strip()   # "**AUTH_STATUS:** critical" leaves "** critical"
-            kv[clean_key] = val.strip()
+    kv = _read_key_values(text)
 
     layers = []
     for name in layer_names:
         p = name.upper().replace(" ", "_").replace("-", "_")
-        if not any(k.startswith(p + "_") for k in kv):
+        # Answered only when one of the area's core keys is there, so stray prose ("Auth layer: looks fine") never
+        # turns an unanswered area into a silent pass.
+        if not any(f"{p}_{k}" in kv for k in _CORE_KEYS):
             layers.append(_unanswered_layer(name))
             continue
         status = kv.get(f"{p}_STATUS", "passing").lower()
