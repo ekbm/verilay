@@ -3391,10 +3391,12 @@ def _github_owner_name(repo_url):
         return None
 
 
-def _cache_prepare(repo_url):
+def _cache_prepare(repo_url, model=None, use_cache=True):
     """Before downloading anything: is the repo public, what is its newest commit, and do we already hold a
-    fresh analysis of exactly that code? Returns a dict that may hold vis, key, sha, owner, name and hit.
-    Never raises. Only PUBLIC repos are ever looked up (see verilay_scancache.py)."""
+    fresh analysis of exactly that code BY THE SAME MODEL? Returns a dict that may hold vis, key, sha, owner, name and
+    hit. Never raises. Only PUBLIC repos are ever looked up (see verilay_scancache.py). The model is part of the key, so
+    a light (Haiku) result is never replayed to a full scan or the other way round (seen live 25 Oct 2026: a Pro scan
+    replayed the light result). use_cache=False (a Pro scan) neither replays nor stores anything."""
     cx = {}
     try:
         if not _HAS_SUPABASE or not scancache.enabled():
@@ -3405,12 +3407,12 @@ def _cache_prepare(repo_url):
         owner, name = on
         vis = repo_visibility(owner, name, GITHUB_TOKEN)
         cx["vis"] = vis
-        if vis != "public":
+        if vis != "public" or not use_cache:
             return cx
         head = repo_head_info(owner, name, GITHUB_TOKEN)
         if not head:
             return cx
-        key = scancache.make_key(f"{owner}/{name}", head["sha"], ANALYSIS_VERSION)
+        key = scancache.make_key(f"{owner}/{name}", head["sha"], f"{ANALYSIS_VERSION}|{model or MAIN_MODEL}")
         cx.update({"owner": owner, "name": name, "sha": head["sha"], "key": key})
         hit = scancache.get(_sb, key)
         if hit:
@@ -3519,7 +3521,7 @@ def analyse_stream():
                 if len(url) > 500:
                     yield json.dumps({"event":"error","data":"URL is too long"}) + "\n"; return
                 # A fresh analysis of exactly this public code already exists? Replay it: no AI calls.
-                _cx = _cache_prepare(url)
+                _cx = _cache_prepare(url, _scan_model, use_cache=not _pro)
                 if _cx.get("hit"):
                     yield from _replay_cached(_cx, client_type, method)
                     return
@@ -3650,6 +3652,9 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             if lite_mode():
                 s1["scan_tier"] = "lite"     # the light free scan: one fix prompt, the rest with Pro (see run_step4)
+                # Step 1 can write fix prompts too: keep only the most serious one (criticals first).
+                _tf = sorted(s1.get("top_fixes") or [], key=lambda f: 0 if (f or {}).get("severity") == "critical" else 1)
+                s1["top_fixes"] = _tf[:1]
             if getattr(_MODEL_LOCAL, "tier", None) == "pro":
                 s1["scan_tier"] = "pro"      # Verilay Pro, free during the launch
             s1["files_read"] = len(files)
