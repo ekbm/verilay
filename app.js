@@ -974,6 +974,10 @@ function init() {
       if (/^[A-Za-z0-9._-]{1,100}[/][A-Za-z0-9._-]{1,100}$/.test(repo)) {
         window._privateRepo = repo;
         currentMethod = "github_private";
+        try {
+          if (sessionStorage.getItem("verilay_pro_method") === "github_private" && sessionStorage.getItem("verilay_pro_ticket"))
+            window._proTicket = sessionStorage.getItem("verilay_pro_ticket");
+        } catch (e) {}
         try { history.replaceState(null, "", window.location.pathname); } catch (e) {}
         showForm();
         runAnalysis();
@@ -1061,7 +1065,9 @@ function init() {
       note.style.cssText = 'background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:1rem;font-size:14px;color:var(--put);line-height:1.55';
       note.innerHTML = '<strong>Your free Verilay Pro scan is unlocked.</strong> ' +
         (proMethod === 'zip' ? 'Choose your ZIP file again, then press Analyse.'
-         : proMethod === 'github_private' ? 'Connect your private repository again, then press Analyse.'
+         : proMethod === 'github_private' ? 'Verilay gave up its access to your private repository after the free scan, so connect it again: ' +
+           'the Pro scan starts as soon as you choose the repository. This uses your second private scan today, and the Pro report stays private to this browser. ' +
+           '<a href="/github/connect" class="btn-sm" style="display:inline-block;margin-top:.5rem;text-decoration:none">Connect GitHub again</a>'
          : 'Press Analyse to run it.') +
         ' It opens as a new report; your free report keeps its own link.';
       if (fs && fs.children.length > 1) fs.insertBefore(note, fs.children[1]);

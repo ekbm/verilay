@@ -1120,16 +1120,20 @@ def pro_early_access_submit():
         return jsonify({"error": "Please enter a valid email address."}), 400
     if not _mon_rate_ok("pro:" + _mon_ip()):
         return jsonify({"error": "Too many sign-ups from this connection. Please try again later."}), 429
+    # product "fix": Verilay self fix (fix sessions, A$29), from its card on /pricing; same list, its own source.
+    fix = body.get("product") == "fix"
     sb = _sb()
     if sb is not None:
         try:
-            sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "pro-scan"}).execute()
+            sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "fix-session" if fix else "pro-scan"}).execute()
         except Exception as e:
             print(f"[pro] waitlist insert skipped (a duplicate is fine): {e}", flush=True)
     if _mon_notify_ok():
         threading.Thread(target=notify.send_monitoring_interest_alert,
-                         args=(email, "", {"Interested in": "Verilay Pro scan, A$4.99 (early access)"},
-                               "From the locked fix prompts after a light free scan."), daemon=True).start()
+                         args=(email, "", {"Interested in": "Verilay self fix, A$29 a session (early access)" if fix
+                                           else "Verilay Pro scan, A$4.99 (early access)"},
+                               "From the Verilay self fix card on the Pricing page." if fix
+                               else "From the locked fix prompts after a light free scan."), daemon=True).start()
     return jsonify({"ok": True})
 
 

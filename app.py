@@ -1025,14 +1025,14 @@ def fetch_github_private(scan):
     finally:
         privatemod.finish_access(scan)
     all_files = list(all_files_text.keys())
-    selected_paths = smart_file_selection(all_files_text, max_files=MAX_FILES)
+    selected_paths = smart_file_selection(all_files_text, max_files=max_files_now())     # 50 in a Pro scan, like public ones
     for manifest in ['package.json', 'requirements.txt', 'pyproject.toml', 'go.mod']:
         if manifest in all_files_text and manifest not in selected_paths:
-            if len(selected_paths) >= MAX_FILES:
+            if len(selected_paths) >= max_files_now():
                 selected_paths[-1] = manifest
             else:
                 selected_paths.insert(0, manifest)
-    files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:MAX_FILES] if p in all_files_text}
+    files = {p: all_files_text[p][:MAX_FILE_CHARS] for p in selected_paths[:max_files_now()] if p in all_files_text}
     return files, all_files, f"{scan['owner']}/{scan['repo']}", all_files_text
 
 # Folders to skip in ZIP analysis
@@ -6745,7 +6745,7 @@ def _pricing_card(title, price, unit, state, state_ok, points, button, href, sta
             f'</ul><a class="btn{"" if star else " ghost"}" href="{esc(href)}">{esc(button)}</a></div>')
 
 
-def _pro_survey_section(rid):
+def _pro_survey_section(rid, method="github"):
     """The launch survey on /pricing: 4 questions, an optional comment, email and two unticked opt-ins. Posts to
     /pro/unlock with the free report's id and its manage token (kept in this browser), then returns to the home page."""
     esc = _htmlmod.escape
@@ -6757,6 +6757,11 @@ def _pro_survey_section(rid):
                      ("useful", "How useful was your free scan?"), ("pay", "If Pro cost A$4.99 a scan, would you pay for it?")))
     return (f'<div id="pro-unlock-box" class="psurvey" data-rid="{esc(rid)}"><h2>Get your free Verilay Pro scan</h2>'
             '<p>Answer 4 quick questions. Then we take you back to run Pro on the same app; it opens as a new report.</p>'
+            + ('<p class="pnote"><strong>Your free scan was of a private repository.</strong> Verilay gave up its access straight after '
+               'that scan, so you will connect GitHub again to run Pro. It uses your second private scan today, and the Pro report stays '
+               'private to this browser, like the free one.</p>' if method == "github_private" else
+               '<p class="pnote">Your free scan was of a ZIP file: after unlocking, choose the same ZIP again and press Analyse.</p>'
+               if method == "zip" else "")
             + qs +
             '<div class="q"><label class="ql" for="pro-worth">What would make it worth paying for? <span style="font-weight:400">(optional)</span></label>'
             '<textarea id="pro-worth" maxlength="500" rows="2"></textarea></div>'
@@ -6803,7 +6808,8 @@ def pricing_page():
         pro_price, pro_unit, pro_state, pro_ok = "Free", "during the launch", f"Then A$4.99 a scan · {st['left']} free scans left", True
         if rid:
             pro_btn, pro_href = "Get my free Pro scan", "#pro-unlock-box"
-            survey = _pro_survey_section(rid)
+            _rd, _ro = _report_auth_info(rid)
+            survey = _pro_survey_section(rid, str((_rd or {}).get("input_method") or "github"))
         else:
             pro_btn, pro_href = "Run a free scan to unlock it", "/"
     else:
@@ -6826,11 +6832,26 @@ def pricing_page():
                       ["Daily checks for new package problems and exposed keys",
                        "AI re-review weekly (Basic) or daily (Active, about A$9.99)", "An email when your grade drops"],
                       "Join early access", "/monitoring"),
-        _pricing_card("Fix session", "A$29", "a session", "Planned", False,
+        _pricing_card("Verilay self fix", "A$29", "a session", "Planned", False,
                       ["Verilay guides you through fixing each problem with your AI builder",
                        "Checks your builder's replies", "A rescan shows what is fixed"],
-                      "Ask to be told when it opens", "/monitoring"),
+                      "Tell me when it opens", "#fix-interest"),
     ])
+    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay self fix: early access</h2>'
+                '<p>Fix sessions are not open yet. Leave your email and we will tell you once when they open. Nothing else.</p>'
+                '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="fix-email" type="email" maxlength="254" autocomplete="email" '
+                'placeholder="you@example.com" style="flex:1;min-width:200px;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;'
+                'padding:8px 10px;font-size:14px;font-family:inherit">'
+                '<input id="fix-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">'
+                '<button type="button" id="fix-join" class="btn">Tell me when it opens</button></div><div id="fix-status" style="font-size:13px;margin-top:.4rem"></div></div>'
+                """<script>(function(){var b=document.getElementById('fix-join');if(!b)return;b.onclick=async function(){
+var st=document.getElementById('fix-status'),em=(document.getElementById('fix-email').value||'').trim();
+if(!em){st.textContent='Add your email so we can tell you when it opens.';return;}b.disabled=true;st.textContent='';
+try{var r=await fetch('/pro/early-access',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({email:em,product:'fix',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
+if(r.ok){st.textContent='You are on the list. We will email you once when Verilay self fix opens.';b.style.display='none';
+try{if(typeof plausible==='function')plausible('Fix Early Access Join');}catch(e){}return;}st.textContent=r.error||'It could not be sent. Try again.';}
+catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};})();</script>""")
     body = ("""<style>.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:1rem 0}
 .pc{background:#fff;border:.5px solid #e5e3dc;border-radius:12px;padding:1rem;display:flex;flex-direction:column}
 .pc.star{border:1.5px solid #534AB7}.pc h3{margin:0;font-size:16px}.pc .price{font-size:24px;font-weight:700;margin:.4rem 0 .1rem}
@@ -6841,10 +6862,10 @@ def pricing_page():
 .psurvey h2{margin:0 0 .3rem;font-size:18px}.psurvey .q{margin-top:.75rem}.psurvey .ql{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
 .psurvey .opts{display:flex;gap:6px;flex-wrap:wrap}.pro-opt{border:.5px solid #534AB7;background:#fff;color:#3C3489;border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer}
 .pro-opt[aria-pressed="true"]{background:#534AB7;color:#fff}.psurvey textarea,.psurvey input[type=email]{width:100%;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit}
-.psurvey .chk{display:flex;gap:8px;font-size:13px;margin-top:.5rem;cursor:pointer}.psurvey .btn{margin-top:.8rem}#pro-status{font-size:13px;margin-top:.4rem}</style>
+.psurvey .chk{display:flex;gap:8px;font-size:13px;margin-top:.5rem;cursor:pointer}.psurvey .pnote{font-size:13px;background:#fff;border-radius:8px;padding:.55rem .75rem}.psurvey .btn{margin-top:.8rem}#pro-status{font-size:13px;margin-top:.4rem}</style>
 <div class="eyebrow">Pricing</div><h1>Free to start, pay for depth</h1>
 <p>Every scan starts free. Pay only when you want more detail, every fix prompt, or someone keeping watch.</p>"""
-            f'<div class="pgrid" id="pro">{cards}</div>{survey}'
+            f'<div class="pgrid" id="pro">{cards}</div>{survey}{fix_form}'
             '<p class="note">Prices in Australian dollars, plus any applicable tax at checkout. Planned products are not on sale yet: '
             'their details are our plan and may change before they open.</p>')
     if _HAS_PAYWALL:
