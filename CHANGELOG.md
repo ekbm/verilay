@@ -2,6 +2,14 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 25, 2026: Daily limits on free scans, and the full six-area review is back
+
+`Fix` · `Improve`
+
+**Fixed:** the login, settings and database part of the review had stopped coming back in a form Verilay could read, after a change in June. It is restored, so scans check all six areas again. If an area ever cannot be checked, the report now says so, still grades the other areas, and never gives an A.
+
+**Improved:** to keep the free scan free, each visitor can run up to 3 full scans a day, and free scans pause for the rest of the day if Verilay’s daily AI spend runs out. Showing a recent result for the same public repository does not count, and the count starts again at midnight UTC.
+
 ## October 25, 2026: Monitoring: early access
 
 `New`

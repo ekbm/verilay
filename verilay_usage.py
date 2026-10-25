@@ -237,3 +237,57 @@ def dashboard(days=30, now=None):
             "all_in_per_month_usd": round(per_month + hosting, 2) if (per_month is not None and hosting is not None) else None,
             "own_app_checks_skipped": tot.get("scans_monitor_skipped", 0), "prices_set": bool(prices),
             "note": base["note"]}
+
+
+# ── Today's spend, for the daily AI budget (25 Oct 2026) ──────────────────────
+TODAY_CACHE_SECONDS = 60
+_today_cache = {"at": 0.0, "day": "", "rows": None}
+
+
+def budget_usd():
+    """The daily AI budget in US dollars (Railway setting VERILAY_DAILY_AI_BUDGET_USD, default 15). 0 or less turns it off."""
+    try:
+        v = float(os.getenv("VERILAY_DAILY_AI_BUDGET_USD", "15").strip() or "15")
+    except Exception:
+        v = 15.0
+    return v if v > 0 else None
+
+
+def today_cost_usd(now=None):
+    """Estimated AI spend so far today (UTC), all kinds together: what the database holds plus what this worker has not
+    written yet. The database part is re-read at most once a minute. None when no AI prices are set (nothing is guessed)
+    or the database cannot be reached. Never raises."""
+    try:
+        prices = _prices()
+        if not prices:
+            return None
+        day = _today(now)
+        t = time.time()
+        if _today_cache["day"] != day or _today_cache["rows"] is None or t - _today_cache["at"] >= TODAY_CACHE_SECONDS:
+            sb = _get_sb()
+            if sb is None:
+                return None
+            rows = sb.table("stats").select("key,value").like("key", f"usage:{day}:%").execute().data or []
+            _today_cache.update(at=t, day=day, rows=rows)
+        d = {}
+        for r in _today_cache["rows"]:
+            name = str(r.get("key", "")).split(":", 2)[-1]
+            d[name] = d.get(name, 0) + int(r.get("value") or 0)
+        prefix = f"usage:{day}:"
+        with _lock:
+            for key, v in _pending.items():
+                if key.startswith(prefix):
+                    d[key[len(prefix):]] = d.get(key[len(prefix):], 0) + v
+        return _cost(d, prices)
+    except Exception:
+        return None
+
+
+def over_budget(now=None):
+    """(True, spent, budget) when today's AI spend has reached the daily budget; (False, spent, budget) otherwise.
+    Fails open: with no prices, no database or no budget, it never blocks."""
+    b = budget_usd()
+    spent = today_cost_usd(now)
+    if b is None or spent is None:
+        return False, spent, b
+    return spent >= b, spent, b

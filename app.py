@@ -1409,6 +1409,74 @@ def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
         return True, limit  # store error → fail open rather than break the feature
 
 
+# ── Daily limits for free scans (25 Oct 2026) ────────────────────────────────────
+# 1. Each visitor: at most DAILY_FREE_SCANS full AI scans per UTC day (Railway: VERILAY_DAILY_FREE_SCANS, default 3).
+#    Kept in the ask_usage table like the Ask counter: the key is a keyed hash of the address, never the address, and
+#    old days are deleted by the same clean-up. A reused result of the same public code costs nothing and never
+#    counts; live-address checks (two small AI calls) and the private-repository beta (its own daily limit) are not
+#    counted here either.
+# 2. Everyone together: once today's estimated AI spend reaches the daily budget (verilay_usage.budget_usd, Railway:
+#    VERILAY_DAILY_AI_BUDGET_USD, default US$15), new free scans wait until midnight UTC. Paid deep scans are never
+#    stopped, and the admin is exempt from both. Both checks fail open: if the database cannot be reached, scans go on.
+def _daily_free_scans():
+    try:
+        return max(0, int(os.getenv("VERILAY_DAILY_FREE_SCANS", "3")))
+    except Exception:
+        return 3
+
+
+def daily_scan_check(ip, limit=None, now=None):
+    """Count one full free scan for this visitor today. (allowed, used_before). Fails open."""
+    limit = _daily_free_scans() if limit is None else limit
+    if not _HAS_SUPABASE or limit <= 0:
+        return True, 0
+    day = (now or datetime.utcnow()).strftime("%Y-%m-%d")
+    key = _ask_key(ip, "free-scan-day", day)
+    try:
+        res = _sb.table("ask_usage").select("count").eq("id", key).execute()
+        rows = res.data or []
+        used = rows[0]["count"] if rows else 0
+        if used >= limit:
+            return False, used
+        if rows:
+            _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
+        else:
+            _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
+        return True, used
+    except Exception:
+        return True, 0
+
+
+def _hours_to_midnight_utc(now=None):
+    n = now or datetime.utcnow()
+    left = 24 * 3600 - (n.hour * 3600 + n.minute * 60 + n.second)
+    return max(1, round(left / 3600))
+
+
+DAILY_LIMIT_MESSAGE = ("You have used today's {n} free scans. The count starts again at midnight UTC, in about {h} hour{s}. "
+                       "Your earlier reports still open from the history on this page.")
+BUDGET_MESSAGE = ("Verilay has reached today's limit for free scans. It starts again at midnight UTC, in about {h} hour{s}. "
+                  "Your earlier reports still open, and a recent result for the same public repository can still be shown.")
+
+
+def free_ai_gate(ip, method, is_admin=False, now=None):
+    """None when this free scan may spend AI; otherwise the plain message to show. The budget is checked first, so a
+    visitor's daily count is not used up by a scan that cannot run anyway."""
+    if is_admin:
+        return None
+    h = _hours_to_midnight_utc(now)
+    plural = "" if h == 1 else "s"
+    over, spent, budget = usage.over_budget(now)
+    if over:
+        print(f"[budget] free scan paused: today's AI spend ~US${spent:.2f} of US${budget:.2f}", flush=True)
+        return BUDGET_MESSAGE.format(h=h, s=plural)
+    if method in ("github", "zip"):
+        ok, used = daily_scan_check(ip, now=now)
+        if not ok:
+            return DAILY_LIMIT_MESSAGE.format(n=_daily_free_scans(), h=h, s=plural)
+    return None
+
+
 def ask_claude_call(system, prompt, max_tokens=1500):
     """Returns PLAIN TEXT (no JSON parsing) and supports a system prompt.
     Used by Ask Verilay, which answers in plain English, not structured JSON.
@@ -3099,6 +3167,7 @@ def analyse_stream():
             zip_upload = (_zf.read(), _zf.filename)
 
     private_scan = None     # set below, once a scan slot is held (verilay_private.begin_scan)
+    _is_admin = _request_is_admin()   # read now: generate() runs after the request has been handed over
 
     def generate():
         _cx = {}
@@ -3236,6 +3305,14 @@ def analyse_stream():
             authz_critical, _authz_warn = authz_severity_counts(authz_findings)
 
             yield json.dumps({"event":"status","data":f"Found {len(files)} files — detecting stack..."}) + "\n"
+
+            # Daily limits, checked here: everything above is free (reading files, the key/package/access checks, a
+            # reused result), and step 1 is the first AI call. See free_ai_gate.
+            _gate_msg = free_ai_gate(ip, method, _is_admin)
+            if _gate_msg:
+                _refund_rate_limit(ip)      # no AI was used, so the hourly allowance is given back
+                yield json.dumps({"event":"error","data":_gate_msg}) + "\n"
+                return
 
             # ── Step 1: Stack + overview ────────────────────────────────
             s1 = analyse_step1(files, tree, repo_name, method)
@@ -5210,7 +5287,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you scan a live address: Verilay asks for that address the way a browser does (the page, its http:// version and the standard /.well-known/security.txt), reads the dates on its public certificate, and looks up the public email records (SPF and DMARC) of the domain you typed. It never looks for hidden files. The report keeps only plain facts from this: header names and values, the names and protection flags of cookies (never their contents), and yes or no answers</li>
     <li>If you use the private-repository beta: you install the Verilay GitHub App on your account, with read-only access to code, and choose one repository. Verilay reads that repository once and then removes its own access. We keep the report, marked private (findings, score, file names and a summary, as for any report). To apply the daily limit we keep a count tied to a scrambled version of your GitHub account number, not your name, email or repository, for about two days</li>
     <li>The analysis results — findings, score, and layer breakdown</li>
-    <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
+    <li>Your IP address, to limit how many requests one person can make. For free scans the hourly limit is kept only in the server's memory and is lost when it restarts; the daily limit of free scans is a counter stored in our database under a scrambled version of your IP address (the address itself is not kept), deleted automatically the next day. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
     <li>If you join the waitlist — your email address</li>
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you answer the feedback question after a scan that improved — whether the fix prompts helped, anything you choose to write (your opinion and, only if you want, how you fixed it), any email you add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
@@ -5709,6 +5786,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Daily limits on free scans, and the full six-area review is back</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> the login, settings and database part of the review had stopped coming back in a form Verilay could read, after a change in June. It is restored, so scans check all six areas again. If an area ever cannot be checked, the report now says so, still grades the other areas, and never gives an A.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> to keep the free scan free, each visitor can run up to 3 full scans a day, and free scans pause for the rest of the day if Verilay&rsquo;s daily AI spend runs out. Showing a recent result for the same public repository does not count, and the count starts again at midnight UTC.</p>
   </div>
 
   <div class="entry">

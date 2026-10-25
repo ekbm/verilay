@@ -1476,6 +1476,11 @@ def _costs_html(d):
              + card("Hosting per month", _usd(d["hosting_per_month_usd"]) if d["hosting_per_month_usd"] is not None else "not set",
                     "set HOSTING_COST_USD_PER_MONTH on Railway to include it")
              + card("All in, per month", _usd(d["all_in_per_month_usd"]) if d["all_in_per_month_usd"] is not None else "&ndash;", "AI plus hosting"))
+    import verilay_usage as _u
+    _spent, _budget = _u.today_cost_usd(), _u.budget_usd()
+    cards += card("Today so far (UTC)", _usd(_spent) if _spent is not None else "&ndash;",
+                  (f"daily budget US${_budget:.2f}: free scans pause when it is reached" if _budget else "no daily budget set")
+                  + "; set VERILAY_DAILY_AI_BUDGET_USD on Railway to change it")
     rows = ""
     for c in d["categories"]:
         per = _usd(c["cost_per_unit_usd"]) if c["cost_per_unit_usd"] is not None else "&ndash;"
