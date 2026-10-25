@@ -284,6 +284,12 @@ def _scan_body(app_name, repo):
         osv_block = _deps["osv_to_prompt_block"](osv_vulns, osv_checked)
         s2 = _deps["analyse_step2"](files, repo, scan_block)
         s3 = _deps["analyse_step3"](files, repo, osv_block)
+        # An area the AI answer left out would count as zero findings and flatter the grade: treat the check as
+        # failed so it is tried again, rather than saving a grade worked out from part of the answer.
+        _unanswered = [l.get("name") for l in s2.get("layers", []) + s3.get("layers", [])
+                       if l.get("status") == "not_checked"]
+        if _unanswered:
+            raise ValueError("no readable AI answer for " + ", ".join(_unanswered))
 
         crit = warn = 0
         for layer in s2.get("layers", []) + s3.get("layers", []):

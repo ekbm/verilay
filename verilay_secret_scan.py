@@ -163,6 +163,16 @@ RULES: List[Rule] = [
          "A database address with its password is written into your code. Anyone who reads it can open your database directly.",
          "Move the whole connection string to an environment variable and change the database password."),
 
+    # Supabase's newer API keys are not JWTs, so the service_role check above cannot see them. The secret
+    # one carries the same power as the old service_role key; the publishable one (sb_publishable_) is meant
+    # for the browser, like the anon key, and is never flagged.
+    Rule("SUPA002", "Supabase secret key exposed",
+         r"sb_secret_[A-Za-z0-9_\-]{16,}", "critical",
+         "Your Supabase secret key is in this file. It ignores every privacy rule you have set up: anyone who "
+         "finds it can read, change or delete every row in your database, including other people's personal details.",
+         "Remove it from this file, then go to Supabase → Project Settings → API Keys, delete this secret key and "
+         "create a new one. Only ever use the publishable key (sb_publishable_...) in code that runs in the browser."),
+
     Rule("JWT001", "JSON Web Token",
          r"eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}", "warning",
          "A login token is written into your code. These are meant to be short-lived, not stored.",
@@ -351,6 +361,10 @@ def scan_file(path: str, content: str) -> List[Finding]:
                 # explanation — so JWT001 must not fire on either, or the user sees
                 # the same key twice under two names.
                 if rule.rule_id == "JWT001" and _supabase_role(m.group(0)) is not None:
+                    continue
+                # Same for the newer Supabase keys: a secret key is already SUPA002, and a publishable key is
+                # safe in the browser by design, so the generic "looks like a password" rule skips both.
+                if rule.rule_id == "GEN001" and value.startswith(("sb_secret_", "sb_publishable_")):
                     continue
 
                 key = (rule.rule_id, path, lineno)

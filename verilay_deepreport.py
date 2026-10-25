@@ -248,6 +248,8 @@ def layers_with_code_evidence(raw_results):
         summ = (ex.get("summary") or "").strip()
         if not name or not summ or summ == f"{name} layer analysis." or _NOT_PROVIDED.search(summ):
             continue
+        if layer.get("status") == "not_checked":   # the batch's answer never covered this layer
+            continue
         richness = len(summ) + len(((layer.get("learner") or {}).get("what_it_does_in_your_app") or ""))
         if name not in best or richness > best[name][0]:
             best[name] = (richness, layer)

@@ -2348,9 +2348,17 @@ function appendLayers(newLayers) {
   var heightBefore = document.body.scrollHeight;
 
   var icons = {Auth:'ti-shield',Database:'ti-database',Config:'ti-lock',Frontend:'ti-layout',Libraries:'ti-package',API:'ti-api','File Handling':'ti-file'};
-  var sdot = {critical:'#E24B4A',warning:'#EF9F27',passing:'#639922'};
-  var sibg = {critical:'var(--rdl)',warning:'var(--orl)',passing:'var(--grl)'};
-  var siclr = {critical:'var(--rdt)',warning:'var(--ort)',passing:'var(--grt)'};
+  var sdot = {critical:'#E24B4A',warning:'#EF9F27',passing:'#639922',not_checked:'#888780'};
+  var sibg = {critical:'var(--rdl)',warning:'var(--orl)',passing:'var(--grl)',not_checked:'#F1EFE8'};
+  var siclr = {critical:'var(--rdt)',warning:'var(--ort)',passing:'var(--grt)',not_checked:'#5F5E5A'};
+
+  // An area the AI answer left out arrives as "not_checked": the scan is incomplete, so no grade is shown.
+  newLayers.forEach(function(l) {
+    if (l && l.status === 'not_checked') {
+      window._incompleteLayers = window._incompleteLayers || [];
+      if (window._incompleteLayers.indexOf(l.name) === -1) window._incompleteLayers.push(l.name);
+    }
+  });
 
   // Hide the loading indicator once first layers arrive
   var loadingEl = document.getElementById('layers-loading');

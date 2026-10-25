@@ -428,8 +428,18 @@ def _run_job_body(job_id, user_id=None):
         for i, batch in enumerate(batches, start=1):
             _check_cancelled(job_id)
             _update_job(job_id, progress=f"Analysing pass {i} of {len(batches)}...")
-            s2 = _deps["analyse_step2"](batch, repo)
-            s3 = _deps["analyse_step3"](batch, repo)
+            # A pass whose AI answer could not be read (after one retry) adds nothing rather than stopping the whole
+            # paid scan; areas no pass read end up "Not checked" below, never "passing".
+            try:
+                s2 = _deps["analyse_step2"](batch, repo)
+            except Exception as e:
+                print(f"[deepscan] pass {i} Auth/Config/Database unreadable: {e}", flush=True)
+                s2 = {"layers": []}
+            try:
+                s3 = _deps["analyse_step3"](batch, repo)
+            except Exception as e:
+                print(f"[deepscan] pass {i} API/Frontend/Libraries unreadable: {e}", flush=True)
+                s3 = {"layers": []}
             raw_results.append({"batch": i, "step2": s2, "step3": s3})
 
         _check_cancelled(job_id)
@@ -490,6 +500,9 @@ def _run_job_body(job_id, user_id=None):
             files=files, files_total=len(all_files),
             authz_findings=authz_findings,
         )
+        # Also any area the merged answer left out entirely (parse_flat_response marks those "not_checked").
+        unchecked_layers += [l.get("name") for l in merged_layers.get("layers", [])
+                             if l.get("status") == "not_checked" and l.get("name") not in unchecked_layers]
         report["layers_not_checked"] = unchecked_layers
         if repo_head:
             report["repo_sha"] = repo_head.get("sha")

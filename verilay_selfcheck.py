@@ -164,6 +164,7 @@ _NEVER_WITH_TESTS_RE = re.compile(r"(?i)\bssrf\b|server-side request|path traver
 _RULE_CHECKS = {
     "PK001": ["key_in_repo"],
     "SUPA001": ["key_in_repo", "key_in_browser"],
+    "SUPA002": ["key_in_repo", "key_in_browser"],
     "JWT001": ["login_token"],
     "CRYPTO001": ["weak_hash"],
     "CRYPTO001-HINT": ["weak_hash"],

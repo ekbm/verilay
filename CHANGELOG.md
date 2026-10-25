@@ -2,6 +2,14 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 25, 2026: No grade from an answer that did not arrive
+
+`Fix` · `Improve`
+
+**Fixed:** if the AI review of an area of your app comes back empty or unreadable, Verilay now tries once more, and if it still cannot read it, marks that area “Not checked” and gives no grade. Before, such an area could show as “No issues found” and lift the grade.
+
+**Improved:** the key check now finds Supabase’s newer secret keys (they start with sb_secret_). The publishable key, which is meant for the browser, is never flagged.
+
 ## October 24, 2026: A fuller dependency check, counted per package
 
 `Fix` · `Improve`

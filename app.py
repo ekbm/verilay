@@ -154,7 +154,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-24.1"
+ANALYSIS_VERSION = "2026-10-25.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -1776,17 +1776,73 @@ def _layer_default(name):
 ALL_LAYER_NAMES = ["Auth", "Config", "Database", "API", "Frontend", "Libraries"]
 
 
+_KEY_MARKUP = " \t*#->`_"
+UNANSWERED_DETAIL = ("Verilay's AI review did not return a readable answer for this area, so it cannot say whether "
+                     "it is healthy. Do not read this as a pass. Running the analysis again usually fixes this.")
+
+
+def _unanswered_layer(name):
+    """The layer entry for an area the AI answer said nothing about: plainly 'Not checked'."""
+    return {
+        "name": name,
+        "status": "not_checked",
+        "connects_to": [],
+        "app_label": "",
+        "expert": {
+            "summary": f"Not checked: no answer came back for the {name} area.",
+            "findings": [{"severity": "not_checked", "title": "Not checked", "detail": UNANSWERED_DETAIL,
+                          "file": "", "why_it_matters": ""}],
+        },
+        "learner": {
+            "what_is_it": _layer_default(name), "analogy": "", "what_it_does_in_your_app": "",
+            "how_it_connects": "", "key_concept": "", "findings_plain": [],
+        },
+        "quiz": [],
+    }
+
+
+def unanswered_layer_names(result):
+    """Names of the layers in a parse_flat_response result that came back with no answer."""
+    return [l.get("name", "") for l in (result or {}).get("layers", []) if l.get("status") == "not_checked"]
+
+
+def layers_with_retry(call, layer_names, label):
+    """Run one layer group's AI call; if NONE of its layers came back readable, try once more. If the second
+    answer is still unreadable, raise, so the scan is reported as incomplete (no grade) instead of passing.
+    Layers missing from an otherwise readable answer stay 'not_checked' for the caller to flag."""
+    result = None
+    for attempt in (1, 2):
+        text = call()
+        result = parse_flat_response(text, layer_names)
+        if len(unanswered_layer_names(result)) < len(layer_names):
+            return result
+        print(f"[{label}] attempt {attempt}: no readable layer answer ({len(text or '')} chars)", flush=True)
+    raise ValueError("the AI review gave no readable answer")
+
+
 def parse_flat_response(text, layer_names):
-    """Parse flat key:value Claude response into layer structure."""
+    """Parse flat key:value Claude response into layer structure.
+
+    A layer the answer says nothing about (none of its KEY_ lines came back: an empty reply, a refusal, or a
+    format we cannot read) is "not_checked", never "passing". The old fallback filled such a layer with
+    "No issues found", so an answer that failed to arrive looked like a clean bill of health and could
+    grade an app A (seen live 24 Oct 2026). Markdown around a key ("**AUTH_STATUS:** critical",
+    "- AUTH_STATUS: critical") is tolerated, since that is the most likely way a real answer goes unread."""
     kv = {}
-    for line in text.strip().split("\n"):
+    for line in (text or "").strip().split("\n"):
         if ":" in line:
             key, _, val = line.partition(":")
-            kv[key.strip().upper()] = val.strip()
+            clean_key = key.strip(_KEY_MARKUP).upper()
+            if clean_key != key.strip().upper():
+                val = val.strip().strip("*`_").strip()   # "**AUTH_STATUS:** critical" leaves "** critical"
+            kv[clean_key] = val.strip()
 
     layers = []
     for name in layer_names:
         p = name.upper().replace(" ", "_").replace("-", "_")
+        if not any(k.startswith(p + "_") for k in kv):
+            layers.append(_unanswered_layer(name))
+            continue
         status = kv.get(f"{p}_STATUS", "passing").lower()
         if status not in ("critical", "warning", "passing"):
             status = "passing"
@@ -2371,8 +2427,7 @@ def analyse_step2(files, repo_name, scan_block=""):
     # above the highest observed usage rather than incrementally re-guessed
     # again. The truncation log (this function, both branches) stays in
     # place as an ongoing safety net if a future analysis exceeds even this.
-    text = call_claude_text(prompt, max_tokens=20000)
-    return parse_flat_response(text, ["Auth", "Config", "Database"])
+    return layers_with_retry(lambda: call_claude_text(prompt, max_tokens=20000), _STEP2_LAYERS, "step2")
 
 
 def analyse_step3(files, repo_name, osv_block=""):
@@ -2503,8 +2558,7 @@ def analyse_step3(files, repo_name, osv_block=""):
     # above the highest observed usage rather than incrementally re-guessed
     # again. The truncation log (this function, both branches) stays in
     # place as an ongoing safety net if a future analysis exceeds even this.
-    text = call_claude_text(prompt, max_tokens=20000)
-    return parse_flat_response(text, ["API", "Frontend", "Libraries"])
+    return layers_with_retry(lambda: call_claude_text(prompt, max_tokens=20000), _STEP3_LAYERS, "step3")
 
 
 def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
@@ -2527,7 +2581,7 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
             layer.get("expert", {}).get("summary") == "Libraries layer analysis."
             and len(findings) == 1
             and findings[0].get("title") == "No issues found"
-        )
+        ) or layer.get("status") == "not_checked"   # no AI answer: the package check is still a real result
         if not is_generic:
             break  # Claude wrote something specific — leave it alone
 
@@ -2545,6 +2599,7 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
                  f"Checked {cs['summary']} against the public OSV.dev vulnerability database — none of them has a known vulnerability.")
                 + scope_note
             )
+            layer["status"] = "passing"
             layer["expert"]["summary"] = summary
             layer["expert"]["findings"] = [{
                 "severity": "passing",
@@ -3269,6 +3324,8 @@ def analyse_stream():
             partial["client_type"] = client_type
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
             _missing = (_STEP2_LAYERS if s2_err else []) + (_STEP3_LAYERS if s3_err else [])
+            # A layer the AI answer left out is "Not checked", which is not a grade either.
+            _missing += [n for n in unanswered_layer_names(partial) if n not in _missing]
             if _missing:
                 partial["analysis_incomplete"] = _missing
             if disc["result"] and disc["result"].get("status") in ("ok", "none"):
@@ -5543,6 +5600,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.5rem">What's new</div>
     <h1 style="font-size:26px;font-weight:700;margin-bottom:.5rem">Changelog</h1>
     <p style="color:#6b6966;font-size:14px">Every improvement, fix and new feature — in plain English.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">No grade from an answer that did not arrive</div>
+    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> if the AI review of an area of your app comes back empty or unreadable, Verilay now tries once more, and if it still cannot read it, marks that area &ldquo;Not checked&rdquo; and gives no grade. Before, such an area could show as &ldquo;No issues found&rdquo; and lift the grade.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the key check now finds Supabase&rsquo;s newer secret keys (they start with sb_secret_). The publishable key, which is meant for the browser, is never flagged.</p>
   </div>
 
   <div class="entry">
