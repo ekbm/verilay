@@ -517,6 +517,94 @@ function bindStoryForm() {
   };
 }
 
+// ── Monitoring early-access offer ─────────────────────────────────────────────
+// After a COMPLETE scan graded A: "keep it that way". A test of interest and price; nothing is for sale. A ZIP scan
+// gets the same offer worded as an invitation to connect GitHub (a ZIP cannot be watched). Closing it hides it for
+// 30 days; joining hides it for good (per browser).
+var _MON_OFFER_PLANS = [
+  ['basic', 'Basic', 'A$3.99', 'Daily checks for new package problems and exposed keys. AI re-review once a week when your code changed.'],
+  ['active', 'Active', 'A$9.99', 'The same daily checks. AI re-review once a day when your code changed.']
+];
+function _monOfferHidden() {
+  try {
+    if (localStorage.getItem('verilay_mon_offer_joined')) return true;
+    var t = parseInt(localStorage.getItem('verilay_mon_offer_closed') || '0', 10);
+    return t && (Date.now() - t) < 30 * 24 * 3600 * 1000;
+  } catch (e) { return false; }
+}
+function showMonitoringOffer() {
+  var rep = currentReport || {};
+  var score = (rep.health || {}).score;
+  if (score !== 'A' || rep.preview_only || (window._incompleteLayers || []).length || !savedReportId) return;
+  if (_monOfferHidden() || document.getElementById('mon-offer')) return;
+  var isZip = (rep.input_method || currentMethod) === 'zip';
+  var repo = !isZip && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(rep.repo || '') ? rep.repo : '';
+  var field = 'width:100%;box-sizing:border-box;border:0.5px solid var(--bdr);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white;color:var(--txt)';
+  var plans = _MON_OFFER_PLANS.map(function(p, i) {
+    return '<label style="display:flex;gap:10px;align-items:flex-start;border:0.5px solid var(--bdr);border-radius:8px;padding:.55rem .7rem;margin-top:.45rem;cursor:pointer;background:white">' +
+      '<input type="radio" name="mon-plan" value="' + p[0] + '"' + (i === 0 ? ' checked' : '') + ' style="margin-top:3px">' +
+      '<span style="flex:1;min-width:0"><span style="display:flex;justify-content:space-between;gap:8px;font-size:14px;font-weight:600;color:var(--txt)">' +
+        '<span>' + p[1] + '</span><span>' + p[2] + '<span style="font-weight:400;color:var(--mut)">/month</span></span></span>' +
+      '<span style="display:block;font-size:12px;color:var(--mut);margin-top:2px;line-height:1.45">' + p[3] + '</span></span></label>';
+  }).join('');
+  var lead = isZip
+    ? 'A ZIP upload is a one-off snapshot. Connect your GitHub repository and Verilay can check it every day and email you if your grade drops.'
+    : 'Want Verilay to keep watching ' + (repo ? esc(repo) : 'this app') + '? It checks every day and emails you if the grade drops.';
+  var box = document.createElement('div');
+  box.id = 'mon-offer';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', 'Keep watching this app');
+  box.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;width:calc(100% - 32px);max-width:380px;max-height:calc(100vh - 32px);overflow:auto;' +
+    'background:var(--sur);border:0.5px solid var(--pu);border-radius:12px;box-shadow:0 12px 32px rgba(40,30,120,.18);padding:1rem 1.1rem';
+  box.innerHTML =
+    '<button type="button" id="mon-close" aria-label="Close" style="position:absolute;top:8px;right:10px;border:0;background:transparent;font-size:20px;line-height:1;color:var(--mut);cursor:pointer">&times;</button>' +
+    '<div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--pu)">Early access</div>' +
+    '<div style="font-size:17px;font-weight:700;color:var(--txt);margin:.15rem 1.5rem .3rem 0">' + (isZip ? 'Keep an eye on this app?' : 'Keep it an A') + '</div>' +
+    '<div style="font-size:13px;color:var(--mut);line-height:1.5">' + lead + '</div>' +
+    plans +
+    (isZip ? '<label for="mon-repo" style="display:block;font-size:12px;font-weight:600;color:var(--put);margin:.7rem 0 3px">GitHub repository <span style="font-weight:400">(optional, owner/name)</span></label>' +
+      '<input id="mon-repo" maxlength="120" autocapitalize="none" spellcheck="false" placeholder="yourname/your-app" style="' + field + '">' : '') +
+    '<label for="mon-email" style="display:block;font-size:12px;font-weight:600;color:var(--put);margin:.7rem 0 3px">Email</label>' +
+    '<input id="mon-email" type="email" maxlength="254" autocomplete="email" style="' + field + '">' +
+    '<input id="mon-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
+    '<button type="button" id="mon-join" class="btn-sm" style="width:100%;margin-top:.7rem;padding:9px 14px">Join early access</button>' +
+    '<div id="mon-status" style="font-size:12px;color:var(--rdt);margin-top:.35rem"></div>' +
+    '<div style="font-size:11px;color:var(--mut);margin-top:.35rem;line-height:1.45">Not available yet. Nothing is charged: we email you once when it opens.</div>';
+  document.body.appendChild(box);
+  try { if (typeof plausible === 'function') plausible('Monitoring Offer Shown', {props: {method: isZip ? 'zip' : 'github'}}); } catch (e) {}
+  document.getElementById('mon-close').onclick = function() {
+    try { localStorage.setItem('verilay_mon_offer_closed', String(Date.now())); } catch (e) {}
+    try { if (typeof plausible === 'function') plausible('Monitoring Offer Close'); } catch (e) {}
+    box.remove();
+  };
+  document.getElementById('mon-join').onclick = async function() {
+    var btn = this, status = document.getElementById('mon-status');
+    var email = (document.getElementById('mon-email').value || '').trim();
+    var pick = box.querySelector('input[name="mon-plan"]:checked');
+    var plan = pick ? pick.value : 'basic';
+    if (!email) { status.textContent = 'Add your email so we can tell you when it opens.'; return; }
+    btn.disabled = true; btn.textContent = 'Joining...'; status.textContent = '';
+    try {
+      var r = await fetch('/monitoring/offer', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: email, plan: plan, method: isZip ? 'zip' : 'github',
+          repo: isZip ? ((document.getElementById('mon-repo') || {}).value || '').trim() : repo,
+          website: document.getElementById('mon-website').value})}).then(function(x) { return x.json(); });
+      if (r.ok) {
+        try { localStorage.setItem('verilay_mon_offer_joined', '1'); } catch (e) {}
+        try { if (typeof plausible === 'function') plausible('Monitoring Offer Join', {props: {plan: plan, method: isZip ? 'zip' : 'github'}}); } catch (e) {}
+        box.innerHTML = '<button type="button" aria-label="Close" onclick="this.parentNode.remove()" style="position:absolute;top:8px;right:10px;border:0;background:transparent;font-size:20px;line-height:1;color:var(--mut);cursor:pointer">&times;</button>' +
+          '<div style="font-size:16px;font-weight:700;color:var(--txt)">You&rsquo;re on the list</div>' +
+          '<div style="font-size:13px;color:var(--mut);margin-top:.3rem;line-height:1.5">We&rsquo;ll email you once when monitoring opens. Nothing is charged until you choose to start.</div>';
+        return;
+      }
+      status.textContent = r.error || 'It could not be sent. Try again.';
+    } catch (e) {
+      status.textContent = 'It could not be sent. Try again.';
+    }
+    btn.disabled = false; btn.textContent = 'Join early access';
+  };
+}
+
 // Signed in? Link the scans this browser made to the account, so they show on the account page. Proof is each
 // report's manage token; the server ignores reports that already belong to someone. Once per browser session.
 function claimHistoryReports() {
@@ -1336,6 +1424,7 @@ function handleStreamEvent(evt) {
       var p2 = document.getElementById('p2-banner');
       if (p2 && !(currentReport && currentReport.preview_only)) p2.style.display = 'block';
       showCompareOffer();
+      setTimeout(showMonitoringOffer, 1500);
       break;
     case 'error':
       stopTrickle();

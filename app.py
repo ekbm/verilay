@@ -5608,6 +5608,13 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Monitoring: early access</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> after a scan graded A, Verilay asks whether you would like it to keep watching your app and email you if the grade drops. Two plans are proposed, Basic (A$3.99 a month) and Active (A$9.99 a month). It is early access only: nothing is for sale yet and nothing is charged. A ZIP upload cannot be watched, so for a ZIP scan the offer invites you to connect your GitHub repository.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Compare with your last scan</div>
     <div><span class="tag new">New</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says &ldquo;no longer found&rdquo;, not &ldquo;fixed&rdquo;, and warns you when the two scans read different files.</p>

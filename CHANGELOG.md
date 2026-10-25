@@ -2,6 +2,12 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 25, 2026: Monitoring: early access
+
+`New`
+
+**New:** after a scan graded A, Verilay asks whether you would like it to keep watching your app and email you if the grade drops. Two plans are proposed, Basic (A$3.99 a month) and Active (A$9.99 a month). It is early access only: nothing is for sale yet and nothing is charged. A ZIP upload cannot be watched, so for a ZIP scan the offer invites you to connect your GitHub repository.
+
 ## October 25, 2026: Compare with your last scan
 
 `New`

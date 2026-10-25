@@ -1037,6 +1037,39 @@ def monitoring_interest_submit():
     return redirect("/monitoring?thanks=1#form")
 
 
+# The early-access offer that pops up after a complete A-grade scan (app.js showMonitoringOffer). Same list as the
+# /monitoring form: the plan is kept in the existing price answer, so no new table is needed. Prices are a test
+# (A$3.99 Basic, A$9.99 Active, decided 25 Oct 2026); nothing is for sale and nothing is charged.
+MONITORING_PLANS = {
+    "basic": {"name": "Basic", "price": "A$3.99", "price_choice": "u5"},
+    "active": {"name": "Active", "price": "A$9.99", "price_choice": "5-10"},
+}
+
+
+@bp.route("/monitoring/offer", methods=["POST"])
+def monitoring_offer_submit():
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):  # hidden field: only a bot fills it. Look like success, store nothing.
+        return jsonify({"ok": True})
+    email = str(body.get("email") or "").strip().lower()
+    if len(email) > 254 or not _MON_EMAIL.match(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    plan = str(body.get("plan") or "")
+    if plan not in MONITORING_PLANS:
+        return jsonify({"error": "Choose Basic or Active."}), 400
+    if not _mon_rate_ok(_mon_ip()):
+        return jsonify({"error": "Too many sign-ups from this connection. Please try again later."}), 429
+    method = "zip" if body.get("method") == "zip" else "github"
+    repo = re.sub(r"[^A-Za-z0-9_.\-/:@]", "", str(body.get("repo") or ""))[:120]
+    p = MONITORING_PLANS[plan]
+    row = {"email": email, "repo": repo, "apps": "", "visibility": "",
+           "delivery": "watch" if method == "github" else "unsure", "price": p["price_choice"],
+           "notes": f"Early access from the A-grade pop-up: {p['name']} {p['price']}/month ({method} scan)"}
+    if _store_monitoring_interest(row) in ("new", "fallback"):
+        _notify_async(row)
+    return jsonify({"ok": True})
+
+
 # ── Private repositories: expression of interest ───────────────────────────────
 # Verilay reads PUBLIC GitHub repositories only. This page measures whether people with private code want a way to
 # connect it, and how, before anything is built. Answers go to the `private_repo_interest` table
