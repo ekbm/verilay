@@ -42,7 +42,10 @@ async function autoSaveReport(data) {
   // Silently save in background and show share URL when ready
   try {
     var reportData = Object.assign({}, data);
-    if ((window._incompleteLayers || []).length) reportData.analysis_incomplete = window._incompleteLayers.slice();
+    if ((window._incompleteLayers || []).length) {
+      reportData.layers_not_checked = window._incompleteLayers.slice();
+      if (scanFullyIncomplete()) reportData.analysis_incomplete = window._incompleteLayers.slice();
+    }
     var resp = await fetch('/save-report', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -84,7 +87,10 @@ async function saveReport() {
     // Collect all current data
     var reportData = Object.assign({}, currentReport || {});
     reportData.layers = Object.values(currentLayers);
-    if ((window._incompleteLayers || []).length) reportData.analysis_incomplete = window._incompleteLayers.slice();
+    if ((window._incompleteLayers || []).length) {
+      reportData.layers_not_checked = window._incompleteLayers.slice();
+      if (scanFullyIncomplete()) reportData.analysis_incomplete = window._incompleteLayers.slice();
+    }
     if (window._step4Data) {
       reportData.top_fixes = window._step4Data.top_fixes || [];
       reportData.second_opinion = window._step4Data.second_opinion || {};
@@ -332,7 +338,7 @@ async function showCompareOffer() {
   var cands = (window._compareCandidates || []).slice();
   var anchor = document.getElementById('verdict-banner');
   if (!savedReportId || !anchor || !anchor.parentNode) return;
-  if ((window._incompleteLayers || []).length || (currentReport && currentReport.preview_only)) return;
+  if (scanFullyIncomplete() || (currentReport && currentReport.preview_only)) return;
   var signedIn = false;
   try {
     var mine = await fetch('/my-scans').then(function(r) { return r.json(); });
@@ -1711,11 +1717,23 @@ function scoreBannerHTML(score, hasLayers, isPreview) {
   return '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6">' + scoreMsg + '</div>';
 }
 
+// Areas with no result ("Not checked"). The grade covers the other areas and is never above B; only when NO area has
+// a result is the scan "incomplete" with no grade (same rule as the server's grade_with_unchecked).
+function scanFullyIncomplete() {
+  var inc = window._incompleteLayers || [];
+  var checked = Object.keys(currentLayers).filter(function(k) {
+    return currentLayers[k] && currentLayers[k].status !== 'not_checked' && inc.indexOf(k) === -1;
+  });
+  return inc.length > 0 && checked.length === 0;
+}
 function updateHealthDisplay() {
   var layers = Object.keys(currentLayers).map(function(k) { return currentLayers[k]; });
-  var inc = window._incompleteLayers || [];
-  if (!layers.length && !inc.length) return;
+  var notChecked = window._incompleteLayers || [];
+  if (!layers.length && !notChecked.length) return;
+  var full = scanFullyIncomplete();
+  var inc = full ? notChecked : [];
   var h = layers.length ? healthFromLayers(layers, currentReport) : {critical: 0, warnings: 0, passing: 0, score: null};
+  if (notChecked.length && h.score === 'A') h.score = 'B';
   if (currentReport) currentReport.health = h;
   var grid = document.getElementById('health-grid');
   if (grid) {
@@ -1729,9 +1747,15 @@ function updateHealthDisplay() {
   var banner = document.getElementById('score-banner');
   if (banner) banner.innerHTML = inc.length ? '' : scoreBannerHTML(h.score, true);
   var vb = document.getElementById('verdict-banner');
-  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc) : verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null);
+  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc)
+    : verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null) + (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
   var ls = document.getElementById('sec-layers-sum');
-  if (ls) ls.textContent = layersSummaryText(h, inc);
+  if (ls) ls.textContent = layersSummaryText(h, notChecked);
+}
+function notCheckedBannerHTML(names) {
+  return '<div style="background:#F1EFE8;color:#444441;border-radius:var(--r);padding:.7rem 1rem;margin:-2px 0 10px;font-size:13px;line-height:1.55">' +
+    '<strong>Not checked this time: ' + esc(names.join(', ')) + '.</strong> The grade covers the other areas, and a scan with an area ' +
+    'not checked is never graded above B. Nothing there should be read as a pass. Run the analysis again to check them.</div>';
 }
 
 function fileBreakdownHTML(data) {
@@ -2094,7 +2118,7 @@ function secHtml(id, title, meta, body, open) {
 }
 
 function layersSummaryText(h, incomplete) {
-  if (incomplete && incomplete.length) return 'Incomplete: ' + incomplete.join(', ') + ' not checked';
+  if (incomplete && incomplete.length) return (h.critical || 0) + ' critical · ' + (h.warnings || 0) + ' warnings · not checked: ' + incomplete.join(', ');
   return (h.critical || 0) + ' critical · ' + (h.warnings || 0) + ' warnings · ' + (h.passing || 0) + ' with no issues seen';
 }
 

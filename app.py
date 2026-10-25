@@ -1695,8 +1695,17 @@ def files_for(files, keys, max_total=250000):
     return out
 
 
+_CALL_INFO = threading.local()   # the last call's stop reason and length, per thread (step2 and step3 run in parallel)
+
+
+def last_call_info():
+    """{'stop': stop_reason or '', 'chars': length of the reply} for this thread's most recent call_claude_text."""
+    return dict(getattr(_CALL_INFO, "info", None) or {"stop": "", "chars": 0})
+
+
 def call_claude_text(prompt, max_tokens=800):
     """Call Claude expecting plain text key:value response."""
+    _CALL_INFO.info = {"stop": "", "chars": 0}
     if not ANTHROPIC_API_KEY:
         raise ValueError("No ANTHROPIC_API_KEY set.")
     if _HAS_SDK:
@@ -1719,6 +1728,7 @@ def call_claude_text(prompt, max_tokens=800):
             # report with mysteriously blank fields.
             try:
                 final = stream.get_final_message()
+                _CALL_INFO.info = {"stop": str(final.stop_reason or ""), "chars": len(raw)}
                 if final.stop_reason == "max_tokens":
                     print(f"[claude] response TRUNCATED at max_tokens={max_tokens} "
                           f"(got {len(raw)} chars) -- raise the budget for this call", flush=True)
@@ -1749,6 +1759,7 @@ def call_claude_text(prompt, max_tokens=800):
                     if delta.get("type") == "text_delta":
                         raw += delta.get("text", "")
                 elif evt.get("type") == "message_delta":
+                    _CALL_INFO.info = {"stop": str(evt.get("delta", {}).get("stop_reason") or ""), "chars": len(raw)}
                     if evt.get("delta", {}).get("stop_reason") == "max_tokens":
                         print(f"[claude] response TRUNCATED at max_tokens={max_tokens} "
                               f"(got {len(raw)} chars) -- raise the budget for this call", flush=True)
@@ -1802,23 +1813,41 @@ def _unanswered_layer(name):
     }
 
 
+def grade_with_unchecked(score, not_checked):
+    """An A says every area was checked and nothing serious was found, so a scan with any area "Not checked" is
+    capped at B. Lower grades are kept: they come from real findings."""
+    return "B" if (not_checked and score == "A") else score
+
+
 def unanswered_layer_names(result):
     """Names of the layers in a parse_flat_response result that came back with no answer."""
     return [l.get("name", "") for l in (result or {}).get("layers", []) if l.get("status") == "not_checked"]
 
 
 def layers_with_retry(call, layer_names, label):
-    """Run one layer group's AI call; if NONE of its layers came back readable, try once more. If the second
-    answer is still unreadable, raise, so the scan is reported as incomplete (no grade) instead of passing.
-    Layers missing from an otherwise readable answer stay 'not_checked' for the caller to flag."""
-    result = None
+    """Run one layer group's AI call. A layer the answer leaves out (or an answer with nothing readable at all) is
+    'not_checked', never passing; the result then carries `diag` (reply length and the AI's stop reason) so the cause
+    can be traced. One quick second try only when the reply had text in it but nothing readable (a format slip); an
+    EMPTY reply, or one the model refused or cut off, is not retried: a second identical call doubled the wait (scans
+    on big repos ran past the time limit and showed a network error) for an answer that does not come back."""
+    result, diag = None, ""
     for attempt in (1, 2):
         text = call()
+        info = last_call_info()
         result = parse_flat_response(text, layer_names)
-        if len(unanswered_layer_names(result)) < len(layer_names):
+        missing = unanswered_layer_names(result)
+        if not missing:
             return result
-        print(f"[{label}] attempt {attempt}: no readable layer answer ({len(text or '')} chars)", flush=True)
-    raise ValueError("the AI review gave no readable answer")
+        diag = f"{len(text or '')} chars, stop: {info.get('stop') or 'unknown'}"
+        print(f"[{label}] attempt {attempt}: no readable answer for {', '.join(missing)} ({diag}); "
+              f"starts: {' '.join((text or '')[:120].split())!r}", flush=True)
+        retry = (len(missing) == len(layer_names) and (text or "").strip()
+                 and info.get("stop") not in ("refusal", "max_tokens"))
+        if attempt == 1 and retry:
+            continue
+        break
+    result["diag"] = diag
+    return result
 
 
 def parse_flat_response(text, layer_names):
@@ -3323,11 +3352,21 @@ def analyse_stream():
             # ── Auto-save partial report ────────────────────────────────
             partial = dict(s1)
             partial["client_type"] = client_type
+            # A group that failed or timed out shows its areas as "Not checked", like an area the answer left out.
+            if s2_err:
+                s2 = {"layers": [_unanswered_layer(n) for n in _STEP2_LAYERS]}
+            if s3_err:
+                s3 = {"layers": [_unanswered_layer(n) for n in _STEP3_LAYERS]}
             partial["layers"] = s2.get("layers",[]) + s3.get("layers",[])
-            _missing = (_STEP2_LAYERS if s2_err else []) + (_STEP3_LAYERS if s3_err else [])
-            # A layer the AI answer left out is "Not checked", which is not a grade either.
-            _missing += [n for n in unanswered_layer_names(partial) if n not in _missing]
+            # Areas with no result: the grade covers the others (capped at B, see grade_with_unchecked) and the report
+            # lists them as "Not checked". Only when NO area has a result is the scan incomplete, with no grade.
+            _missing = unanswered_layer_names(partial)
             if _missing:
+                partial["layers_not_checked"] = _missing
+                _diag = "; ".join(d for d in (s2.get("diag"), s3.get("diag"), s2_err, s3_err) if d)
+                if _diag:
+                    partial["not_checked_reason"] = _diag[:300]
+            if partial["layers"] and len(_missing) == len(partial["layers"]):
                 partial["analysis_incomplete"] = _missing
             if disc["result"] and disc["result"].get("status") in ("ok", "none"):
                 partial["discovery"] = disc["result"]
@@ -3363,7 +3402,7 @@ def analyse_stream():
             partial["health"]["critical"] = _crit
             partial["health"]["warnings"] = _warn
             partial["health"]["passing"] = _pass
-            partial["health"]["score"] = grade_from_counts(_crit, _warn)
+            partial["health"]["score"] = grade_with_unchecked(grade_from_counts(_crit, _warn), _missing)
             partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             partial["crypto_scan"] = crypto_to_report_dict(crypto_findings, scan_files_count)
             partial["authz_scan"] = authz_to_teaser_dict(authz_findings)
@@ -6428,7 +6467,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append('<div class="card" style="background:#F1EFE8;border-color:#D3D1C7"><div style="font-size:13px;'
                    'color:#444"><strong>Not checked in this scan:</strong> '
                    + ", ".join(str(n) for n in _nc)  # data is already escaped
-                   + '. Verilay did not see any code for these layers, so nothing there should be read as a pass.'
+                   + '. Nothing there should be read as a pass. The grade covers the other areas, and a scan with '
+                   'an area not checked is never graded above B. Run the analysis again to check them.'
                    '</div></div>')
 
     # Scan at a glance: what each check covered, in numbers (verilay_glance.py)

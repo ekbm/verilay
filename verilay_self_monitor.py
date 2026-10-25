@@ -284,12 +284,12 @@ def _scan_body(app_name, repo):
         osv_block = _deps["osv_to_prompt_block"](osv_vulns, osv_checked)
         s2 = _deps["analyse_step2"](files, repo, scan_block)
         s3 = _deps["analyse_step3"](files, repo, osv_block)
-        # An area the AI answer left out would count as zero findings and flatter the grade: treat the check as
-        # failed so it is tried again, rather than saving a grade worked out from part of the answer.
+        # An area the AI answer left out counts as zero findings, so it must not flatter the grade: like the free
+        # scan, a check with any area not checked is never graded above B.
         _unanswered = [l.get("name") for l in s2.get("layers", []) + s3.get("layers", [])
                        if l.get("status") == "not_checked"]
         if _unanswered:
-            raise ValueError("no readable AI answer for " + ", ".join(_unanswered))
+            print(f"[self-monitor] {app_name}: not checked this time: {', '.join(_unanswered)}", flush=True)
 
         crit = warn = 0
         for layer in s2.get("layers", []) + s3.get("layers", []):
@@ -304,6 +304,8 @@ def _scan_body(app_name, repo):
         crit = max(crit, scan_critical, osv_critical)
         warn = max(warn, scan_warning, osv_warning)
         score = _deps["grade_from_counts"](crit, warn)
+        if _unanswered and score == "A":
+            score = "B"
 
         # Grab the PREVIOUS counts before overwriting them, so the widget can
         # show a resolved delta without ever exposing the absolute numbers.
