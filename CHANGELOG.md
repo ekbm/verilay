@@ -2,38 +2,6 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
-## October 25, 2026: Daily limits on free scans, and the full six-area review is back
-
-`Fix` · `Improve`
-
-**Fixed:** the login, settings and database part of the review had stopped coming back in a form Verilay could read, after a change in June. It is restored, so scans check all six areas again. If an area ever cannot be checked, the report now says so, still grades the other areas, and never gives an A.
-
-**Improved:** to keep the free scan free, each visitor can run up to 3 full scans a day, and free scans pause for the rest of the day if Verilay’s daily AI spend runs out. Showing a recent result for the same public repository does not count, and the count starts again at midnight UTC.
-
-## October 25, 2026: Monitoring: early access
-
-`New`
-
-**New:** after a scan graded A, Verilay asks whether you would like it to keep watching your app and email you if the grade drops. Two plans are proposed, Basic (A$3.99 a month) and Active (A$9.99 a month). It is early access only: nothing is for sale yet and nothing is charged. A ZIP upload cannot be watched, so for a ZIP scan the offer invites you to connect your GitHub repository.
-
-## October 25, 2026: Compare with your last scan
-
-`New`
-
-**New:** scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says “no longer found”, not “fixed”, and warns you when the two scans read different files.
-
-**Good to know:** when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The [privacy page](https://verilay.dev/privacy) says so.
-
-**New:** signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us whether Verilay’s fix prompts helped and what could be better. One tap is enough, saying how you fixed it is optional, nothing is shown on your report, and nothing is quoted unless you say so.
-
-## October 25, 2026: No grade from an answer that did not arrive
-
-`Fix` · `Improve`
-
-**Fixed:** if the AI review of an area of your app comes back empty or unreadable, Verilay now tries once more, and if it still cannot read it, marks that area “Not checked” and gives no grade. Before, such an area could show as “No issues found” and lift the grade.
-
-**Improved:** the key check now finds Supabase’s newer secret keys (they start with sb_secret_). The publishable key, which is meant for the browser, is never flagged.
-
 ## October 24, 2026: A fuller dependency check, counted per package
 
 `Fix` · `Improve`

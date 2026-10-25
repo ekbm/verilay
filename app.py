@@ -6147,38 +6147,6 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
 
   <div class="entry">
-    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Daily limits on free scans, and the full six-area review is back</div>
-    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> the login, settings and database part of the review had stopped coming back in a form Verilay could read, after a change in June. It is restored, so scans check all six areas again. If an area ever cannot be checked, the report now says so, still grades the other areas, and never gives an A.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> to keep the free scan free, each visitor can run up to 3 full scans a day, and free scans pause for the rest of the day if Verilay&rsquo;s daily AI spend runs out. Showing a recent result for the same public repository does not count, and the count starts again at midnight UTC.</p>
-  </div>
-
-  <div class="entry">
-    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Monitoring: early access</div>
-    <div><span class="tag new">New</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> after a scan graded A, Verilay asks whether you would like it to keep watching your app and email you if the grade drops. Two plans are proposed, Basic (A$3.99 a month) and Active (A$9.99 a month). It is early access only: nothing is for sale yet and nothing is charged. A ZIP upload cannot be watched, so for a ZIP scan the offer invites you to connect your GitHub repository.</p>
-  </div>
-
-  <div class="entry">
-    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Compare with your last scan</div>
-    <div><span class="tag new">New</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says &ldquo;no longer found&rdquo;, not &ldquo;fixed&rdquo;, and warns you when the two scans read different files.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Good to know:</strong> when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The <a href="/privacy">privacy page</a> says so.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us whether Verilay&rsquo;s fix prompts helped and what could be better. One tap is enough, saying how you fixed it is optional, nothing is shown on your report, and nothing is quoted unless you say so.</p>
-  </div>
-
-  <div class="entry">
-    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">No grade from an answer that did not arrive</div>
-    <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> if the AI review of an area of your app comes back empty or unreadable, Verilay now tries once more, and if it still cannot read it, marks that area &ldquo;Not checked&rdquo; and gives no grade. Before, such an area could show as &ldquo;No issues found&rdquo; and lift the grade.</p>
-    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Improved:</strong> the key check now finds Supabase&rsquo;s newer secret keys (they start with sb_secret_). The publishable key, which is meant for the browser, is never flagged.</p>
-  </div>
-
-  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 24, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">A fuller dependency check, counted per package</div>
     <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
