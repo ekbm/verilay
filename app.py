@@ -934,7 +934,7 @@ def _request_is_admin():
 
 
 privatemod.init(app, get_sb=_usage_db, is_admin=_request_is_admin, report_auth_info=_report_auth_info,
-                can_write_report=_can_write_report, secret=lambda: app.secret_key)
+                can_write_report=_can_write_report, secret=lambda: app.secret_key, current_uid=lambda: _current_uid())
 
 # Admin-only page that tests every service Verilay stands on (verilay_platformcheck.py). Writes one test row to `stats`, then removes it.
 import verilay_platformcheck as platformcheck
@@ -3503,6 +3503,7 @@ def analyse_stream():
             zip_upload = (_zf.read(), _zf.filename)
 
     private_scan = None     # set below, once a scan slot is held (verilay_private.begin_scan)
+    _uid_at_start = _current_uid()   # a private report is saved to this account (private scans need a sign-in)
     _is_admin = _request_is_admin()   # read now: generate() runs after the request has been handed over
     # One model for this whole scan (see model_for_call). ?lite=1 on the home page lets the admin try the light scan.
     _scan_model = LITE_MODEL if (_is_admin and request.form.get("lite") == "1") else model_for_call()
@@ -3909,7 +3910,7 @@ def analyse_stream():
                 scancache.put(_sb if _HAS_SUPABASE else None, _cx["key"], f'{_cx["owner"]}/{_cx["name"]}', _cx["sha"], ANALYSIS_VERSION, {
                     "s1": _s1_event or _copy.deepcopy(s1), "s2": _copy.deepcopy(s2), "s3": _copy.deepcopy(s3), "disc": _copy.deepcopy(disc["result"]),
                     "partial": _copy.deepcopy({k: v for k, v in partial.items() if k != "client_type"})})
-            report_id, manage_token = save_report_with_token(partial)
+            report_id, manage_token = save_report_with_token(partial, user_id=_uid_at_start if private_scan is not None else None)
             try:
                 increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
                 usage.scan_done("pro" if _pro else "full")
@@ -5661,13 +5662,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you answer the feedback question after a scan that improved — whether the fix prompts helped, anything you choose to write (your opinion and, only if you want, how you fixed it), any email you add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
+    <li>If you scan a private repository — your email address (you sign in with it) and the report, which is kept private to your account and removed after the private-report period; never your code</li>
     <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
     <li>If you contact an app&rsquo;s builder through the directory — your email and message, which we email to the builder and keep</li>
   </ul>
 
   <h2>What we do not collect</h2>
   <ul>
-    <li>The free analysis needs no account — we don't know who you are unless you buy a deep scan or sign in</li>
+    <li>The free analysis of public code or a ZIP needs no account — we don't know who you are unless you buy a deep scan, scan a private repository, or sign in</li>
     <li>No cookies or tracking beyond Plausible Analytics (privacy-friendly, no personal data)</li>
     <li>If you register interest in monitoring, we store your email and your answers and use them only to tell you about monitoring</li>
     <li>If you register interest in private repository support, we store your email and your answers and use them only to tell you about that</li>
@@ -9088,7 +9090,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <p class="sub">Works with GitHub, GitLab, Bitbucket, and Azure DevOps</p>
     <input type="url" id="gh-url" placeholder="https://github.com/username/project" aria-label="Repository URL">
     <div id="private-beta" style="display:none;margin:.65rem 0 0;font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.6rem .85rem">
-        <strong style="color:var(--txt)">Private repo (beta).</strong> Connect one private repository with read-only access. Verilay reads the code once, then removes its own access. Free, with daily limits. If GitHub shows a &ldquo;Configure&rdquo; page, tick your repository, click Save, and you will come back here. <a href="/github/connect" style="color:var(--pu);font-weight:600">Connect a private repo &rarr;</a>
+        <strong style="color:var(--txt)">Private repo (beta).</strong> Sign in with your email, then connect one private repository with read-only access. The report stays private to your account. Verilay reads the code once, then removes its own access. Free, with daily limits. If GitHub shows a &ldquo;Configure&rdquo; page, tick your repository, click Save, and you will come back here. <a href="/github/connect" style="color:var(--pu);font-weight:600">Connect a private repo &rarr;</a>
     </div>
     <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem 1rem;margin-top:.65rem">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleAccuracyTip()">

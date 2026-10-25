@@ -760,6 +760,16 @@ def login():
         )
         if ok:
             sent_to = email
+            # The emailed link lands on /auth/callback; this browser goes back to where sign-in started (for example the
+            # private-repository step). Another device lands on the account page.
+            session["login_next"] = nxt
+            if request.form.get("optin_features") == "yes":        # unticked by default (private-repo sign-in box)
+                sb = _sb()
+                if sb is not None:
+                    try:
+                        sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "verilay-features"}).execute()
+                    except Exception as e:
+                        print(f"[login] feature opt-in not stored (a duplicate is fine): {e}", flush=True)
             notice = f'<div class="ok">{_esc(msg)}</div>'
         else:
             notice = f'<div class="err">{_esc(msg)}</div>'
@@ -778,8 +788,8 @@ def login():
     body = f"""
   {notice}
   <h1>Sign in</h1>
-  <p>Accounts are for people who have bought a deep scan — the free analysis needs
-  no account and never will. There is no password: we email you a link.</p>
+  <p>Accounts are for deep scans and private-repository scans. A free analysis of public code or a ZIP needs
+  no account. There is no password: we email you a link.</p>
   <div class="card">
     <form method="POST" action="/login">
       <input type="hidden" name="next" value="{_esc(nxt)}">
@@ -842,7 +852,7 @@ def auth_callback():
   var h = window.location.hash || "";
   var p = new URLSearchParams(h.replace(/^#/, ""));
   var tok = p.get("access_token");
-  var next = new URLSearchParams(window.location.search).get("next") || "/account";
+  var next = new URLSearchParams(window.location.search).get("next") || "";
   function fail(m){
     document.getElementById("msg").textContent = m;
     document.getElementById("fallback").style.display = "";
@@ -871,7 +881,8 @@ def auth_session():
     if err:
         return jsonify({"ok": False, "error": err}), 400
     _establish(user)
-    return jsonify({"ok": True, "next": _safe_next(data.get("next", "/account"))})
+    nxt = data.get("next") or session.pop("login_next", None) or "/account"
+    return jsonify({"ok": True, "next": _safe_next(nxt)})
 
 
 def _establish(user):
@@ -1033,6 +1044,10 @@ def monitoring_interest_page():
       {_mon_select("apps", "How many apps would you want watched?")}
       <div style="height:.9rem"></div>
       {_mon_select("visibility", "Are they public or private on GitHub?")}
+      <p class="note" style="margin:.35rem 0 0">Tip: watching a <strong>private</strong> repository would need you to give Verilay
+      lasting <strong>read-only</strong> access to the repositories you choose, through a GitHub App. Today&rsquo;s one-off
+      private scan is different: Verilay removes its access straight after reading the code. You could remove that access
+      at any time in your GitHub settings. Public repositories need nothing.</p>
       <div style="height:.9rem"></div>
       {_mon_select("delivery", "How would you want it to run?")}
       <div style="height:.9rem"></div>
@@ -1674,7 +1689,11 @@ def account():
     # was the only place a deep scan showed up -- indistinguishable from a
     # free analysis.
     deep_reports = [r for r in reports if r.get("is_deep")]
-    free_reports = [r for r in reports if not r.get("is_deep")]
+    private_reports = [r for r in reports if r.get("private") and not r.get("is_deep")]
+    free_reports = [r for r in reports if not r.get("is_deep") and not r.get("private")]
+    private_reports_html = _group_html(
+        private_reports, 'No private reports yet. <a href="/github/connect">Scan a private repository</a> and its report shows up here, '
+        'for you only, on any device.')
     deep_reports_html = _group_html(
         deep_reports, "No deep scan reports yet. When you run a deep scan, its report shows up here.")
     reports_html = _group_html(
@@ -1731,6 +1750,9 @@ def account():
   <details class="acc"><summary>Deep scan reports ({len(deep_reports)})</summary>
     <div class="acc-body">{deep_reports_html}</div>
   </details>
+  <details class="acc" id="private-reports"{" open" if private_reports else ""}><summary>Your private reports ({len(private_reports)})</summary>
+    <div class="acc-body">{private_reports_html}</div>
+  </details>
   <details class="acc" id="reports"><summary>Free reports ({len(free_reports)})</summary>
     <div class="acc-body">{reports_html}</div>
   </details>
@@ -1776,7 +1798,7 @@ def _reports_for_user(user):
                   .execute())
     try:
         try:
-            res = _fetch("id,repo,score,created_at,is_deep:data->>is_deep_scan")
+            res = _fetch("id,repo,score,created_at,is_deep:data->>is_deep_scan,private:data->>private")
         except Exception as e:
             print(f"[paywall] Deep-scan flag unavailable, listing without it: {e}", flush=True)
             res = _fetch("id,repo,score,created_at")
@@ -1791,6 +1813,7 @@ def _reports_for_user(user):
             "score": r.get("score", ""),
             "when": str(r.get("created_at", ""))[:16].replace("T", " "),
             "is_deep": str(r.get("is_deep")).strip().lower() == "true",
+            "private": str(r.get("private")).strip().lower() == "true",
         })
     return out
 

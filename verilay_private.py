@@ -8,7 +8,11 @@ The flow (all of it behind a switch that is OFF by default, VERILAY_PRIVATE_REPO
   /analyse-stream   (method "github_private") -> begin_scan() checks everything, uses up one scan of the daily allowance, mints a
                        one-hour key for that one repository; the code is read once; Verilay then REMOVES its own installation.
   /private-report/claim/<id> -> the browser that ran the scan is allowed to open the report (a signed cookie); nobody else can,
-                       except a signed-in admin.
+                       except the account that ran it and a signed-in admin.
+
+Since 25 Oct 2026 (Moses) a private scan needs a Verilay account (an email sign-in link): /github/connect shows a short
+sign-in box first, and after the link the visitor comes back to it. The report is saved to that account, so it opens on any
+device from the account page, still for nobody else.
 
 Rules (decided with Moses):
   * Free beta with clear limits: per GitHub account per day and per day overall. Counters hold only a keyed hash of the account id.
@@ -38,7 +42,7 @@ PICK_MAX_AGE = 15 * 60
 MAX_OWNED_REPORTS = 20
 
 _deps = {"get_sb": lambda: None, "is_admin": lambda: False, "report_auth_info": lambda rid: (None, None), "can_write_report": lambda rid: False,
-         "secret": lambda: "dev"}
+         "secret": lambda: "dev", "current_uid": lambda: None}
 
 
 class PrivateRefused(Exception):
@@ -47,9 +51,42 @@ class PrivateRefused(Exception):
         self.user_message = user_message
 
 
-def init(app, get_sb, is_admin, report_auth_info, can_write_report, secret):
+def init(app, get_sb, is_admin, report_auth_info, can_write_report, secret, current_uid=None):
     _deps.update(get_sb=get_sb, is_admin=is_admin, report_auth_info=report_auth_info, can_write_report=can_write_report, secret=secret)
+    if current_uid is not None:
+        _deps["current_uid"] = current_uid
     app.register_blueprint(bp)
+
+
+def _signed_in():
+    try:
+        return bool(_deps["current_uid"]())
+    except Exception:
+        return False
+
+
+def _signin_page():
+    """Step 1 for a visitor who is not signed in: one short box. The link brings them back to /github/connect."""
+    lim = gh.limits()
+    body = (
+        '<p style="font-size:15px">We email you a sign-in link. No password.</p>'
+        '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
+        '<li><strong>Your report stays private to your account.</strong> Open it on any device; nobody else can.</li>'
+        '<li>Verilay reads your code once, then removes its own access. We keep the report, never your code.</li>'
+        f'<li>Free beta: {lim["per_account_day"]} private scan{"" if lim["per_account_day"] == 1 else "s"} a day.</li></ul>'
+        '<form method="post" action="/login" style="background:#fff;border:0.5px solid #e8e6e0;border-radius:12px;padding:1rem 1.15rem">'
+        '<input type="hidden" name="next" value="/github/connect">'
+        '<label for="email" style="display:block;font-size:14px;font-weight:600;margin-bottom:.35rem">Your email</label>'
+        '<input type="email" id="email" name="email" required autocomplete="email" placeholder="you@example.com" '
+        'style="width:100%;box-sizing:border-box;border:0.5px solid #d3d1c7;border-radius:8px;padding:10px 12px;font-size:15px;font-family:inherit">'
+        '<label style="display:flex;gap:8px;font-size:13px;margin:.6rem 0 .9rem"><input type="checkbox" name="optin_features" value="yes">'
+        'Occasional emails about new Verilay features (optional)</label>'
+        '<button type="submit" class="cta-btn" style="border:0;cursor:pointer">Email me a sign-in link</button>'
+        '<p style="font-size:12px;color:#6b6966;margin:.6rem 0 0">We use your email to sign you in and to keep your private reports. '
+        'Nothing else unless you tick the box. <a href="/privacy">Privacy policy</a></p></form>'
+        '<p style="font-size:13px;margin-top:1rem">Already signed in on another device? Open the link on this one, or '
+        '<a href="/">scan a public repository or a ZIP</a> with no account.</p>')
+    return _page("Sign in to scan a private repository", body)
 
 
 # ── who may use it ──────────────────────────────────────────────────────────
@@ -213,7 +250,7 @@ def _intro_page(csrf, error="", status=200):
         '<li>You continue to GitHub and sign in if needed. GitHub asks you to choose <strong>one</strong> repository to share, read-only.</li>'
         '<li>You come back to Verilay and confirm that repository.</li>'
         '<li>Verilay reads its code <strong>once</strong>, then <strong>removes its own access</strong> to your GitHub account straight away.</li>'
-        '<li>Verilay analyses what it read and shows a report that only <strong>your browser</strong> can open.</li></ol>'
+        '<li>Verilay analyses what it read and shows a report that only <strong>you</strong> can open: in this browser, or from your account on any device.</li></ol>'
         '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">What Verilay can and can&rsquo;t do</h2>'
         '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
         '<li><strong>Read-only.</strong> Verilay can read the code of that one repository. It can&rsquo;t change, delete or add anything.</li>'
@@ -222,7 +259,7 @@ def _intro_page(csrf, error="", status=200):
         'Under Anthropic&rsquo;s business terms, content sent this way is not used to train its models.</li></ul>'
         '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">What Verilay keeps</h2>'
         '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
-        f'<li>The <strong>report</strong> (findings, score, file names and a summary), private to your browser and removed after {days} days. <strong>Never your code.</strong></li>'
+        f'<li>The <strong>report</strong> (findings, score, file names and a summary), private to your account and removed after {days} days. <strong>Never your code.</strong></li>'
         f'<li>A daily count tied to a <strong>scrambled</strong> version of your GitHub account number, for about {COUNTER_KEEP_DAYS} days, to apply the daily limit.</li></ul>'
         '<h2 style="font-size:16px;margin:1.25rem 0 .4rem">The limits</h2>'
         '<ul style="margin:0 0 .75rem 1.2rem;font-size:14px;color:#4a4846;line-height:1.65">'
@@ -248,6 +285,8 @@ def _intro_page(csrf, error="", status=200):
 def connect():
     if not allowed_now():
         return _not_open()
+    if not _signed_in():
+        return _signin_page()
     if request.method == "GET":
         csrf = secrets.token_urlsafe(16)
         session["gh_csrf0"] = {"s": csrf, "t": time.time()}
@@ -273,6 +312,8 @@ def connect():
 def callback():
     if not allowed_now():
         return _not_open()
+    if not _signed_in():
+        return _message("Please sign in", "Your sign-in ended before GitHub connected. Please sign in and connect again; nothing was read.", 400)
     if request.args.get("error"):
         return _message("Not connected", "GitHub did not connect Verilay, so nothing was read. You can try again whenever you like.")
     if request.args.get("setup_action") == "request":
@@ -322,7 +363,7 @@ def choose():
              'then removes its own access to your GitHub account straight away. Nothing is changed in your repository.</p>'
              f'<p style="font-size:13px;color:#6b6966">This is a free beta with limits: {lim["per_account_day"]} private scans per GitHub account per day. '
              f'You have {escape(str(left["account_left"]))} left today.</p>')
-    intro += (f'<p style="font-size:13px;color:#6b6966"><strong>What we keep:</strong> the report (findings, score and file names), private to your browser '
+    intro += (f'<p style="font-size:13px;color:#6b6966"><strong>What we keep:</strong> the report (findings, score and file names), private to your account '
               f'and removed after {_expiry.private_days()} days. Never your code. <a href="/privacy">Privacy policy</a></p>')
     if any(not r["private"] for r in repos):
         intro += ('<p style="font-size:13px;color:#6b6966">A repository marked <em>public</em> can also be scanned the normal way, '
@@ -342,6 +383,8 @@ def choose():
 def pick():
     if not allowed_now():
         return _not_open()
+    if not _signed_in():
+        return _message("Please sign in", "Please sign in and connect your repository again.", 400)
     c = _connection()
     sent = request.form.get("csrf", "")
     want = session.pop("gh_csrf", "")
@@ -370,6 +413,8 @@ def begin_scan(repo_full):
     """Everything that must be true before a private scan starts. Single use. Returns the scan details, or raises PrivateRefused."""
     if not allowed_now():
         raise PrivateRefused("Scanning private repositories isn't open to you yet.")
+    if not _signed_in():
+        raise PrivateRefused("Please sign in, then connect and choose the repository again.")
     parts = gh.valid_repo(repo_full)
     if not parts:
         raise PrivateRefused("That repository name doesn't look right.")
@@ -415,7 +460,10 @@ def viewer_ok(report_id):
     try:
         if _deps["is_admin"]():
             return True
-        return str(report_id) in (session.get("pv_reports") or [])
+        if str(report_id) in (session.get("pv_reports") or []):
+            return True
+        uid = _deps["current_uid"]()
+        return bool(uid) and _deps["report_auth_info"](report_id)[1] == uid
     except Exception:
         return False
 
