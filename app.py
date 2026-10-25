@@ -63,6 +63,7 @@ import verilay_fixtags as fixtags
 import verilay_report_expiry as report_expiry
 import verilay_layer_files as layer_files
 import verilay_appcount as appcount
+import verilay_compare as comparemod
 import copy as _copy
 from verilay_authz_check import (
     scan_repo as authz_scan_repo,
@@ -356,15 +357,15 @@ def _report_auth_info(report_id):
     return data, owner
 
 
-def _can_write_report(report_id):
+def _can_write_report(report_id, header="X-Report-Token"):
     """True when this request may change or delete the report: it presents the report's
-    manage token, or it is signed in as the account that owns the report."""
+    manage token (in `header`), or it is signed in as the account that owns the report."""
     if not report_id or not isinstance(report_id, str) or len(report_id) < 8:
         return False
     data, owner = _report_auth_info(report_id)
     if data is None:
         return False
-    token = request.headers.get("X-Report-Token", "")[:200]
+    token = request.headers.get(header, "")[:200]
     stored = data.get("_mgmt")
     if token and isinstance(stored, str) and stored and _hmac.compare_digest(_hash_manage_token(token), stored):
         return True
@@ -5136,7 +5137,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li><strong>GitHub.</strong> If you use the private-repository beta, GitHub lets Verilay read the one repository you choose, with your permission and read-only access. Verilay never uses its own GitHub access to read private code.</li>
   </ul>
   <h2>Accounts and the deep scan</h2>
-  <p>Signing in uses a passwordless email link — we never ask for or store a password. Buying a deep scan records your email, the app it was purchased for, the amount paid, and the purchase date; this comes from Stripe, which does not verify the email it collects, so a payment on its own does not sign you in. Signing in with that same email afterward links your purchase to an account so your reports are still there when you come back.</p>
+  <p>Signing in uses a passwordless email link — we never ask for or store a password. Buying a deep scan records your email, the app it was purchased for, the amount paid, and the purchase date; this comes from Stripe, which does not verify the email it collects, so a payment on its own does not sign you in. Signing in with that same email afterward links your purchase to an account so your reports are still there when you come back. When you sign in, the reports this browser made earlier (and any comparison saved on them) are linked to your account as well, so they stay on your account page instead of expiring after 90 days; you can still delete any of them.</p>
   <p>Deep-scan reports are tied to your account rather than a share link alone, and are kept for as long as your account exists. You can request account and purchase-record deletion at any time by emailing <a href="mailto:moses@verilay.dev" style="color:#534AB7">moses@verilay.dev</a> — note that Stripe keeps its own transaction records independently, for tax and accounting purposes, which we cannot delete on your behalf.</p>
 
   <h2>Statistics</h2>
@@ -5604,6 +5605,14 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Compare with your last scan</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says &ldquo;no longer found&rdquo;, not &ldquo;fixed&rdquo;, and warns you when the two scans read different files.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Good to know:</strong> when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The <a href="/privacy">privacy page</a> says so.</p>
+  </div>
+
+  <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 25, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">No grade from an answer that did not arrive</div>
     <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Fixed:</strong> if the AI review of an area of your app comes back empty or unreadable, Verilay now tries once more, and if it still cannot read it, marks that area &ldquo;Not checked&rdquo; and gives no grade. Before, such an area could show as &ldquo;No issues found&rdquo; and lift the grade.</p>
@@ -6008,6 +6017,8 @@ def save_report_route():
                 data["_mgmt"] = stored["_mgmt"]  # keep the report's own token
             if stored and stored.get("private"):
                 return jsonify({"error": "A private report can't be replaced by a shareable copy."}), 403
+            if stored and stored.get("comparison") and "comparison" not in data:
+                data["comparison"] = stored["comparison"]   # a later re-save from the page must not wipe it
             if _HAS_SUPABASE:
                 try:
                     _sb.table("reports").update({"data": data}).eq("id", existing_id).execute()
@@ -6021,6 +6032,80 @@ def save_report_route():
         return jsonify({"report_id": report_id, "manage_token": manage_token})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/compare-report", methods=["POST"])
+def compare_report_route():
+    """Compare a new report with an earlier one from the same person and keep the result on the new report.
+    Both must be theirs: the new one by X-Report-Token (or the signed-in owner), the earlier one by X-Previous-Token
+    (or the same owner), so nobody can pull another person's findings into their report. Private reports are never
+    compared. The earlier report's id is not stored, only its date and grade, so sharing the new link does not hand
+    out the old one."""
+    body = request.get_json(silent=True) or {}
+    new_id, old_id = str(body.get("report_id") or "")[:40], str(body.get("previous_id") or "")[:40]
+    if not new_id or not old_id or new_id == old_id:
+        return jsonify({"error": "Choose an earlier scan to compare with."}), 400
+    if not _can_write_report(new_id) or not _can_write_report(old_id, header="X-Previous-Token"):
+        return jsonify({"error": "Only scans made in this browser, or by your account, can be compared."}), 403
+    new_data, _o1 = _report_auth_info(new_id)
+    old_data, _o2 = _report_auth_info(old_id)
+    if not new_data or not old_data:
+        return jsonify({"error": "One of these reports has expired or was deleted."}), 404
+    if new_data.get("private") or old_data.get("private"):
+        return jsonify({"error": "Private reports can't be compared yet."}), 403
+    result = comparemod.compare(old_data, new_data)
+    prev_at = ""
+    try:
+        row = _report_row(old_id) if _HAS_SUPABASE else None
+        prev_at = str((row or {}).get("created_at") or "")[:32]
+    except Exception:
+        pass
+    result.update({"previous_at": prev_at or str(old_data.get("generated_at") or "")[:32],
+                   "previous_repo": str(old_data.get("repo") or "")[:120],
+                   "made_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")})
+    new_data["comparison"] = result
+    try:
+        if _HAS_SUPABASE:
+            _sb.table("reports").update({"data": new_data}).eq("id", new_id).execute()
+        elif new_id in _reports:
+            _reports[new_id]["data"] = new_data
+    except Exception as e:
+        print(f"Comparison not stored on {new_id}: {e}", flush=True)
+    return jsonify(dict(result, headline=comparemod.headline(result), signed_in=bool(_current_uid())))
+
+
+@app.route("/claim-reports", methods=["POST"])
+def claim_reports_route():
+    """A signed-in person links the scans their browser made to their account, so they show on the account page
+    (comparisons included). Proof for each report is its manage token. Reports that already belong to an account,
+    private reports and deleted ones are left alone. Anonymous visitors get {"signed_in": false} and nothing changes."""
+    uid = _current_uid()
+    if not uid:
+        return jsonify({"signed_in": False, "claimed": 0})
+    body = request.get_json(silent=True) or {}
+    claimed = 0
+    for item in (body.get("reports") or [])[:20]:
+        if not isinstance(item, dict):
+            continue
+        rid, tok = str(item.get("id") or "")[:40], str(item.get("token") or "")[:200]
+        if len(rid) < 8 or not tok or not _HAS_SUPABASE:
+            continue
+        try:
+            row = _report_row(rid)
+        except Exception:
+            continue
+        data = (row or {}).get("data")
+        if not isinstance(data, dict) or row.get("user_id") or data.get("private") or _is_deleted_report(data):
+            continue
+        stored = data.get("_mgmt")
+        if not (isinstance(stored, str) and stored and _hmac.compare_digest(_hash_manage_token(tok), stored)):
+            continue
+        try:
+            _sb.table("reports").update({"user_id": uid}).eq("id", rid).is_("user_id", "null").execute()
+            claimed += 1
+        except Exception as e:
+            print(f"Claim of {rid} failed: {e}", flush=True)
+    return jsonify({"signed_in": True, "claimed": claimed})
 
 
 COLLAPSE_THRESHOLD = 5  # long lists (e.g. 13 dependency CVEs) start collapsed
@@ -6201,6 +6286,12 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
   <div class="sb"><div class="sn" style="color:#EF9F27">{_warn}</div><div class="sl">Warnings</div></div>
   <div class="sb"><div class="sn" style="color:#1D9E75">{_pass}</div><div class="sl">No issues seen</div></div>
 </div>""")
+
+    # "Compared with your earlier scan" (verilay_compare.py), when the person asked for it on the results page.
+    try:
+        out.append(comparemod.render_html(raw_data.get("comparison")))
+    except Exception as _e:
+        app.logger.warning("comparison card skipped: %s", _e)
 
     # A live-address preview: what it looked at, the headers and outside scripts it could read, tests to try, and the next step.
     if is_preview and data.get("input_method") == "url":

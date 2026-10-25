@@ -293,6 +293,142 @@ function saveToHistory(report) {
   }
 }
 
+// ── Compare with my last scan ────────────────────────────────────────────────
+// Only scans this browser can prove it made (it holds their manage token) are offered; the server checks both tokens.
+function _compareName(r) {
+  var s = String(r || '').toLowerCase();
+  if (s.indexOf('/') !== -1) s = s.split('/').pop();
+  return s.replace(/[^a-z]/g, '');    // "2 spendial", "Spendial" and "spendial-v2" all read as "spendial"
+}
+function findCompareCandidates(report, newId) {
+  var name = _compareName((report || {}).repo);
+  var list = getHistory().filter(function(h) {
+    return h.id && h.id !== newId && h.method !== 'url' && reportToken(h.id);
+  });
+  list.forEach(function(h) { h._same = !!name && _compareName(h.repo) === name; });
+  list.sort(function(a, b) { return (b._same - a._same) || (new Date(b.timestamp) - new Date(a.timestamp)); });
+  return list.slice(0, 8);
+}
+function _compareWhen(ts) {
+  var d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-AU', {day:'numeric', month:'short'}) + ' ' + d.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'});
+}
+function showCompareOffer() {
+  var cands = window._compareCandidates || [];
+  var anchor = document.getElementById('verdict-banner');
+  if (!cands.length || !savedReportId || !anchor || !anchor.parentNode) return;
+  if ((window._incompleteLayers || []).length || (currentReport && currentReport.preview_only)) return;
+  var old = document.getElementById('compare-card');
+  if (old) old.remove();
+  var best = cands[0];
+  var card = document.createElement('div');
+  card.id = 'compare-card';
+  card.style.cssText = 'background:var(--sur);border:0.5px solid var(--pu);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px';
+  var opts = cands.map(function(h, i) {
+    return '<option value="' + i + '">' + esc(h.repo) + ' · ' + esc(_compareWhen(h.timestamp)) + ' · grade ' + esc(h.score) + '</option>';
+  }).join('');
+  card.innerHTML =
+    '<div style="font-size:14px;font-weight:600;color:var(--put)"><i class="ti ti-arrows-diff" style="margin-right:6px"></i>' +
+      (best._same ? 'You scanned ' + esc(best.repo) + ' before. See what changed?' : 'Compare with an earlier scan?') + '</div>' +
+    '<div style="font-size:12px;color:var(--mut);margin-top:2px">Pick the earlier scan of this same app. Only scans made in this browser are listed.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.6rem">' +
+      '<select id="compare-pick" style="flex:1;min-width:0;border:0.5px solid var(--bdr);border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit;background:white;color:var(--txt)">' + opts + '</select>' +
+      '<button type="button" id="compare-go" class="btn-sm">Compare</button>' +
+    '</div>' +
+    '<div id="compare-result"></div>';
+  anchor.parentNode.insertBefore(card, anchor.nextSibling);
+  document.getElementById('compare-go').onclick = function() {
+    runCompare(cands[parseInt(document.getElementById('compare-pick').value, 10) || 0]);
+  };
+}
+async function runCompare(prev) {
+  var out = document.getElementById('compare-result');
+  var btn = document.getElementById('compare-go');
+  if (!prev || !out) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Comparing...'; }
+  try {
+    var h = reportHeaders(savedReportId, {'Content-Type': 'application/json', 'X-Previous-Token': reportToken(prev.id)});
+    var resp = await fetch('/compare-report', {method: 'POST', headers: h,
+      body: JSON.stringify({report_id: savedReportId, previous_id: prev.id})});
+    var r = await resp.json();
+    out.innerHTML = r.error ? '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">' + esc(r.error) + '</div>' : compareResultHTML(r);
+  } catch (e) {
+    out.innerHTML = '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">The comparison could not be made. Try again.</div>';
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Compare'; }
+}
+// Same look as verilay_compare.render_html on the saved report page: number tiles, grade badges, one row per issue
+// (plain title, grey "where" line, a small severity tag), and the fine print in one quiet box.
+var _CMP_GROUPS = [['no_longer_found', 'No longer found', '#1D9E75', '#EAF3DE'],
+                   ['still_found', 'Still there', '#92400E', '#FEF3C7'],
+                   ['new_found', 'New in this scan', '#A32D2D', '#FCEBEB']];
+var _CMP_SEV = {critical: ['#A32D2D', '#FCEBEB'], warning: ['#92400E', '#FEF3C7']};
+var _CMP_GRADE = {A: '#1D9E75', B: '#4A90D9', C: '#EF9F27', D: '#E24B4A', F: '#A32D2D'};
+function _cmpGrade(g) {
+  return '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;' +
+    'font-size:14px;font-weight:700;color:#fff;background:' + (_CMP_GRADE[g] || '#999') + '">' + esc(g || '–') + '</span>';
+}
+function compareResultHTML(r) {
+  var html = '<div style="margin-top:.85rem;border-top:0.5px solid var(--bdr);padding-top:.85rem">';
+  if (!r.comparable) return html + '<div style="font-size:14px;line-height:1.55">' + esc(r.reason || 'These scans could not be compared.') + '</div></div>';
+  if (r.grade_before || r.grade_after) {
+    html += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);margin-bottom:.75rem">Grade ' +
+      _cmpGrade(r.grade_before) + '<span style="font-size:16px">&rarr;</span>' + _cmpGrade(r.grade_after) + '</div>';
+  }
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + _CMP_GROUPS.map(function(g) {
+    var n = (r[g[0]] || []).length;
+    return '<div style="background:' + g[3] + ';border-radius:8px;padding:.6rem .5rem;text-align:center">' +
+      '<div style="font-size:22px;font-weight:700;color:' + g[2] + ';line-height:1.1">' + n + '</div>' +
+      '<div style="font-size:12px;color:#444;margin-top:2px">' + g[1] + '</div></div>';
+  }).join('') + '</div>';
+  _CMP_GROUPS.forEach(function(g) {
+    var rows = r[g[0]] || [];
+    if (!rows.length) return;
+    html += '<div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:1rem 0 .15rem">' +
+      g[1] + ' &middot; ' + rows.length + '</div>';
+    rows.forEach(function(f) {
+      var sc = _CMP_SEV[f.severity] || ['#444', '#eee'];
+      var where = [f.area, f.file].filter(Boolean).map(esc).join(' &middot; ');
+      if (g[0] === 'still_found' && f.before && f.before !== f.severity) where += ' &middot; was ' + esc(f.before);
+      html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:.55rem 0;border-top:0.5px solid var(--bdr)">' +
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--txt);line-height:1.4">' + esc(f.title) + '</div>' +
+        '<div style="font-size:12px;color:var(--mut);margin-top:2px">' + where + '</div></div>' +
+        '<span style="flex-shrink:0;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;color:' + sc[0] + ';background:' + sc[1] + '">' +
+        esc(f.severity) + '</span></div>';
+    });
+  });
+  if ((r.checks || []).length) {
+    html += '<div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:1rem 0 .15rem">Automatic checks</div>' +
+      r.checks.map(function(c) {
+        return '<div style="display:flex;justify-content:space-between;padding:.45rem 0;border-top:0.5px solid var(--bdr);font-size:14px">' +
+          '<span>' + esc(c.label) + '</span><span style="color:var(--mut)">' + (c.before | 0) + ' &rarr; <strong style="color:var(--txt)">' + (c.after | 0) + '</strong></span></div>';
+      }).join('');
+  }
+  var notes = [];
+  if (r.files_note) notes.push(esc(r.files_note));
+  if ((r.not_compared || []).length) notes.push('Not compared, because one of the scans did not check them: ' + esc(r.not_compared.join(', ')) + '.');
+  notes.push('&ldquo;No longer found&rdquo; means this scan did not report it. The AI can word the same issue differently between scans, so check the list before treating anything as fixed.');
+  html += '<div style="background:#F6F5F2;border-radius:8px;padding:.6rem .8rem;margin-top:1rem;font-size:12px;color:var(--mut);line-height:1.55">' +
+    notes.map(function(n) { return '<div style="margin:.15rem 0">' + n + '</div>'; }).join('') + '</div>';
+  html += '<div style="font-size:12px;color:var(--mut);margin-top:.65rem">Saved on this report, so the link shows it too.' +
+    (r.signed_in ? '' : ' <a href="/login" style="color:var(--pu);font-weight:600">Sign in</a> to keep your scans and comparisons on any device.') + '</div>';
+  return html + '</div>';
+}
+// Signed in? Link the scans this browser made to the account, so they show on the account page. Proof is each
+// report's manage token; the server ignores reports that already belong to someone. Once per browser session.
+function claimHistoryReports() {
+  try {
+    if (sessionStorage.getItem('verilay_claim_tried')) return;
+    sessionStorage.setItem('verilay_claim_tried', '1');
+  } catch (e) { return; }
+  var items = getHistory().filter(function(h) { return h.id && reportToken(h.id); })
+    .map(function(h) { return {id: h.id, token: reportToken(h.id)}; }).slice(0, 20);
+  if (!items.length) return;
+  fetch('/claim-reports', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({reports: items})})
+    .catch(function() {});
+}
+
 function getHistory() {
   try {
     return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
@@ -403,6 +539,7 @@ function init() {
 
   // History
   renderHistory();
+  claimHistoryReports();
   var btnClearHistory = document.getElementById('btn-clear-history');
   if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
 
@@ -1050,6 +1187,8 @@ function handleStreamEvent(evt) {
         reportAskBtn.style.opacity = '1';
         reportAskBtn.style.cursor = 'pointer';
       }
+      // Earlier scans to offer for "compare", read BEFORE this one replaces its namesake in the history
+      window._compareCandidates = findCompareCandidates(currentReport, savedReportId);
       // Save to history with the report ID
       if (currentReport) {
         var reportForHistory = Object.assign({}, currentReport);
@@ -1094,6 +1233,7 @@ function handleStreamEvent(evt) {
       if (lb) lb.style.display = 'none';
       var p2 = document.getElementById('p2-banner');
       if (p2 && !(currentReport && currentReport.preview_only)) p2.style.display = 'block';
+      showCompareOffer();
       break;
     case 'error':
       stopTrickle();

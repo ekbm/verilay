@@ -2,6 +2,14 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 25, 2026: Compare with your last scan
+
+`New`
+
+**New:** scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says “no longer found”, not “fixed”, and warns you when the two scans read different files.
+
+**Good to know:** when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The [privacy page](https://verilay.dev/privacy) says so.
+
 ## October 25, 2026: No grade from an answer that did not arrive
 
 `Fix` · `Improve`
