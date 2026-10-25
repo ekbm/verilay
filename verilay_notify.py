@@ -230,3 +230,44 @@ def send_monitoring_interest_alert(email, repo, answers, notes=""):
     except Exception as e:
         print(f"[notify] Monitoring-interest alert failed: {e}", flush=True)
         return False
+
+
+_STORY_ALERTS = []
+
+
+def send_improvement_story_alert(report_id, story, repo=""):
+    """Tell Moses someone answered "Went up a grade? Tell us what you changed." Best-effort, returns True/False, never
+    raises. At most 20 of these emails per worker per hour; the answer itself is already stored on the report."""
+    import time as _t
+    to = MONITORING_INTEREST_NOTIFY_EMAIL
+    if not configured() or not to:
+        print("[notify] ZEPTOMAIL_TOKEN or recipient not set, skipping improvement-story alert", flush=True)
+        return False
+    now = _t.time()
+    _STORY_ALERTS[:] = [x for x in _STORY_ALERTS if now - x < 3600]
+    if len(_STORY_ALERTS) >= 20:
+        print("[notify] improvement-story alert cap reached this hour; answer stored, no email sent", flush=True)
+        return False
+    _STORY_ALERTS.append(now)
+    s = story or {}
+    lines = ["Someone told us what they changed after a better Verilay scan.", "",
+             f"App: {_one_line(repo, 120) or '(no name)'}",
+             f"Grade: {_one_line(s.get('grade_before') or 'n/a', 4)} -> {_one_line(s.get('grade_after') or 'n/a', 4)}"
+             f" ({int(s.get('no_longer_found') or 0)} issues no longer found)",
+             f"Email: {_one_line(s.get('email'), 254) or '(not given)'}",
+             f"May be quoted (without their name): {'yes' if s.get('quote_ok') else 'no'}",
+             f"Wants early access to fix sessions: {'yes' if s.get('early_access') else 'no'}",
+             "", "What they changed:", str(s.get("changed") or "")[:1000],
+             "", f"Report: https://verilay.dev/report/{_one_line(report_id, 40)}", "", "— Verilay"]
+    msg = MIMEText("\n".join(lines))
+    msg["Subject"] = _one_line(f"What they changed: {repo or 'a rescanned app'}", 120)
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = to
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [to], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[notify] improvement-story alert failed: {type(e).__name__}", flush=True)
+        return False

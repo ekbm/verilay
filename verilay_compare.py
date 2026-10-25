@@ -233,6 +233,23 @@ def render_html(result):
             f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">{tiles}</div>{groups}{note_html}</div>')
 
 
+_GRADE_ORDER = "ABCDF"
+
+
+def improved(result):
+    """True when a comparison shows real progress: a better grade, or at least one issue no longer found with the
+    grade no worse. Used to decide whether to ask "what did you change?"."""
+    if not isinstance(result, dict) or not result.get("comparable"):
+        return False
+    gb, ga = result.get("grade_before"), result.get("grade_after")
+    if isinstance(gb, str) and isinstance(ga, str) and len(gb) == len(ga) == 1 and gb in _GRADE_ORDER and ga in _GRADE_ORDER:
+        if _GRADE_ORDER.index(ga) < _GRADE_ORDER.index(gb):
+            return True
+        if _GRADE_ORDER.index(ga) > _GRADE_ORDER.index(gb):
+            return False
+    return bool(result.get("no_longer_found"))
+
+
 def headline(result):
     """One plain line, e.g. '2 issues no longer found, 1 still there, 0 new.'"""
     if not result or not result.get("comparable"):

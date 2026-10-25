@@ -378,7 +378,9 @@ async function runCompare(prev) {
     var resp = await fetch('/compare-report', {method: 'POST', headers: h,
       body: JSON.stringify({report_id: savedReportId, previous_id: prev.id})});
     var r = await resp.json();
-    out.innerHTML = r.error ? '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">' + esc(r.error) + '</div>' : compareResultHTML(r);
+    out.innerHTML = r.error ? '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">' + esc(r.error) + '</div>'
+      : compareResultHTML(r) + (r.improved ? storyFormHTML(r) : '');
+    if (!r.error && r.improved) bindStoryForm();
   } catch (e) {
     out.innerHTML = '<div style="font-size:13px;color:var(--rdt);margin-top:.6rem">The comparison could not be made. Try again.</div>';
   }
@@ -441,6 +443,57 @@ function compareResultHTML(r) {
     (r.signed_in ? '' : ' <a href="/login" style="color:var(--pu);font-weight:600">Sign in</a> to keep your scans and comparisons on any device.') + '</div>';
   return html + '</div>';
 }
+// "Went up a grade? Tell us what you changed." Optional, only after a comparison that improved (the server checks
+// that too). The answer stays private: it is emailed to Verilay and kept with the report, never shown on it.
+function storyFormHTML(r) {
+  var n = (r.no_longer_found || []).length;
+  var better = r.grade_before && r.grade_after && r.grade_before !== r.grade_after;
+  var title = better ? 'Went from ' + esc(r.grade_before) + ' to ' + esc(r.grade_after) + '? Tell us what you changed.'
+    : n + (n === 1 ? ' issue' : ' issues') + ' no longer found? Tell us what you changed.';
+  var field = 'width:100%;box-sizing:border-box;border:0.5px solid var(--bdr);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white;color:var(--txt)';
+  var tick = 'display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--txt);margin-top:.5rem;cursor:pointer';
+  return '<div id="story-box" style="background:var(--pul);border-radius:8px;padding:.85rem 1rem;margin-top:1rem">' +
+    '<div style="font-size:15px;font-weight:600;color:var(--put)">' + title + '</div>' +
+    '<div style="font-size:12px;color:var(--put);margin:2px 0 .65rem">Optional. A sentence or two helps other builders, and helps us make the fix prompts better.</div>' +
+    '<label for="story-text" style="display:block;font-size:12px;font-weight:600;color:var(--put);margin-bottom:3px">What did you change?</label>' +
+    '<textarea id="story-text" maxlength="1000" rows="3" placeholder="e.g. Moved the Supabase key into a server function and added a sign-in check to the admin page" style="' + field + ';resize:vertical"></textarea>' +
+    '<label for="story-email" style="display:block;font-size:12px;font-weight:600;color:var(--put);margin:.6rem 0 3px">Email <span style="font-weight:400">(optional, only if we may follow up)</span></label>' +
+    '<input id="story-email" type="email" maxlength="254" autocomplete="email" style="' + field + '">' +
+    '<input id="story-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
+    '<label style="' + tick + '"><input type="checkbox" id="story-quote" style="margin-top:2px">You can quote this on verilay.dev, without my name</label>' +
+    '<label style="' + tick + '"><input type="checkbox" id="story-early" style="margin-top:2px">I&rsquo;d like early access to guided fix sessions (needs an email)</label>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-top:.75rem"><button type="button" id="story-send" class="btn-sm">Send</button>' +
+    '<span id="story-status" style="font-size:12px;color:var(--put)"></span></div></div>';
+}
+function bindStoryForm() {
+  var btn = document.getElementById('story-send');
+  if (!btn) return;
+  btn.onclick = async function() {
+    var status = document.getElementById('story-status');
+    var text = (document.getElementById('story-text').value || '').trim();
+    if (!text) { status.textContent = 'Tell us in a few words what you changed.'; return; }
+    btn.disabled = true; btn.textContent = 'Sending...'; status.textContent = '';
+    try {
+      var resp = await fetch('/improvement-story', {method: 'POST', headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
+        body: JSON.stringify({report_id: savedReportId, changed: text,
+          email: (document.getElementById('story-email').value || '').trim(),
+          quote_ok: document.getElementById('story-quote').checked,
+          early_access: document.getElementById('story-early').checked,
+          website: document.getElementById('story-website').value})});
+      var r = await resp.json();
+      if (r.ok) {
+        document.getElementById('story-box').innerHTML = '<div style="font-size:14px;font-weight:600;color:var(--put)">Thank you!</div>' +
+          '<div style="font-size:13px;color:var(--put);margin-top:2px">Your answer reached us. It is not shown on your report.</div>';
+        return;
+      }
+      status.textContent = r.error || 'It could not be sent. Try again.';
+    } catch (e) {
+      status.textContent = 'It could not be sent. Try again.';
+    }
+    btn.disabled = false; btn.textContent = 'Send';
+  };
+}
+
 // Signed in? Link the scans this browser made to the account, so they show on the account page. Proof is each
 // report's manage token; the server ignores reports that already belong to someone. Once per browser session.
 function claimHistoryReports() {

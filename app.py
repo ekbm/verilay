@@ -39,7 +39,7 @@ load_dotenv()
 from verilay_url_guard import safe_get, validate_url, BlockedURL
 from verilay_secret_scan import (
     scan_repo, to_prompt_block, to_report_dict, fetch_all_files_tarball,
-    fetch_all_files_zip,
+    fetch_all_files_zip, scan_file,
 )
 from verilay_it_review import render_it_review
 from verilay_crypto_hygiene import (
@@ -3501,7 +3501,8 @@ def report_data(report_id):
         return jsonify({"error": "Report not found or expired"}), 404
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
-    data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful")}
+    data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
+                                                       "improvement_story")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -5107,6 +5108,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>Your IP address, to limit how many requests one person can make. For free scans this is kept only in the server's memory and is lost when it restarts. For the Ask AI box, a counter is stored in our database under a scrambled version of your IP address (the address itself is not kept), and counters older than two hours are deleted automatically whenever the box is used</li>
     <li>If you join the waitlist — your email address</li>
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
+    <li>If you tell us what you changed after a scan that improved — your answer, any email you choose to add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
     <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
     <li>If you contact an app&rsquo;s builder through the directory — your email and message, which we email to the builder and keep</li>
@@ -5151,6 +5153,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2>Feedback</h2>
   <p>If you rate a report and choose to leave a comment or email, these are stored with that report in Supabase. Email is optional and used only to follow up about the feedback you left — for example to let you know an issue was fixed. You can request deletion by emailing moses@verilay.dev.</p>
+  <p>If you answer &ldquo;tell us what you changed&rdquo; after a scan that improved, your answer is stored with that report and emailed to us. It is never shown on the report. We quote it on verilay.dev only if you ticked that box, and never with your name. An email is optional; if you also ticked early access, it joins our waitlist for fix sessions. You can request deletion by emailing moses@verilay.dev.</p>
 
   <h2>Your rights</h2>
   <ul>
@@ -5609,6 +5612,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div><span class="tag new">New</span></div>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> scan the same app again and Verilay offers to compare the two: what is no longer found, what is still there and what is new, plus the grade before and after. Only scans made in your browser, or by your account, can be compared, and the comparison is saved on the new report. It says &ldquo;no longer found&rdquo;, not &ldquo;fixed&rdquo;, and warns you when the two scans read different files.</p>
     <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>Good to know:</strong> when you sign in, the reports this browser made earlier are linked to your account, so they stay on your account page. The <a href="/privacy">privacy page</a> says so.</p>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> signed in, you can compare with scans from your account on any device. And when a comparison shows your app improved, you can tell us what you changed. It is optional, never shown on your report, and only quoted if you say so.</p>
   </div>
 
   <div class="entry">
@@ -6071,7 +6075,77 @@ def compare_report_route():
             _reports[new_id]["data"] = new_data
     except Exception as e:
         print(f"Comparison not stored on {new_id}: {e}", flush=True)
-    return jsonify(dict(result, headline=comparemod.headline(result), signed_in=bool(_current_uid())))
+    return jsonify(dict(result, headline=comparemod.headline(result), signed_in=bool(_current_uid()),
+                        improved=comparemod.improved(result)))
+
+
+_STORY_HITS = {}
+_STORY_EMAIL = _re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
+
+
+def _story_rate_ok(ip, limit=5, window=3600):
+    """At most `limit` stories per connection per hour; in memory, per worker."""
+    now = time.time()
+    if len(_STORY_HITS) > 5000:
+        _STORY_HITS.clear()
+    hits = [x for x in _STORY_HITS.get(ip, []) if now - x < window]
+    ok = len(hits) < limit
+    if ok:
+        hits.append(now)
+    _STORY_HITS[ip] = hits
+    return ok
+
+
+@app.route("/improvement-story", methods=["POST"])
+def improvement_story_route():
+    """'Went up a grade? Tell us what you changed.' Optional, after a comparison that shows an improvement. Only the
+    browser (or account) that owns the report can send one, and only when its saved comparison really improved.
+    Kept on that report (never shown on it, never in /report-data), emailed to Moses; with an email and the
+    early-access tick it also joins the waitlist as source "fix-sessions". A message that looks like it holds a key
+    or password is refused, so nobody pastes a secret into it by accident."""
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):                      # hidden field only a bot fills in: look like success, keep nothing
+        return jsonify({"ok": True})
+    rid = str(body.get("report_id") or "")[:40]
+    text = str(body.get("changed") or "").strip()[:1000]
+    email = str(body.get("email") or "").strip().lower()[:254]
+    if not text:
+        return jsonify({"error": "Tell us in a few words what you changed."}), 400
+    if email and not _STORY_EMAIL.match(email):
+        return jsonify({"error": "That email address does not look right. Leave it empty if you prefer."}), 400
+    if not _can_write_report(rid):
+        return jsonify({"error": _NOT_ALLOWED}), 403
+    if any(f.severity in ("critical", "warning") for f in scan_file("message.txt", text)):
+        return jsonify({"error": "Your message looks like it contains a key or password. Please take it out and send again."}), 400
+    data, _owner = _report_auth_info(rid)
+    cmp_ = (data or {}).get("comparison") or {}
+    if not comparemod.improved(cmp_):
+        return jsonify({"error": "This question is only for a scan that improved on an earlier one."}), 400
+    ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "?")
+    if not _story_rate_ok(ip):
+        return jsonify({"error": "Too many messages from this connection. Please try again later."}), 429
+    story = {"changed": text, "email": email, "quote_ok": bool(body.get("quote_ok")),
+             "early_access": bool(body.get("early_access")),
+             "grade_before": cmp_.get("grade_before"), "grade_after": cmp_.get("grade_after"),
+             "no_longer_found": len(cmp_.get("no_longer_found") or []),
+             "at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
+    data["improvement_story"] = story
+    try:
+        if _HAS_SUPABASE:
+            _sb.table("reports").update({"data": data}).eq("id", rid).execute()
+            if email and story["early_access"]:
+                try:
+                    _sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "fix-sessions"}).execute()
+                except Exception as e:
+                    print(f"[story] waitlist insert skipped (a duplicate is fine): {e}", flush=True)
+        elif rid in _reports:
+            _reports[rid]["data"] = data
+    except Exception as e:
+        print(f"[story] not stored on {rid}: {e}", flush=True)
+        return jsonify({"error": "Your message could not be saved. Please try again."}), 500
+    threading.Thread(target=notify.send_improvement_story_alert, args=(rid, story, str(data.get("repo") or "")),
+                     daemon=True).start()
+    return jsonify({"ok": True})
 
 
 @app.route("/my-scans")
