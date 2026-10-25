@@ -902,7 +902,7 @@ def _layer_failure_text(exc, names):
     return f"The {group} check could not be completed ({str(exc).strip()[:160]}). Run the analysis again to see it."
 
 
-def verdict_from_score(score):
+def verdict_from_score(score, critical=None):
     """Derive the launch-readiness verdict from the computed score, so it can never
     contradict the grade. Returns (label, color, reason). Mirrors the live app.js view."""
     m = {
@@ -912,7 +912,10 @@ def verdict_from_score(score):
         "D": ("Not Ready",        "#E24B4A", "Fix the critical findings below before launching with real users."),
         "F": ("Not Ready",        "#A32D2D", "Several critical findings — fix these before launching with real users."),
     }
-    return m.get(score, m["C"])
+    v = m.get(score, m["C"])
+    if critical == 0 and score in ("C", "D", "F"):     # a grade from warnings alone: do not ask to fix criticals
+        v = (v[0], v[1], "No critical findings, but the warnings below add up. Work through them, then re-run to update the score.")
+    return v
 
 def _usage_db():
     """The database client for the usage counters, or None. Resolved late, so import order does not matter."""
@@ -6993,7 +6996,7 @@ Run a new analysis &rarr;</a>
         score_display = "n/a"
         score_color = "#999"
     else:
-        verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
+        verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"), h.get("critical"))
         # With zero critical findings (e.g. after a dev-only "critical" is capped),
         # "address the critical findings" would be wrong; the grade comes from warnings.
         if not h.get("critical") and h.get("score") in ("C", "D"):
@@ -7487,7 +7490,7 @@ def build_markdown(data):
     repo = data.get("repo","unknown")
     h = data.get("health",{})
     pr = data.get("prod_ready",{})
-    md_label, _mdc, md_reason = verdict_from_score(h.get("score","C"))
+    md_label, _mdc, md_reason = verdict_from_score(h.get("score","C"), h.get("critical"))
     lines = [f"# Verilay Report: {repo}",
              f"Generated: {data.get('generated_at','')}","",
              "## Production Verdict",
@@ -8330,6 +8333,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .sub{font-size:12px;color:var(--mut);margin-bottom:.6rem;line-height:1.45}
 input[type=url],input[type=text]{width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:9px 12px;font-size:14px;background:var(--bg);color:var(--txt);outline:none;transition:border-color var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}
 input:focus{border-color:var(--pu);box-shadow:0 0 0 3px var(--pul)}
+#gh-url{border:2px solid var(--pu);background:#fff;font-size:16px;padding:13px 14px;border-radius:10px;box-shadow:0 0 0 4px var(--pul)}
+#gh-url::placeholder{color:#8a87c9}
+#gh-url:focus{box-shadow:0 0 0 5px var(--pul)}
 .hint{background:var(--pul);border-radius:8px;padding:.65rem .85rem;font-size:13px;color:var(--put);margin-top:.65rem;line-height:1.5}
 .hint ol{margin-top:.35rem;padding-left:1.1rem}
 .hint li{margin-bottom:2px}
@@ -8893,10 +8899,10 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   <div class="ip vis" id="p-github">
     <label class="lbl">Repository URL</label>
     <p class="sub">Works with GitHub, GitLab, Bitbucket, and Azure DevOps</p>
-    <div id="private-beta" style="display:none;margin:0 0 .75rem;font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.6rem .85rem">
+    <input type="url" id="gh-url" placeholder="https://github.com/username/project" aria-label="Repository URL">
+    <div id="private-beta" style="display:none;margin:.65rem 0 0;font-size:12px;color:var(--mut);background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.6rem .85rem">
         <strong style="color:var(--txt)">Private repo (beta).</strong> Connect one private repository with read-only access. Verilay reads the code once, then removes its own access. Free, with daily limits. If GitHub shows a &ldquo;Configure&rdquo; page, tick your repository, click Save, and you will come back here. <a href="/github/connect" style="color:var(--pu);font-weight:600">Connect a private repo &rarr;</a>
     </div>
-    <input type="url" id="gh-url" placeholder="https://github.com/username/project">
     <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.75rem 1rem;margin-top:.65rem">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleAccuracyTip()">
         <div style="font-size:13px;font-weight:600;color:var(--mut)">Optional — how to get fewer false positives</div>

@@ -1846,7 +1846,7 @@ function healthCardsHTML(h, hasLayers, isPreview) {
   }).join('');
 }
 
-function scoreBannerHTML(score, hasLayers, isPreview) {
+function scoreBannerHTML(score, hasLayers, isPreview, crit) {
   if (isPreview) {
     return '<div style="background:var(--bll);border:0.5px solid var(--blt);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6;color:var(--blt)"><i class="ti ti-eye"></i> <strong>This was a quick URL preview — not a graded analysis.</strong> A URL scan only sees what the site serves to a browser, not your source code. To get a real score, scan your GitHub repo or upload a ZIP.</div>';
   }
@@ -1868,16 +1868,17 @@ function scoreBannerHTML(score, hasLayers, isPreview) {
       '✓ Payment endpoints properly scoped';
   } else if (score === 'C') {
     scoreBg = '#FEF9C3'; scoreBdr = '#EAB308';
-    scoreMsg = '🎯 <strong>Score C — Almost there.</strong> Fix the critical issues above and you will reach B. ' +
-      'That is the realistic goal for AI-built apps — not A.<br><br>' +
+    var what = crit === 0 ? 'warnings' : 'critical issues';     // a C can come from warnings alone
+    scoreMsg = '🎯 <strong>Score C — Almost there.</strong> ' + (crit === 0 ? 'There are no critical issues; fix the warnings above' : 'Fix the critical issues above') +
+      ' and you will reach B. That is the realistic goal for AI-built apps — not A.<br><br>' +
       '<strong>Your path to B:</strong><br>' +
-      '1. Use the advice prompts below to investigate each critical finding<br>' +
+      '1. Use the advice prompts below to investigate each of the ' + what + '<br>' +
       '2. Take findings to your AI builder and ask them to verify<br>' +
       '3. Paste their response back here to update your score<br>' +
-      '4. Once all criticals are verified or fixed — re-run for updated score';
+      '4. Once the ' + what + ' are verified or fixed — re-run for updated score';
   } else if (score === 'D' || score === 'F') {
     scoreBg = '#FEF2F2'; scoreBdr = '#EF4444';
-    scoreMsg = '🎯 <strong>Score ' + score + ' — Not ready to launch.</strong> Fix critical issues first using the advice prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
+    scoreMsg = '🎯 <strong>Score ' + score + ' — Not ready to launch.</strong> ' + (crit === 0 ? 'Work through the warnings' : 'Fix critical issues first') + ' using the advice prompts below. Realistic goal is B — safe for real users. Getting to A requires a professional developer security review.';
   }
   return '<div style="background:' + scoreBg + ';border:0.5px solid ' + scoreBdr + ';border-radius:var(--r);padding:.75rem 1rem;margin-bottom:10px;font-size:13px;line-height:1.6">' + scoreMsg + '</div>';
 }
@@ -1910,10 +1911,10 @@ function updateHealthDisplay() {
     }
   }
   var banner = document.getElementById('score-banner');
-  if (banner) banner.innerHTML = inc.length ? '' : scoreBannerHTML(h.score, true);
+  if (banner) banner.innerHTML = inc.length ? '' : scoreBannerHTML(h.score, true, false, h.critical);
   var vb = document.getElementById('verdict-banner');
   if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc)
-    : verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null) + (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
+    : verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null, h.critical) + (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
   var ls = document.getElementById('sec-layers-sum');
   if (ls) ls.textContent = layersSummaryText(h, notChecked);
 }
@@ -2248,7 +2249,7 @@ function toggleFileList() {
   }
 }
 
-function verdictBannerHTML(score, prevScore) {
+function verdictBannerHTML(score, prevScore, crit) {
   var map = {
     A: ['#EAF3DE','#27500A','ti-circle-check','Production ready','No critical or warning findings — keep dependencies current as you add features.'],
     B: ['#EAF3DE','#27500A','ti-circle-check','Safe to launch','The realistic target for AI-built apps. See the score guide below for how to reach A.'],
@@ -2256,7 +2257,8 @@ function verdictBannerHTML(score, prevScore) {
     D: ['#FCEBEB','#A32D2D','ti-alert-circle','Not ready to launch','Fix the critical findings below before launching with real users.'],
     F: ['#FCEBEB','#A32D2D','ti-alert-circle','Not ready to launch','Several critical findings — fix these before launching with real users.']
   };
-  var v = map[score] || map.C;
+  var v = (map[score] || map.C).slice();
+  if (crit === 0 && 'CDF'.indexOf(score) !== -1) v[4] = 'No critical findings, but the warnings below add up. Work through them, then re-run to update the score.';   // a grade from warnings alone
   var html = '<div class="prod-banner" style="background:' + v[0] + ';color:' + v[1] + '">';
   html += '<i class="ti ' + v[2] + '" style="font-size:26px"></i>';
   html += '<div style="flex:1"><div style="font-size:16px;font-weight:600;margin-bottom:2px">' + v[3] + '</div>';
@@ -2403,7 +2405,7 @@ function renderReport(data) {
     html += '<div style="background:var(--orl);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px;font-size:13px;color:var(--ort)"><strong>Surface scan only.</strong> Use GitHub or ZIP for a full analysis.</div>';
   }
 
-  html += '<div id="verdict-banner">' + (!isPreview && hasLayers ? verdictBannerHTML(h.score, data.prev_score) : '') + '</div>';
+  html += '<div id="verdict-banner">' + (!isPreview && hasLayers ? verdictBannerHTML(h.score, data.prev_score, h.critical) : '') + '</div>';
 
   // Static site recommendation: shown under "Checks we ran" (report tidy-up, 25 Oct 2026), not at the top.
   var staticHtml = '';
@@ -2466,7 +2468,7 @@ function renderReport(data) {
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
   html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers, isPreview) + '</div></div>';
 
-  html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview) + '</div>';
+  html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview, h.critical) + '</div>';
 
   html += '<div class="actrow">' +
     '<button class="btn-sm" id="btn-ask-top" onclick="openSection(\'sec-ask\', \'report-ask-input\')"><i class="ti ti-message-circle" style="font-size:14px"></i> Ask Verilay about these results</button>' +
@@ -3147,7 +3149,7 @@ function renderPart2(data) {
   html += 'Copy each prompt, read what ' + whereToGo + ' says, then paste their response back here to verify. ';
   html += '<strong>Do not apply changes until ' + whereToGo + ' confirms it is safe.</strong>';
   html += '</div>';
-  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Note: there is one advice prompt per finding, with critical issues listed first. Take each to your AI builder to review and advise — don\'t apply changes until it confirms what\'s genuinely needed.</div>';
+  html += '<div style="font-size:12px;color:var(--mut);margin-bottom:.75rem">Note: there is one advice prompt per finding, most serious first. Take each to your AI builder to review and advise — don\'t apply changes until it confirms what\'s genuinely needed.</div>';
 
   (data.top_fixes||[]).forEach(function(f, fi) {
     // Choose the right platform prompt
