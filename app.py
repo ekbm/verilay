@@ -902,7 +902,7 @@ def _layer_failure_text(exc, names):
     return f"The {group} check could not be completed ({str(exc).strip()[:160]}). Run the analysis again to see it."
 
 
-def verdict_from_score(score, critical=None):
+def verdict_from_score(score):
     """Derive the launch-readiness verdict from the computed score, so it can never
     contradict the grade. Returns (label, color, reason). Mirrors the live app.js view."""
     m = {
@@ -912,10 +912,7 @@ def verdict_from_score(score, critical=None):
         "D": ("Not Ready",        "#E24B4A", "Fix the critical findings below before launching with real users."),
         "F": ("Not Ready",        "#A32D2D", "Several critical findings — fix these before launching with real users."),
     }
-    v = m.get(score, m["C"])
-    if critical == 0 and score in ("C", "D", "F"):     # a grade from warnings alone: do not ask to fix criticals
-        v = (v[0], v[1], "No critical findings, but the warnings below add up. Work through them, then re-run to update the score.")
-    return v
+    return m.get(score, m["C"])
 
 def _usage_db():
     """The database client for the usage counters, or None. Resolved late, so import order does not matter."""
@@ -6996,7 +6993,7 @@ Run a new analysis &rarr;</a>
         score_display = "n/a"
         score_color = "#999"
     else:
-        verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"), h.get("critical"))
+        verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
         # With zero critical findings (e.g. after a dev-only "critical" is capped),
         # "address the critical findings" would be wrong; the grade comes from warnings.
         if not h.get("critical") and h.get("score") in ("C", "D"):
@@ -7490,7 +7487,7 @@ def build_markdown(data):
     repo = data.get("repo","unknown")
     h = data.get("health",{})
     pr = data.get("prod_ready",{})
-    md_label, _mdc, md_reason = verdict_from_score(h.get("score","C"), h.get("critical"))
+    md_label, _mdc, md_reason = verdict_from_score(h.get("score","C"))
     lines = [f"# Verilay Report: {repo}",
              f"Generated: {data.get('generated_at','')}","",
              "## Production Verdict",
