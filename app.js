@@ -611,6 +611,66 @@ function showMonitoringOffer() {
   };
 }
 
+// Admin test of the light free scan: open the home page with ?lite=1. The server only honours it for a signed-in
+// admin; for anyone else the scan is the normal one. A small note says the test mode is on.
+function liteTestMode() {
+  try { return new URLSearchParams(window.location.search).get('lite') === '1'; } catch (e) { return false; }
+}
+function showLiteTestNote() {
+  if (!liteTestMode() || document.getElementById('lite-test-note')) return;
+  var n = document.createElement('div');
+  n.id = 'lite-test-note';
+  n.textContent = 'Test mode: light free scan (admin only)';
+  n.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:9998;background:#FEF3C7;color:#92400E;border:0.5px solid #EF9F27;' +
+    'border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600';
+  document.body.appendChild(n);
+}
+
+// ── Verilay Pro (coming soon) ─────────────────────────────────────────────────
+// The light free scan gives one fix prompt; this card says how many more are waiting and takes an early-access email.
+function proLockedHTML(data) {
+  var h = (currentReport && currentReport.health) || {};
+  var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
+  var lead = more ? (more + ' more fix prompt' + (more === 1 ? ' is' : 's are') + ' ready for this scan.')
+                  : 'Want a fix prompt for every finding next time?';
+  return '<div id="pro-locked" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.9rem 1rem;margin:.85rem 0">' +
+    '<div style="display:flex;gap:10px;align-items:flex-start"><i class="ti ti-lock" style="font-size:20px;color:var(--pu);flex-shrink:0;margin-top:1px"></i>' +
+    '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;color:var(--put)">' + lead + '</div>' +
+    '<div style="font-size:13px;color:var(--put);margin-top:3px;line-height:1.55">Verilay Pro, coming soon, will give a ready-to-paste fix prompt for every finding, ' +
+    'with fuller explanations, for <strong>A$4.99</strong> a scan. Leave your email and we will tell you when it opens. ' +
+    '<a href="/deep-scan#compare" target="_blank" style="color:var(--put)">Compare Free, Pro and Deep</a></div>' +
+    '<div id="pro-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.6rem">' +
+    '<input id="pro-email" type="email" maxlength="254" autocomplete="email" placeholder="you@example.com" style="flex:1;min-width:180px;' +
+    'border:0.5px solid var(--bdr);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;background:white;color:var(--txt)">' +
+    '<input id="pro-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
+    '<button type="button" id="pro-join" class="btn-sm">Join early access</button></div>' +
+    '<div id="pro-status" style="font-size:12px;color:var(--put);margin-top:.35rem"></div></div></div></div>';
+}
+function bindProEarlyAccess() {
+  var btn = document.getElementById('pro-join');
+  if (!btn || btn._bound) return;
+  btn._bound = true;
+  try { if (typeof plausible === 'function') plausible('Pro Offer Shown'); } catch (e) {}
+  btn.onclick = async function() {
+    var status = document.getElementById('pro-status');
+    var email = (document.getElementById('pro-email').value || '').trim();
+    if (!email) { status.textContent = 'Add your email so we can tell you when Pro opens.'; return; }
+    btn.disabled = true; btn.textContent = 'Joining...'; status.textContent = '';
+    try {
+      var r = await fetch('/pro/early-access', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: email, website: document.getElementById('pro-website').value})}).then(function(x) { return x.json(); });
+      if (r.ok) {
+        document.getElementById('pro-form').style.display = 'none';
+        status.textContent = 'You are on the list. We will email you once when Verilay Pro opens.';
+        try { if (typeof plausible === 'function') plausible('Pro Early Access Join'); } catch (e) {}
+        return;
+      }
+      status.textContent = r.error || 'It could not be sent. Try again.';
+    } catch (e) { status.textContent = 'It could not be sent. Try again.'; }
+    btn.disabled = false; btn.textContent = 'Join early access';
+  };
+}
+
 // Signed in? Link the scans this browser made to the account, so they show on the account page. Proof is each
 // report's manage token; the server ignores reports that already belong to someone. Once per browser session.
 function claimHistoryReports() {
@@ -736,6 +796,7 @@ function init() {
   // History
   renderHistory();
   claimHistoryReports();
+  showLiteTestNote();
   var btnClearHistory = document.getElementById('btn-clear-history');
   if (btnClearHistory) btnClearHistory.addEventListener('click', clearHistory);
 
@@ -1145,6 +1206,7 @@ async function runAnalysis() {
   if (stepsMsgReset) stepsMsgReset.textContent = 'Analysing Auth, Config, Database layers...';
   var fd = new FormData();
   fd.append('method', currentMethod);
+  if (liteTestMode()) fd.append('lite', '1');   // admin-only test of the light free scan (the server checks the admin)
   if (currentMethod === 'github') {
     var url = document.getElementById('gh-url').value.trim();
     if (!url) { showErr('Please enter a GitHub URL'); return; }
@@ -2647,6 +2709,7 @@ async function runPart2() {
         repo_name:  currentReport ? currentReport.repo : '',
         built_with: currentReport ? (currentReport.built_with||'') : '',
         findings_summary: findings,
+        lite: liteTestMode() ? '1' : '',
         stack: currentReport ? (currentReport.stack||[]).map(function(s) { return s && s.name; }).filter(Boolean) : [],
         report_id: savedReportId || ''
       })
@@ -2990,8 +3053,12 @@ function renderPart2(data) {
     html += '</div></details>';
   });
 
+  // Light free scan: the other fix prompts are part of Verilay Pro.
+  if (data.lite) html += proLockedHTML(data);
+
   // Wire fix buttons after render
   setTimeout(function() {
+    bindProEarlyAccess();
     (data.top_fixes||[]).forEach(function(f, fi) {
       var btn = document.getElementById('fix-btn-' + fi);
       var copied = document.getElementById('fix-copied-' + fi);

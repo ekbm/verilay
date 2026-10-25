@@ -77,7 +77,15 @@ def _bump(name, amount, now=None):
             _pending.clear()
 
 
-def record(input_tokens=None, output_tokens=None, kind="scan", now=None):
+# Prices (US$ per million tokens) for models whose price differs from the Railway setting. A call to one of these is
+# costed at its own price and stored as "<kind>_cost_micro" (millionths of a dollar) with the tokens it covers
+# ("<kind>_priced_input_tokens" / "_priced_output_tokens"); every other call is costed with AI_PRICE_* as before.
+MODEL_PRICES = {
+    "claude-haiku-5-5": (0.10, 0.50),     # prompts up to 100K tokens (Anthropic price list, Oct 2026)
+}
+
+
+def record(input_tokens=None, output_tokens=None, kind="scan", now=None, model=None):
     """One AI call. Token counts may be unknown (None); the call is still counted. Never raises."""
     try:
         if kind not in KINDS:
@@ -89,18 +97,23 @@ def record(input_tokens=None, output_tokens=None, kind="scan", now=None):
             _bump(f"{kind}_input_tokens", input_tokens, now)
         if isinstance(output_tokens, int):
             _bump(f"{kind}_output_tokens", output_tokens, now)
+        price = MODEL_PRICES.get(model or "")
+        if price and isinstance(input_tokens, int) and isinstance(output_tokens, int):
+            _bump(f"{kind}_cost_micro", int(round(input_tokens * price[0] + output_tokens * price[1])), now)
+            _bump(f"{kind}_priced_input_tokens", input_tokens, now)
+            _bump(f"{kind}_priced_output_tokens", output_tokens, now)
         _maybe_flush()
     except Exception:
         pass
 
 
-def record_from_stream(stream, kind="scan"):
+def record_from_stream(stream, kind="scan", model=None):
     """Read the token counts from a finished Anthropic streaming call. Counts only; never touches the text. Never raises."""
     try:
         usage = stream.get_final_message().usage
-        record(getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None), kind)
+        record(getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None), kind, model=model)
     except Exception:
-        record(None, None, kind)
+        record(None, None, kind, model=model)
 
 
 def scan_done(kind, now=None):
@@ -157,8 +170,13 @@ def _prices():
 
 
 def _cost(d, prices, kinds=KINDS):
-    return round(sum(d.get(f"{k}_input_tokens", 0) for k in kinds) * prices[0] / 1e6
-                 + sum(d.get(f"{k}_output_tokens", 0) for k in kinds) * prices[1] / 1e6, 4)
+    """Calls to a model in MODEL_PRICES are costed at their own price (cost_micro); the rest at the Railway prices."""
+    total = 0.0
+    for k in kinds:
+        tin = d.get(f"{k}_input_tokens", 0) - d.get(f"{k}_priced_input_tokens", 0)
+        tout = d.get(f"{k}_output_tokens", 0) - d.get(f"{k}_priced_output_tokens", 0)
+        total += max(0, tin) * prices[0] / 1e6 + max(0, tout) * prices[1] / 1e6 + d.get(f"{k}_cost_micro", 0) / 1e6
+    return round(total, 4)
 
 
 def summary(days=14, now=None):

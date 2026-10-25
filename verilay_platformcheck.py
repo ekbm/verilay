@@ -194,6 +194,33 @@ def check_anthropic():
     return _res(FAIL, f"unexpected status {c}")
 
 
+def check_free_model():
+    """The light free scan's model (VERILAY_FREE_MODEL), sent with the exact settings the scans use for it (thinking off,
+    low effort), so a refused setting or a missing model shows here before visitors' free scans fail."""
+    model = (os.getenv("VERILAY_FREE_MODEL", "") or "").strip()
+    key = _deps["anthropic_key"]()
+    if not key:
+        return _res(FAIL, "no ANTHROPIC_API_KEY", "Add ANTHROPIC_API_KEY on Railway.")
+    body = {"model": model, "max_tokens": 8, "messages": [{"role": "user", "content": "Reply with the single word: ok"}]}
+    if "haiku" in model:
+        body.update({"thinking": {"type": "disabled"}, "output_config": {"effort": "low"}})
+    try:
+        r = http.post("https://api.anthropic.com/v1/messages",
+                      headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"},
+                      json=body, timeout=25)
+    except Exception as e:
+        return _res(WARN, f"could not reach it: {type(e).__name__}", "Anthropic did not answer. Try again in a few minutes.")
+    c = r.status_code
+    if c == 200:
+        return _res(OK, f"model {model} answers (free scans)")
+    if c in (400, 404):
+        return _res(FAIL, f"model {model} was refused (status {c})",
+                    "Free scans will fail. Remove VERILAY_FREE_MODEL on Railway to go back to the main model, then check the model name.")
+    if c == 429 or c >= 500:
+        return _res(WARN, f"busy or rate limited (status {c})", "Probably temporary. Run this page again in a few minutes.")
+    return _res(FAIL, f"unexpected status {c}")
+
+
 def _github_headers():
     h = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "verilay-platform-check"}
     tok = _deps["github_token"]()
@@ -372,6 +399,8 @@ def _plan():
            ("Vulnerability list (OSV)", check_osv),
            ("Sign-in service (Supabase)", check_supabase_auth),
            ("Payments (Stripe)", check_stripe)]
+    if (os.getenv("VERILAY_FREE_MODEL", "") or "").strip() and os.getenv("VERILAY_FREE_MODEL", "").strip() != MODEL:
+        out.insert(4, ("AI model (free scans)", check_free_model))
     out += [(f"Table: {t}", (lambda t=t: check_table(t))) for t in TABLES]
     out.append(("What we are running on", check_versions))
     return out

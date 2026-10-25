@@ -258,6 +258,43 @@ _WHAT_YOU_GET = """
 """
 
 
+_TD = 'style="padding:8px 8px;font-size:13px;color:#4a4846;vertical-align:top"'
+_TDL = 'style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917;vertical-align:top"'
+_TH = 'style="text-align:left;padding:6px 8px;font-size:12px;color:#6b6966;font-weight:600"'
+
+
+def _row(label, free, pro, deep):
+    return (f'<tr style="border-bottom:0.5px solid #f0efec"><td {_TDL}>{label}</td><td {_TD}>{free}</td>'
+            f'<td {_TD}>{pro}</td><td {_TD}>{deep}</td></tr>')
+
+
+_WHAT_YOU_GET_3 = (
+    '<h2 id="compare">Free, Pro and Deep</h2><div style="overflow-x:auto">'
+    '<table style="width:100%;min-width:560px;border-collapse:collapse;margin-bottom:.75rem">'
+    f'<tr style="border-bottom:0.5px solid #e8e6e0"><th {_TH}></th><th {_TH}>Free</th>'
+    f'<th {_TH}>Pro &middot; A$4.99 a scan<br><span style="font-weight:400">planned, coming soon</span></th><th {_TH}>Deep scan</th></tr>'
+    + _row("Files read", "Up to 25, the ones most likely to matter", "About 50 (planned)", "Up to 150")
+    + _row("The six areas (login, settings, data, API, pages, packages)", "Short plain-English notes", "Full explanations",
+           "Full explanations, every file read")
+    + _row("Exposed keys, risky packages, who can see your data", "Checked", "Checked", "Checked, with each package and its fix")
+    + _row("Fix prompts for your AI builder", "One, for the most serious problem", "<strong>One for every finding</strong>",
+           "One for every finding, plus one prompt to update every package")
+    + _row("Similar apps", "The closest open-source match", "The closest open-source match",
+           "Up to 6 to learn from or partner with")
+    + _row("Checking a fix worked", "3 free scans a day", "Pay per scan, no daily limit", "Re-scans of the same app for 30 days")
+    + _row("Best for", "A quick health check", "Fixing what the free scan found", "Before launch, or a full review")
+    + '</table></div>'
+    '<p class="note">The free analysis stays free: every file is still checked for exposed keys, risky packages and who can '
+    'see your data, and you get a fix prompt for the most serious problem. Pro adds a ready-to-paste fix prompt for every '
+    'finding. Pro is not on sale yet: its details are our plan and may change before it opens.</p>'
+)
+
+
+def _compare_html():
+    """The comparison on the pricing page: Free | Pro | Deep once the light free scan is switched on, else the original."""
+    return _WHAT_YOU_GET_3 if "haiku" in (os.getenv("VERILAY_FREE_MODEL", "") or "") else _WHAT_YOU_GET
+
+
 _DEEP_STYLE = """
 <style>
 .dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.75rem;margin:.5rem 0 1rem}
@@ -451,7 +488,7 @@ def deep_scan_landing():
   <h1>The deep scan</h1>
   <p>A one-off, deeper review of your app for {_esc(price)} plus applicable tax
   — not on sale yet. It is being built, and it will not go on sale before it works.</p>
-  {_WHAT_YOU_GET}
+  {_compare_html()}
   <div class="card">
     <h2 style="margin-top:0">Want to know when it opens?</h2>
     <p class="note">Leave your email on the homepage after running a free analysis
@@ -498,7 +535,7 @@ def deep_scan_landing():
   One payment, no subscription, and re-scans of the same app for 30 days are included.</p>
   <div class="heroactions"><a class="btn" href="#start">Start my deep scan</a> {sample}</div>
   {_DEEP_BENEFITS}
-  {_WHAT_YOU_GET}
+  {_compare_html()}
   {_DEEP_HOW}
   {_DEEP_FIT}
   <div class="promise"><p><strong>Honest by design.</strong> We build apps with AI tools too, and we run
@@ -1067,6 +1104,31 @@ def monitoring_offer_submit():
            "notes": f"Early access from the A-grade pop-up: {p['name']} {p['price']}/month ({method} scan)"}
     if _store_monitoring_interest(row) in ("new", "fallback"):
         _notify_async(row)
+    return jsonify({"ok": True})
+
+
+@bp.route("/pro/early-access", methods=["POST"])
+def pro_early_access_submit():
+    """Early-access list for Verilay Pro (A$4.99 a scan, not on sale yet). The email joins the waitlist with source
+    "pro-scan" and Moses gets an email. 5 per connection per hour; bot trap."""
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):
+        return jsonify({"ok": True})
+    email = str(body.get("email") or "").strip().lower()
+    if len(email) > 254 or not _MON_EMAIL.match(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    if not _mon_rate_ok("pro:" + _mon_ip()):
+        return jsonify({"error": "Too many sign-ups from this connection. Please try again later."}), 429
+    sb = _sb()
+    if sb is not None:
+        try:
+            sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "pro-scan"}).execute()
+        except Exception as e:
+            print(f"[pro] waitlist insert skipped (a duplicate is fine): {e}", flush=True)
+    if _mon_notify_ok():
+        threading.Thread(target=notify.send_monitoring_interest_alert,
+                         args=(email, "", {"Interested in": "Verilay Pro scan, A$4.99 (early access)"},
+                               "From the locked fix prompts after a light free scan."), daemon=True).start()
     return jsonify({"ok": True})
 
 

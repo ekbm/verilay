@@ -1172,6 +1172,66 @@ def fetch_url(live_url):
 
     return files, [], name
 
+# ── Which model each AI call uses (25 Oct 2026) ───────────────────────────────────
+# Deep scans and the monitor of our own apps stay on MAIN_MODEL. Free scans use VERILAY_FREE_MODEL (a Railway setting);
+# unset, they use MAIN_MODEL too, so nothing changes until the switch is flipped. The admin can try the light free scan
+# on one scan with ?lite=1 on the home page (LITE_MODEL, honoured only for a signed-in admin). With a Haiku model the
+# free review is also slimmed (less code per call, shorter answers): see lite_mode().
+MAIN_MODEL = "claude-sonnet-4-5"
+LITE_MODEL = "claude-haiku-5-5"
+_MODEL_LOCAL = threading.local()
+
+
+def free_model():
+    return (os.getenv("VERILAY_FREE_MODEL", "") or "").strip() or MAIN_MODEL
+
+
+def model_for_call():
+    """The model for an AI call made by this thread: a per-scan choice if one is set, else MAIN_MODEL for deep scans and
+    the monitor, else the free-scan model."""
+    m = getattr(_MODEL_LOCAL, "model", None)
+    if m:
+        return m
+    if usage.current_source() in usage.SCAN_SOURCES:
+        return MAIN_MODEL
+    return free_model()
+
+
+def with_model(model, fn):
+    """fn wrapped so that, in whatever thread runs it, AI calls use `model` (thread pools do not carry this over)."""
+    def run(*a, **k):
+        prev = getattr(_MODEL_LOCAL, "model", None)
+        _MODEL_LOCAL.model = model
+        try:
+            return fn(*a, **k)
+        finally:
+            _MODEL_LOCAL.model = prev
+    return run
+
+
+def lite_mode():
+    """True when this thread's calls go to a Haiku model: the free review is then slimmed."""
+    return "haiku" in model_for_call()
+
+
+def model_params(model):
+    """Request settings that differ by model. Sonnet 4.5 keeps temperature 0 as before. Newer models reject sampling
+    settings; Haiku 5.5 runs with thinking off at low effort (cheapest, and enough for a short structured answer)."""
+    if model.startswith("claude-sonnet-4-5"):
+        return {"temperature": 0}
+    if "haiku" in model:
+        return {"thinking": {"type": "disabled"}, "extra_body": {"output_config": {"effort": "low"}}}
+    return {}
+
+
+def _raw_params(model):
+    """The same settings for the raw-HTTP fallback body."""
+    p = dict(model_params(model))
+    body = p.pop("extra_body", {})
+    p.update(body)
+    return p
+
+
 # ── Claude API ─────────────────────────────────────────────────────────────────
 def call_claude(prompt, max_tokens=2500):
     """Call Claude. Uses official SDK with auto-retry if available, raw requests otherwise."""
@@ -1184,15 +1244,16 @@ def call_claude(prompt, max_tokens=2500):
         raw = ""
         # Ensure prompt is a plain string
         prompt_str = str(prompt) if not isinstance(prompt, str) else prompt
+        _model = model_for_call()
         with client.messages.stream(
-            model="claude-sonnet-4-5",
+            model=_model,
             max_tokens=max_tokens,
-            temperature=0,
-            messages=[{"role": "user", "content": prompt_str}]
+            messages=[{"role": "user", "content": prompt_str}],
+            **model_params(_model)
         ) as stream:
             for text in stream.text_stream:
                 raw += text
-            usage.record_from_stream(stream, "scan")   # token counts only (verilay_usage.py)
+            usage.record_from_stream(stream, "scan", model=_model)   # token counts only (verilay_usage.py)
 
     # ── Fallback: raw requests streaming ──────────────────────────────
     else:
@@ -1203,13 +1264,12 @@ def call_claude(prompt, max_tokens=2500):
                 "x-api-key": ANTHROPIC_API_KEY,
                 "anthropic-version": "2023-06-01",
             },
-            json={
-                "model": "claude-sonnet-4-5",
+            json=dict({
+                "model": model_for_call(),
                 "max_tokens": max_tokens,
-                "temperature": 0,
                 "stream": True,
                 "messages": [{"role": "user", "content": prompt}]
-            },
+            }, **_raw_params(model_for_call())),
             stream=True,
             timeout=90
         )
@@ -1487,16 +1547,17 @@ def ask_claude_call(system, prompt, max_tokens=1500):
     if _HAS_SDK:
         client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
         raw = ""
+        _model = model_for_call()
         with client.messages.stream(
-            model="claude-sonnet-4-5",
+            model=_model,
             max_tokens=max_tokens,
-            temperature=0,
             system=system,
-            messages=[{"role": "user", "content": prompt_str}]
+            messages=[{"role": "user", "content": prompt_str}],
+            **model_params(_model)
         ) as stream:
             for text in stream.text_stream:
                 raw += text
-            usage.record_from_stream(stream, "ask")    # token counts only (verilay_usage.py)
+            usage.record_from_stream(stream, "ask", model=_model)    # token counts only (verilay_usage.py)
         return raw.strip()
     # raw requests fallback
     resp = requests.post(
@@ -1506,13 +1567,12 @@ def ask_claude_call(system, prompt, max_tokens=1500):
             "x-api-key": ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
         },
-        json={
-            "model": "claude-sonnet-4-5",
+        json=dict({
+            "model": model_for_call(),
             "max_tokens": max_tokens,
-            "temperature": 0,
             "system": system,
             "messages": [{"role": "user", "content": prompt_str}]
-        },
+        }, **_raw_params(model_for_call())),
         timeout=90
     )
     if not resp.ok:
@@ -1779,15 +1839,16 @@ def call_claude_text(prompt, max_tokens=800):
     if _HAS_SDK:
         client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
         raw = ""
+        _model = model_for_call()
         with client.messages.stream(
-            model="claude-sonnet-4-5",
+            model=_model,
             max_tokens=max_tokens,
-            temperature=0,
-            messages=[{"role": "user", "content": str(prompt)}]
+            messages=[{"role": "user", "content": str(prompt)}],
+            **model_params(_model)
         ) as stream:
             for text in stream.text_stream:
                 raw += text
-            usage.record_from_stream(stream, "scan")   # token counts only (verilay_usage.py)
+            usage.record_from_stream(stream, "scan", model=_model)   # token counts only (verilay_usage.py)
             # Silent truncation used to be invisible: the function just
             # returned whatever text streamed before hitting max_tokens,
             # with no error and no flag, so a cut-off response looked
@@ -1807,8 +1868,8 @@ def call_claude_text(prompt, max_tokens=800):
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},
-            json={"model":"claude-sonnet-4-5","max_tokens":max_tokens,"temperature":0,"stream":True,
-                  "messages":[{"role":"user","content":str(prompt)}]},
+            json=dict({"model":model_for_call(),"max_tokens":max_tokens,"stream":True,
+                  "messages":[{"role":"user","content":str(prompt)}]}, **_raw_params(model_for_call())),
             stream=True, timeout=90
         )
         if not resp.ok:
@@ -2453,6 +2514,13 @@ def analyse_step1(files, tree, repo_name, method):
     }
 
 
+_LITE_NOTE = ("\n\nKEEP IT SHORT (this is Verilay's light free scan): at most 2 findings per area, only real problems; every "
+              "plain-English field (WHAT, ANALOGY, DOES, CONNECTS, CONCEPT, PLAIN, IMPACT, A, QWHY) is ONE short sentence. "
+              "Same keys, same format.\n")
+LITE_CODE_CHARS = 100_000      # code sent per layer call in the light free scan (the full scan sends up to 250,000)
+LITE_MAX_TOKENS = 6000
+
+
 def analyse_step2(files, repo_name, scan_block=""):
     if layer_files.enabled():
         # Chosen by what is inside each file as well as its name (verilay_layer_files.py).
@@ -2462,7 +2530,7 @@ def analyse_step2(files, repo_name, scan_block=""):
         sec_keys = [k for k in files if any(w in k.lower() for w in
             ["auth","login",".env","config","supabase","database","db","schema","prisma","password","token"])][:6]
     ftext = files_for(files, sec_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:250000]
+    ftext = ftext[:LITE_CODE_CHARS if lite_mode() else 250000]
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this app with an AI tool.\n\n"
@@ -2591,7 +2659,10 @@ def analyse_step2(files, repo_name, scan_block=""):
     # above the highest observed usage rather than incrementally re-guessed
     # again. The truncation log (this function, both branches) stays in
     # place as an ongoing safety net if a future analysis exceeds even this.
-    return layers_with_retry(lambda: call_claude_text(prompt, max_tokens=20000), _STEP2_LAYERS, "step2")
+    if lite_mode():
+        prompt = prompt + _LITE_NOTE
+    return layers_with_retry(lambda: call_claude_text(prompt, max_tokens=LITE_MAX_TOKENS if lite_mode() else 20000),
+                             _STEP2_LAYERS, "step2")
 
 
 def analyse_step3(files, repo_name, osv_block=""):
@@ -2604,7 +2675,7 @@ def analyse_step3(files, repo_name, osv_block=""):
         if "package.json" in files and "package.json" not in api_keys:
             api_keys.insert(0, "package.json")
     ftext = files_for(files, api_keys) or files_for(files, list(files.keys())[:3])
-    ftext = ftext[:250000]
+    ftext = ftext[:LITE_CODE_CHARS if lite_mode() else 250000]
 
     prompt = (
         "You are Verilay analysing " + repo_name + " for a non-developer who built this with an AI tool.\n\n"
@@ -2722,7 +2793,10 @@ def analyse_step3(files, repo_name, osv_block=""):
     # above the highest observed usage rather than incrementally re-guessed
     # again. The truncation log (this function, both branches) stays in
     # place as an ongoing safety net if a future analysis exceeds even this.
-    return layers_with_retry(lambda: call_claude_text(prompt, max_tokens=20000), _STEP3_LAYERS, "step3")
+    if lite_mode():
+        prompt = prompt + _LITE_NOTE
+    return layers_with_retry(lambda: call_claude_text(prompt, max_tokens=LITE_MAX_TOKENS if lite_mode() else 20000),
+                             _STEP3_LAYERS, "step3")
 
 
 def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
@@ -2928,7 +3002,10 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "OPINION_PROD: complete prompt asking if " + repo_name + " is ready for production\n"
     )
 
-    text = call_claude_text(prompt, max_tokens=2000)
+    if lite_mode():
+        prompt += ("\n\nLIGHT FREE SCAN: fill in ONLY FIX_1, for the single most serious finding (a critical one if there is "
+                   "any). Leave FIX_2 to FIX_8 and the three OPINION_ keys empty.\n")
+    text = call_claude_text(prompt, max_tokens=900 if lite_mode() else 2000)
     lines = {}
     for line in text.strip().split("\n"):
         if ":" in line:
@@ -3168,11 +3245,15 @@ def analyse_stream():
 
     private_scan = None     # set below, once a scan slot is held (verilay_private.begin_scan)
     _is_admin = _request_is_admin()   # read now: generate() runs after the request has been handed over
+    # One model for this whole scan (see model_for_call). ?lite=1 on the home page lets the admin try the light scan.
+    _scan_model = LITE_MODEL if (_is_admin and request.form.get("lite") == "1") else model_for_call()
 
     def generate():
         _cx = {}
         _s1_event = None
         _pv_text = None
+        _prev_model = getattr(_MODEL_LOCAL, "model", None)
+        _MODEL_LOCAL.model = _scan_model
         try:
             # ── Fetch files ────────────────────────────────────────────
             yield json.dumps({"event":"status","data":"Reading your project files..."}) + "\n"
@@ -3316,6 +3397,8 @@ def analyse_stream():
 
             # ── Step 1: Stack + overview ────────────────────────────────
             s1 = analyse_step1(files, tree, repo_name, method)
+            if lite_mode():
+                s1["scan_tier"] = "lite"     # the light free scan: one fix prompt, the rest with Pro (see run_step4)
             s1["files_read"] = len(files)
             if private_scan is not None:
                 s1["private"] = True      # kept private: never cached, never listed, shown only to this browser
@@ -3391,7 +3474,7 @@ def analyse_stream():
                     except Exception as _de:
                         print(f"[discovery] free search skipped: {_de}", flush=True)
                     disc["done"] = True
-                disc_thread = threading.Thread(target=_run_disc, daemon=True)
+                disc_thread = threading.Thread(target=with_model(_scan_model, _run_disc), daemon=True)
                 disc_thread.start()
 
             yield json.dumps({"event":"status","data":"Analysing layers in parallel..."}) + "\n"
@@ -3412,8 +3495,8 @@ def analyse_stream():
             # still generating, instead of a blank wait either way.
             import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                f2 = executor.submit(analyse_step2, files, repo_name, scan_block + crypto_block + authz_block)
-                f3 = executor.submit(analyse_step3, files, repo_name, osv_teaser_block)
+                f2 = executor.submit(with_model(_scan_model, analyse_step2), files, repo_name, scan_block + crypto_block + authz_block)
+                f3 = executor.submit(with_model(_scan_model, analyse_step3), files, repo_name, osv_teaser_block)
                 # Send keepalive every 15s while waiting — prevents Railway's
                 # own connection timeout from firing. Loops until BOTH futures
                 # are handled (not a fixed cutoff then a blocking wait) -- a
@@ -3570,6 +3653,8 @@ def analyse_stream():
 
         except Exception as e:
             yield json.dumps({"event":"error","data":str(e)}) + "\n"
+        finally:
+            _MODEL_LOCAL.model = _prev_model
 
     # Too many scans running at once on this server? Say so kindly instead of slowing everyone down, and give the
     # visitor back the hourly-allowance hit this request used. The slot is returned when the stream ends for any
@@ -3616,10 +3701,16 @@ def run_step4():
         # bare layer statuses. A real multi-finding report needs more room.
         if len(findings) > 3000:
             findings = findings[:3000] + '...'
-        result = analyse_step4(repo_name, built_with, findings)
+        _m4 = LITE_MODEL if (data.get("lite") == "1" and _request_is_admin()) else model_for_call()
+        result = with_model(_m4, analyse_step4)(repo_name, built_with, findings)
         # Say which part of the app (and which detected technology) each fix is about. A separate small step,
         # checked against closed lists; on any failure the fixes are left exactly as written (verilay_fixtags.py).
-        fixtags.tag_fixes(result.get("top_fixes"), data.get("stack"), call_claude_text, findings)
+        with_model(_m4, fixtags.tag_fixes)(result.get("top_fixes"), data.get("stack"), call_claude_text, findings)
+        if "haiku" in _m4:
+            # Light free scan: one fix prompt (the most serious finding); every other prompt is part of Verilay Pro.
+            result["top_fixes"] = (result.get("top_fixes") or [])[:1]
+            result["second_opinion"] = {}
+            result["lite"] = True
         if report_id and not _can_write_report(report_id):
             # The fix list is still returned to the person who asked for it, but it is only
             # stored on a report this browser (or signed-in account) created.
@@ -6613,6 +6704,12 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             _fix_data["dependency_fixes"] = deepreport.build_dependency_fixes(_vd)
             _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(raw_data.get("top_fixes"), _vd)
     out.append(deepreport.render_fixes_html(_fix_data))
+    if raw_data.get("scan_tier") == "lite":
+        out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
+                   'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
+                   'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro (A$4.99, coming '
+                   'soon) will give a ready-to-paste fix prompt for every finding. <a href="/deep-scan#compare" style="color:#3C3489;'
+                   'font-weight:600">Compare Free, Pro and Deep</a></div></div>')
     _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
     if _nc:
         out.append('<div class="card" style="background:#F1EFE8;border-color:#D3D1C7"><div style="font-size:13px;'
