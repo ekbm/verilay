@@ -6074,6 +6074,32 @@ def compare_report_route():
     return jsonify(dict(result, headline=comparemod.headline(result), signed_in=bool(_current_uid())))
 
 
+@app.route("/my-scans")
+def my_scans_route():
+    """The signed-in person's own saved scans, for the "compare with an earlier scan" picker: id, name, grade, date
+    and method only, newest first. Private, deleted and live-address reports are left out (they cannot be compared).
+    Anonymous visitors get {"signed_in": false, "scans": []}."""
+    uid = _current_uid()
+    if not uid:
+        return jsonify({"signed_in": False, "scans": []})
+    scans = []
+    if _HAS_SUPABASE:
+        try:
+            res = (_sb.table("reports")
+                   .select("id,repo,score,created_at,input_method,private:data->>private,deleted:data->>deleted")
+                   .eq("user_id", uid).order("created_at", desc=True).limit(40).execute())
+            for r in res.data or []:
+                if str(r.get("private")).lower() == "true" or str(r.get("deleted")).lower() == "true":
+                    continue
+                if (r.get("input_method") or "") in ("url", "github_private"):
+                    continue
+                scans.append({"id": r.get("id"), "repo": str(r.get("repo") or "")[:120], "score": r.get("score") or "",
+                              "created_at": str(r.get("created_at") or "")[:32], "method": r.get("input_method") or ""})
+        except Exception as e:
+            print(f"/my-scans unavailable: {e}", flush=True)
+    return jsonify({"signed_in": True, "scans": scans[:30]})
+
+
 @app.route("/claim-reports", methods=["POST"])
 def claim_reports_route():
     """A signed-in person links the scans their browser made to their account, so they show on the account page

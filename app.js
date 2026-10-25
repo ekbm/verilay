@@ -314,11 +314,33 @@ function _compareWhen(ts) {
   if (isNaN(d)) return '';
   return d.toLocaleDateString('en-AU', {day:'numeric', month:'short'}) + ' ' + d.toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'});
 }
-function showCompareOffer() {
-  var cands = window._compareCandidates || [];
+// Signed in: the account's own saved scans (any device) join the browser's list; the server checks ownership.
+function mergeAccountScans(cands, scans, report, newId) {
+  var name = _compareName((report || {}).repo);
+  var have = {};
+  cands.forEach(function(h) { have[h.id] = true; h._src = 'this browser'; });
+  (scans || []).forEach(function(s) {
+    if (!s || !s.id || s.id === newId || have[s.id] || s.method === 'url') return;
+    have[s.id] = true;
+    cands.push({id: s.id, repo: s.repo || 'Unknown', score: s.score || '?', timestamp: s.created_at, method: s.method,
+                _src: 'your account', _same: !!name && _compareName(s.repo) === name});
+  });
+  cands.sort(function(a, b) { return (b._same - a._same) || (new Date(b.timestamp) - new Date(a.timestamp)); });
+  return cands.slice(0, 12);
+}
+async function showCompareOffer() {
+  var cands = (window._compareCandidates || []).slice();
   var anchor = document.getElementById('verdict-banner');
-  if (!cands.length || !savedReportId || !anchor || !anchor.parentNode) return;
+  if (!savedReportId || !anchor || !anchor.parentNode) return;
   if ((window._incompleteLayers || []).length || (currentReport && currentReport.preview_only)) return;
+  var signedIn = false;
+  try {
+    var mine = await fetch('/my-scans').then(function(r) { return r.json(); });
+    signedIn = !!mine.signed_in;
+    if (signedIn) cands = mergeAccountScans(cands, mine.scans, currentReport, savedReportId);
+  } catch (e) {}
+  window._compareCandidates = cands;
+  if (!cands.length) return;
   var old = document.getElementById('compare-card');
   if (old) old.remove();
   var best = cands[0];
@@ -326,12 +348,16 @@ function showCompareOffer() {
   card.id = 'compare-card';
   card.style.cssText = 'background:var(--sur);border:0.5px solid var(--pu);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px';
   var opts = cands.map(function(h, i) {
-    return '<option value="' + i + '">' + esc(h.repo) + ' · ' + esc(_compareWhen(h.timestamp)) + ' · grade ' + esc(h.score) + '</option>';
+    return '<option value="' + i + '">' + esc(h.repo) + ' · ' + esc(_compareWhen(h.timestamp)) + ' · grade ' + esc(h.score) +
+      (signedIn ? ' · ' + esc(h._src || 'this browser') : '') + '</option>';
   }).join('');
+  var hint = signedIn
+    ? 'Pick the earlier scan of this same app, from this browser or your account.'
+    : 'Only scans made in this browser are listed. <a href="/login" style="color:var(--pu);font-weight:600">Sign in</a> to compare scans from any device.';
   card.innerHTML =
     '<div style="font-size:14px;font-weight:600;color:var(--put)"><i class="ti ti-arrows-diff" style="margin-right:6px"></i>' +
       (best._same ? 'You scanned ' + esc(best.repo) + ' before. See what changed?' : 'Compare with an earlier scan?') + '</div>' +
-    '<div style="font-size:12px;color:var(--mut);margin-top:2px">Pick the earlier scan of this same app. Only scans made in this browser are listed.</div>' +
+    '<div style="font-size:12px;color:var(--mut);margin-top:2px">' + hint + '</div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.6rem">' +
       '<select id="compare-pick" style="flex:1;min-width:0;border:0.5px solid var(--bdr);border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit;background:white;color:var(--txt)">' + opts + '</select>' +
       '<button type="button" id="compare-go" class="btn-sm">Compare</button>' +
