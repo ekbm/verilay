@@ -413,6 +413,20 @@ def _scan_time_label(report_id, data):
     return str(g or "")
 
 
+def visitor_country():
+    """The visitor's country as a 2-letter code (e.g. "AU"), from the header Cloudflare adds in front of verilay.dev, or
+    "". Only the country: no IP address, no city. Outside a request (the deep-scan thread) there is none. (26 Oct 2026,
+    Moses: see where users come from on /admin/scans.)"""
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return ""
+        c = (request.headers.get("CF-IPCountry") or "").strip().upper()
+        return c if _re.fullmatch(r"[A-Z]{2}", c) and c != "XX" else ""
+    except Exception:
+        return ""
+
+
 def _save_report_row(data, user_id=None):
     """`user_id`: explicit override for callers with no Flask session of
     their own — the deep-scan engine calls this from a background thread,
@@ -420,6 +434,11 @@ def _save_report_row(data, user_id=None):
     read would silently find nobody. Free-analysis callers pass nothing
     and keep working exactly as before."""
     report_id = _uuid.uuid4().hex[:12]
+    _cc = visitor_country()                # the country only, kept for the admin's "Latest scans"; never shown on reports.
+    if _cc:                                # From the request, never from the browser's copy of the report.
+        data["country"] = _cc
+    elif not isinstance(data.get("country"), str) or not _re.fullmatch(r"[A-Z]{2}", data.get("country") or ""):
+        data.pop("country", None)
     if _HAS_SUPABASE:
         try:
             # Check for previous analysis of same repo
@@ -4056,7 +4075,7 @@ def report_data(report_id):
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
-                                                       "improvement_story", "pro_survey", "compare_feedback")}
+                                                       "improvement_story", "pro_survey", "compare_feedback", "country")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -5664,6 +5683,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you answer the feedback question after a scan that improved — whether the fix prompts helped, anything you choose to write (your opinion and, only if you want, how you fixed it), any email you add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
+    <li>For each scan, the country it came from (a 2-letter code worked out by our network provider, Cloudflare). We don&rsquo;t keep your IP address or city, and the country is never shown on a report</li>
     <li>If you scan a private repository — your email address (you sign in with it) and the report, which is kept private to your account and removed after the private-report period; never your code</li>
     <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
     <li>If you contact an app&rsquo;s builder through the directory — your email and message, which we email to the builder and keep</li>
@@ -6983,11 +7003,11 @@ def _scan_rows(limit=60):
                  "files": (v.get("data") or {}).get("files_read"), "notchecked": (v.get("data") or {}).get("layers_not_checked"),
                  "built": (v.get("data") or {}).get("built_with"), "user_id": None, "compared": (v.get("data") or {}).get("comparison"),
                  "survey": (v.get("data") or {}).get("pro_survey"), "deleted": str(bool((v.get("data") or {}).get("deleted"))).lower(),
-                 "incomplete": (v.get("data") or {}).get("analysis_incomplete")}
+                 "incomplete": (v.get("data") or {}).get("analysis_incomplete"), "country": (v.get("data") or {}).get("country")}
                 for k, v in list(_reports.items())[-limit:]][::-1]
     cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
             "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
-            "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete")
+            "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country")
     try:
         return _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
     except Exception as e:
@@ -6997,6 +7017,14 @@ def _scan_rows(limit=60):
     except Exception as e:
         print(f"/admin/scans: {e}", flush=True)
         return []
+
+
+def _flag(code):
+    """'AU' -> the Australian flag emoji plus the code; '' -> a dash."""
+    c = str(code or "").upper()
+    if not _re.fullmatch(r"[A-Z]{2}", c):
+        return "&ndash;"
+    return "".join(chr(0x1F1E6 + ord(ch) - 65) for ch in c) + " " + c
 
 
 @app.route("/admin/scans")
@@ -7018,9 +7046,18 @@ def admin_scans():
     for r in todays:
         h = _SCAN_HOW.get(r.get("input_method") or "", r.get("input_method") or "?")
         how_counts[h] = how_counts.get(h, 0) + 1
+    by_country = {}
+    for r in rows:
+        if r.get("country"):
+            by_country[r["country"]] = by_country.get(r["country"], 0) + 1
+    top = sorted(by_country.items(), key=lambda kv: -kv[1])[:8]
+    countries = ('<br><b>Where from</b> (these scans): ' + " &middot; ".join(f"{_flag(k)}: {n}" for k, n in top)
+                 + (f' &middot; <span class="note">{sum(1 for r in rows if not r.get("country"))} without a country (older scans, or deep scans)</span>'
+                    if any(not r.get("country") for r in rows) else "")) if top else ""
     summary = (f'<div class="card"><b>Today (UTC):</b> {len(todays)} scan{"" if len(todays) == 1 else "s"}'
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(counts.items())) if counts else "")
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(how_counts.items())) if how_counts else "")
+               + countries
                + f'<br><span class="note">Showing the newest {len(rows)} reports. Times are UTC (add 11 hours for Sydney in summer).</span></div>')
     lines = ""
     for r in rows:
@@ -7047,7 +7084,7 @@ def admin_scans():
             extras.append("Pro survey")
         lines += (f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td>'
                   f'<td><a href="/report/{esc(str(r.get("id") or ""))}" target="_blank" rel="noopener">{esc(str(r.get("repo") or "Untitled")[:60])}</a>'
-                  f'{" &#128274;" if priv else ""}</td><td>{how}</td>'
+                  f'{" &#128274;" if priv else ""}</td><td>{_flag(r.get("country"))}</td><td>{how}</td>'
                   f'<td><span class="pill" style="background:{bg};color:{fg}">{k}</span></td><td><b>{grade}</b></td><td>{areas}</td>'
                   f'<td>{esc(str(r.get("files") or "–"))}</td><td>{built}</td><td class="note">{", ".join(extras)}</td></tr>')
     body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" '
@@ -7058,7 +7095,7 @@ def admin_scans():
             f'text-align:left;vertical-align:top}}th{{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b6966}}'
             f'.pill{{font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px}}a{{color:#534AB7}}</style></head><body>'
             f'<div class="w"><a href="/admin">&larr; Admin</a><h1>Latest scans</h1>{summary}<div style="overflow-x:auto"><table>'
-            f'<tr><th>When (UTC)</th><th>App</th><th>How</th><th>Kind</th><th>Grade</th><th>Areas checked</th><th>Files</th>'
+            f'<tr><th>When (UTC)</th><th>App</th><th>Country</th><th>How</th><th>Kind</th><th>Grade</th><th>Areas checked</th><th>Files</th>'
             f'<th>Built with</th><th>Notes</th></tr>{lines}</table></div>'
             f'<p class="note">&#128274; = private repository (only you, as admin, and its owner can open it).</p></div></body></html>')
     resp = Response(body, mimetype="text/html")
