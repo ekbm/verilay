@@ -43,6 +43,7 @@ verilay_deepscan.py, and deliberately reuses its exact free-analysis
 functions rather than duplicating them.
 """
 import html as _html
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -641,6 +642,9 @@ def health_data():
     return {
         "configured": True,
         "check_interval_hours": CHECK_INTERVAL_HOURS,
+        # Which GitHub key the monitor reads with (never the key itself): its own (VERILAY_MONITOR_GITHUB_TOKEN, can
+        # read the private repositories) or the shared public-only one.
+        "github_key": "own monitoring key" if (os.getenv("VERILAY_MONITOR_GITHUB_TOKEN", "") or "").strip() else "shared public-only key",
         "apps": [
             {
                 "app_name": r.get("app_name"),

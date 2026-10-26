@@ -9853,11 +9853,19 @@ if _HAS_PAYWALL:
 # Unconditional (not gated on _HAS_PAYWALL) — this doesn't touch billing at
 # all, just Supabase + the same free-analysis functions above. Should keep
 # working even if the paid path is misconfigured.
+def monitor_github_token():
+    """The GitHub key the monitor of our own apps uses. Some of those apps are in PRIVATE repositories, while
+    GITHUB_TOKEN (used for visitors' free scans) is deliberately public-only since the 24 Oct 2026 key rotation. So
+    the monitor has its own read-only key for just those repositories (Railway: VERILAY_MONITOR_GITHUB_TOKEN), kept
+    away from the public scan path. Unset, it falls back to GITHUB_TOKEN as before."""
+    return (os.getenv("VERILAY_MONITOR_GITHUB_TOKEN", "") or "").strip() or GITHUB_TOKEN
+
+
 self_monitor.configure(
     fetch_all_files_tarball=fetch_all_files_tarball,
     smart_file_selection=smart_file_selection,
     max_file_chars=MAX_FILE_CHARS,
-    github_token=lambda: GITHUB_TOKEN,
+    github_token=monitor_github_token,
     analyse_step2=analyse_step2,
     analyse_step3=analyse_step3,
     scan_repo=scan_repo,
