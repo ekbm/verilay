@@ -1523,6 +1523,7 @@ _ADMIN_TOOLS = [
         ("Private-repo beta status", "/github/status", "Is the private-repo beta open, in admin-only mode, or off?"),
     ]),
     ("Cost and use", [
+        ("Latest scans", "/admin/scans", "The newest scans in plain words: which app, GitHub/ZIP/live address/private, Free/Pro/Deep, grade, areas checked, signed in or not, with a link to each report."),
         ("AI costs", "/admin/costs", "What the AI is costing, split into free scans, monitoring our own apps, deep scans and questions, with the cost of one scan of each."),
         ("Pro launch survey", "/admin/pro-survey", "The answers people gave to unlock their free Pro scan, with totals, and how many free Pro scans are left."),
         ("Raw AI numbers", "/usage-summary", "The same counts as plain data, per day (technical)."),

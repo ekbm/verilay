@@ -6967,6 +6967,105 @@ def admin_pro_survey():
     return resp
 
 
+# ── Latest scans, for the admin (26 Oct 2026) ─────────────────────────────────────────────────────────────────────
+# Moses: "so that I don't need to go to Supabase all the time". The newest reports in plain words: when, which app, how
+# it was shared, Free/Pro/Deep, grade, areas not checked, files read, what it was built with, signed in or not, and
+# whether it was compared or answered a survey, each linking to its report (the admin may open private ones). Read-only;
+# only small fields are fetched (no findings, no code). Deleted reports are left out.
+_SCAN_HOW = {"github": "GitHub", "zip": "ZIP", "url": "Live URL", "github_private": "Private repo"}
+
+
+def _scan_rows(limit=60):
+    if not _HAS_SUPABASE:
+        return [{"id": k, "created_at": "", "repo": (v.get("data") or {}).get("repo"), "score": ((v.get("data") or {}).get("health") or {}).get("score"),
+                 "input_method": (v.get("data") or {}).get("input_method"), "tier": (v.get("data") or {}).get("scan_tier"),
+                 "deep": str(bool((v.get("data") or {}).get("is_deep_scan"))).lower(), "private": str(bool((v.get("data") or {}).get("private"))).lower(),
+                 "files": (v.get("data") or {}).get("files_read"), "notchecked": (v.get("data") or {}).get("layers_not_checked"),
+                 "built": (v.get("data") or {}).get("built_with"), "user_id": None, "compared": (v.get("data") or {}).get("comparison"),
+                 "survey": (v.get("data") or {}).get("pro_survey"), "deleted": str(bool((v.get("data") or {}).get("deleted"))).lower(),
+                 "incomplete": (v.get("data") or {}).get("analysis_incomplete")}
+                for k, v in list(_reports.items())[-limit:]][::-1]
+    cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
+            "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
+            "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete")
+    try:
+        return _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
+    except Exception as e:
+        print(f"/admin/scans: full list unavailable, showing the basic one: {e}", flush=True)
+    try:       # if a detail field is ever refused, the basic list still shows
+        return _sb.table("reports").select("id,created_at,repo,score,input_method,user_id").order("created_at", desc=True).limit(limit).execute().data or []
+    except Exception as e:
+        print(f"/admin/scans: {e}", flush=True)
+        return []
+
+
+@app.route("/admin/scans")
+def admin_scans():
+    """The latest scans in plain words (admin only)."""
+    if not _request_is_admin():
+        return "Not found", 404
+    esc = _htmlmod.escape
+    rows = [r for r in _scan_rows() if str(r.get("deleted")).lower() != "true"]
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    def kind(r):
+        return "Deep" if str(r.get("deep")).lower() == "true" else ("Pro" if r.get("tier") == "pro" else "Free")
+    colour = {"Free": ("#F1EFE8", "#444441"), "Pro": ("#EEEDFE", "#3C3489"), "Deep": ("#E1F5EE", "#085041")}
+    todays = [r for r in rows if str(r.get("created_at") or "").startswith(today)]
+    counts = {}
+    for r in todays:
+        counts[kind(r)] = counts.get(kind(r), 0) + 1
+    how_counts = {}
+    for r in todays:
+        h = _SCAN_HOW.get(r.get("input_method") or "", r.get("input_method") or "?")
+        how_counts[h] = how_counts.get(h, 0) + 1
+    summary = (f'<div class="card"><b>Today (UTC):</b> {len(todays)} scan{"" if len(todays) == 1 else "s"}'
+               + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(counts.items())) if counts else "")
+               + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(how_counts.items())) if how_counts else "")
+               + f'<br><span class="note">Showing the newest {len(rows)} reports. Times are UTC (add 11 hours for Sydney in summer).</span></div>')
+    lines = ""
+    for r in rows:
+        k = kind(r)
+        bg, fg = colour[k]
+        how = _SCAN_HOW.get(r.get("input_method") or "", esc(str(r.get("input_method") or "?")))
+        priv = str(r.get("private")).lower() == "true"
+        nc = r.get("notchecked") if isinstance(r.get("notchecked"), list) else []
+        inc = r.get("incomplete") if isinstance(r.get("incomplete"), list) else []
+        if r.get("input_method") == "url":
+            grade = '<span class="note">not graded</span>'
+        elif inc:
+            grade = '<span class="note">did not finish</span>'
+        else:
+            grade = esc(str(r.get("score") or "–"))
+        areas = (f'{6 - len(nc)} of 6' if not inc and r.get("input_method") != "url" else "–")
+        built = esc(str(r.get("built") or "").split(" — ")[0].split(" - ")[0].split(".")[0][:28])
+        extras = []
+        if r.get("user_id"):
+            extras.append("signed in")
+        if r.get("compared"):
+            extras.append("compared")
+        if r.get("survey"):
+            extras.append("Pro survey")
+        lines += (f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td>'
+                  f'<td><a href="/report/{esc(str(r.get("id") or ""))}" target="_blank" rel="noopener">{esc(str(r.get("repo") or "Untitled")[:60])}</a>'
+                  f'{" &#128274;" if priv else ""}</td><td>{how}</td>'
+                  f'<td><span class="pill" style="background:{bg};color:{fg}">{k}</span></td><td><b>{grade}</b></td><td>{areas}</td>'
+                  f'<td>{esc(str(r.get("files") or "–"))}</td><td>{built}</td><td class="note">{", ".join(extras)}</td></tr>')
+    body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" '
+            f'content="width=device-width,initial-scale=1"><title>Latest scans</title><style>body{{font-family:-apple-system,sans-serif;'
+            f'background:#f8f8f7;margin:0;padding:24px 16px;color:#1a1917}}.w{{max-width:1100px;margin:0 auto}}.card{{background:#fff;border:.5px solid #e5e3dc;'
+            f'border-radius:10px;padding:.7rem 1rem;margin:.5rem 0 1rem;font-size:14px}}.note{{color:#6b6966;font-size:12px}}'
+            f'table{{border-collapse:collapse;width:100%;font-size:13px;background:#fff}}td,th{{border-bottom:.5px solid #e5e3dc;padding:6px 8px;'
+            f'text-align:left;vertical-align:top}}th{{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b6966}}'
+            f'.pill{{font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px}}a{{color:#534AB7}}</style></head><body>'
+            f'<div class="w"><a href="/admin">&larr; Admin</a><h1>Latest scans</h1>{summary}<div style="overflow-x:auto"><table>'
+            f'<tr><th>When (UTC)</th><th>App</th><th>How</th><th>Kind</th><th>Grade</th><th>Areas checked</th><th>Files</th>'
+            f'<th>Built with</th><th>Notes</th></tr>{lines}</table></div>'
+            f'<p class="note">&#128274; = private repository (only you, as admin, and its owner can open it).</p></div></body></html>')
+    resp = Response(body, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 # ── Pricing page (25 Oct 2026) ────────────────────────────────────────────────────
 # Every option side by side, kept apart from the deep-scan sales page. Only what exists is offered for use or sale;
 # planned products are marked as planned and lead to early access. The Pro card follows the launch state.
