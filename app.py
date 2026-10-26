@@ -6621,6 +6621,44 @@ def compare_report_route():
                         improved=comparemod.improved(result), page="/compare/" + new_id))
 
 
+# ── "What's next": one line at the end of a report, and a quiet footer (26 Oct 2026) ───────────────────────────────
+# Moses: wait for real interest before building Self Fix sessions or Monitoring, so the reports ask, once and quietly.
+# One line, picked for the report: a Pro or deep report with something to fix offers a Self Fix session, one with
+# nothing serious offers Monitoring; a free report adds nothing (it already has the Pro line). Both say "coming soon"
+# and "early access", never "buy". The links carry ?src= so sign-ups show where they came from. Same rule as app.js
+# whatsNextHTML.
+_NEXT = {
+    "fix": ("#EEEDFE", "#3C3489", "#534AB7", "&#128295;", "/pricing?src={src}#fix-interest"),
+    "monitor": ("#E1F5EE", "#085041", "#1D9E75", "&#128737;", "/monitoring?src={src}#form"),
+}
+_NEXT_TEXT = {("fix", "report"): """<strong>Not sure how to fix these?</strong> A <strong>Verilay Self Fix session</strong> walks you through each fix with your AI builder, checks its replies, and rescans to confirm. Coming soon.""", ("monitor", "report"): """<strong>Keep it that way.</strong> <strong>Monitoring</strong> re-checks your app on a schedule and emails you when something new turns up: a new package problem, an exposed key, or a grade change. Coming soon.""",
+              ("monitor", "compare"): """<strong>Nice work.</strong> Want Verilay to keep watching so it stays this way? <strong>Monitoring</strong> emails you when something new turns up. Coming soon.""", ("fix", "compare"): """<strong>Some problems are still there or new.</strong> A <strong>Verilay Self Fix session</strong> would walk you through each fix with your AI builder and rescan to confirm. Coming soon."""}
+
+
+def next_offer_for_report(kind, score, critical, warnings):
+    """'fix', 'monitor' or None for a finished report."""
+    if kind not in ("pro", "deep") or not score:
+        return None
+    if int(critical or 0) > 0 or score in ("C", "D", "F"):
+        return "fix"
+    return "monitor" if score in ("A", "B") else None
+
+
+def whats_next_html(offer, src):
+    if not offer:
+        return ""
+    bg, fg, link, icon, href = _NEXT[offer]
+    return (f'<div class="whats-next" data-offer="{offer}" style="display:flex;gap:10px;align-items:flex-start;background:{bg};color:{fg};'
+            f'border-radius:10px;padding:.7rem .9rem;margin:1rem 0;font-size:14px;line-height:1.5"><span style="font-size:18px;line-height:1.2">'
+            f'{icon}</span><span>{_NEXT_TEXT[(offer, src)]} <a href="{href.format(src=src)}" style="color:{link};font-weight:600;'
+            'white-space:nowrap">Get early access &rarr;</a></span></div>')
+
+
+OPTIONS_FOOTER = ('<div class="options-footer" style="text-align:center;font-size:12px;color:#6b6966;margin:1rem 0 .25rem">What else Verilay can do: '
+                  'Pro &middot; Self Fix sessions &middot; Monitoring &middot; <a href="/pricing?src=footer" style="color:#534AB7;font-weight:600">'
+                  'See all options &rarr;</a></div>')
+
+
 # ── The compare page (25 Oct 2026) ─────────────────────────────────────────────────────────────────────────────────
 # Its own page, opened in a new tab from a small line on the report. Free: everything that costs no AI (the
 # comparison itself). Pro: Ask Verilay about the two scans (an AI call each), open to everyone while the free Pro launch
@@ -6674,6 +6712,12 @@ def compare_page(report_id):
             body += ('<div class="ccard" id="cmp-ask"><h2>Ask Verilay about these two scans</h2><p class="sub">Part of Verilay Pro: '
                      'run a Pro scan of this app and you can ask Verilay what changed and what to fix first. '
                      '<a href="/pricing#pro" style="color:#534AB7;font-weight:600">See Verilay Pro</a></p></div>')
+        _gb, _ga = result.get("grade_before"), result.get("grade_after")
+        _worse = bool(_gb and _ga and _gb in "ABCDF" and _ga in "ABCDF" and "ABCDF".index(_ga) > "ABCDF".index(_gb))
+        if sit == "rescan" and comparemod.improved(result):
+            body += whats_next_html("monitor", "compare")
+        elif sit == "rescan" and _worse:
+            body += whats_next_html("fix", "compare")
         q2 = _CMP_Q2.get(sit)
         opts = lambda qid, d: "".join(f'<button type="button" class="opt cq" data-q="{qid}" data-v="{k}">{esc(v)}</button>' for k, v in d.items())
         body += ('<div class="ccard" id="cmp-q" style="display:none;background:#EEEDFE;border-color:#c9c5f2" data-sit="' + esc(sit) + '">'
@@ -7038,7 +7082,7 @@ def pricing_page():
 var st=document.getElementById('fix-status'),em=(document.getElementById('fix-email').value||'').trim();
 if(!em){st.textContent='Add your email so we can tell you when it opens.';return;}b.disabled=true;st.textContent='';
 try{var r=await fetch('/pro/early-access',{method:'POST',headers:{'Content-Type':'application/json'},
-body:JSON.stringify({email:em,product:'fix',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
+body:JSON.stringify({email:em,product:'fix',src:new URLSearchParams(location.search).get('src')||'',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
 if(r.ok){st.textContent='You are on the list. We will email you once when Verilay Self Fix sessions open.';b.style.display='none';
 try{if(typeof plausible==='function')plausible('Fix Early Access Join');}catch(e){}return;}st.textContent=r.error||'It could not be sent. Try again.';}
 catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};})();</script>""")
@@ -7612,6 +7656,10 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
 
     out = _B["foot"]
+    if not is_preview and not data.get("analysis_incomplete"):
+        _kind = "deep" if raw_data.get("is_deep_scan") else ("pro" if raw_data.get("scan_tier") == "pro" else "free")
+        out.append(whats_next_html(next_offer_for_report(_kind, h.get("score"), h.get("critical"), h.get("warnings")), "report"))
+    out.append(OPTIONS_FOOTER)
     out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">' + ('' if is_preview else 'Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br>') + '<strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
@@ -9379,6 +9427,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
   <!-- "More": checks, similar apps, diagram, Ask Verilay, share and IT pack (renderMoreBox), under the fixes -->
   <div id="report-more"></div>
+
+  <!-- "What's next": one line for this report, and the quiet "see all options" footer (whatsNextHTML) -->
+  <div id="report-next"></div>
 
   <!-- Layers injected here by appendLayers -->
   <div id="layers-container"></div>

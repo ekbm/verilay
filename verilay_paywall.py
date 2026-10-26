@@ -1017,6 +1017,8 @@ def monitoring_interest_page():
                   'we will email you once, when it is, and only about that.</div>')
     if err:
         banner += f'<div class="err">{_esc(err)}</div>'
+    src = request.args.get("src", "")
+    src = src if src in _MON_SRC else ""
     body = f"""
   <div class="eyebrow">Coming, maybe</div>
   <h1>Monitoring: Verilay keeps watching your app</h1>
@@ -1034,6 +1036,7 @@ def monitoring_interest_page():
   runs, so only named, recorded changes would be reported as fixed or new.</p>
   <div class="card" id="form">
     <form method="POST" action="/monitoring/interest" id="mon-form">
+      <input type="hidden" name="src" value="{_esc(src)}">
       <label for="email">Your email</label>
       <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required maxlength="254">
       <p class="note" style="margin:.35rem 0 1rem">Used only to tell you about monitoring. No spam.</p>
@@ -1071,6 +1074,10 @@ def monitoring_interest_page():
     return _page("Monitoring", body + script)
 
 
+# Which link brought someone to the monitoring form (26 Oct 2026, "what's next" line); kept at the start of their notes.
+_MON_SRC = {"report": "the line at the end of a report", "compare": "the compare page", "footer": "the report footer"}
+
+
 @bp.route("/monitoring/interest", methods=["POST"])
 def monitoring_interest_submit():
     if request.form.get("website"):  # hidden field: only a bot fills it. Look like success, store nothing.
@@ -1082,6 +1089,8 @@ def monitoring_interest_submit():
         return redirect("/monitoring?err=" + urllib.parse.quote("Too many submissions from this connection. Please try again later.") + "#form")
     repo = re.sub(r"[^A-Za-z0-9_.\-/:@]", "", request.form.get("repo") or "")[:120]
     row = {"email": email, "repo": repo, "notes": (request.form.get("notes") or "").strip()[:300]}
+    if request.form.get("src") in _MON_SRC:
+        row["notes"] = (f"[from {_MON_SRC[request.form['src']]}] " + row["notes"]).strip()[:340]
     for key, choices in _MON_CHOICES.items():
         v = request.form.get(key, "")
         row[key] = v if v in choices else ""
@@ -1137,10 +1146,12 @@ def pro_early_access_submit():
         return jsonify({"error": "Too many sign-ups from this connection. Please try again later."}), 429
     # product "fix": Verilay self fix (fix sessions, A$29), from its card on /pricing; same list, its own source.
     fix = body.get("product") == "fix"
+    src = body.get("src") if body.get("src") in ("report", "compare", "footer") else ""     # which "what's next" link brought them
     sb = _sb()
     if sb is not None:
         try:
-            sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "fix-session" if fix else "pro-scan"}).execute()
+            sb.table("waitlist").insert({"email": email, "analyses_count": 0,
+                                         "source": (("fix-session-" + src) if src else "fix-session") if fix else "pro-scan"}).execute()
         except Exception as e:
             print(f"[pro] waitlist insert skipped (a duplicate is fine): {e}", flush=True)
     if _mon_notify_ok():
