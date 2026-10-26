@@ -83,6 +83,16 @@ _sent_by_ip = {}
 
 MAX_PER_EMAIL_HOUR = 5
 MAX_PER_IP_HOUR = 12
+# A sign-in email can take a minute to arrive (26 Oct 2026: Moses got "could not send", retried, and then three emails
+# arrived at once, each cancelling the one before). Within this many seconds of the last request for the same address,
+# no new email is asked for: the visitor is told to check their inbox and wait.
+RESEND_WAIT_SECONDS = 60
+
+
+def seconds_since_last_send(email):
+    with _send_lock:
+        hits = _sent_by_email.get(email) or []
+    return (time.time() - hits[-1]) if hits else None
 
 
 def _allow_send(email, ip):
@@ -121,6 +131,11 @@ def send_login_email(email, ip=None, base_url="https://verilay.dev", create_user
         return False, "That does not look like an email address."
     if not configured():
         return False, "Sign-in is not available on this server yet."
+    since = seconds_since_last_send(email)
+    if since is not None and since < RESEND_WAIT_SECONDS:
+        wait = max(5, int(RESEND_WAIT_SECONDS - since))
+        return False, (f"We already sent a sign-in link to that address just now. It can take a minute or two to arrive, so please "
+                       f"check your inbox and spam folder first. You can ask for another in about {wait} seconds.")
     if not _allow_send(email, ip):
         return False, ("We have sent several sign-in emails to that address "
                        "already. Check your inbox and spam folder, or try again "
@@ -135,8 +150,14 @@ def send_login_email(email, ip=None, base_url="https://verilay.dev", create_user
         })
     except Exception as e:
         print(f"[accounts] sign_in_with_otp failed for {email}: {e}", flush=True)
-        return False, ("We could not send that email just now. Please try again, "
-                       "or email moses@verilay.dev and I will sort it out.")
+        msg = str(e).lower()
+        if "rate limit" in msg or ("after" in msg and "second" in msg):
+            return False, ("Lots of sign-in emails are going out right now. Please wait a minute, check your inbox and spam "
+                           "folder, and only then ask for another link.")
+        # Often the email is on its way and only the answer was slow: say so, so people wait instead of asking again
+        # (each new link cancels the one before).
+        return False, ("Sending is taking longer than usual. The email may still arrive: please check your inbox and spam folder "
+                       "in a minute or two before trying again. Nothing after 5 minutes? Try again, or email moses@verilay.dev.")
     print(f"[accounts] Sign-in email sent to {email}", flush=True)
     return True, "Check your email — we have sent you a sign-in link."
 

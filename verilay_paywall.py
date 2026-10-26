@@ -780,6 +780,7 @@ def login():
   <h1>Check your email</h1>
   <p>We sent a sign-in link to <strong>{_esc(sent_to)}</strong>. Click it and you
   are in. Open it on the device where you want to be signed in.</p>
+  <p class="note">It can take a minute or two to arrive. Please wait for it rather than asking again: each new link cancels the one before.</p>
   <p class="note">The link works only once, and expires after a short time. Nothing arrived? Check spam, then
   <a href="/login">request another</a>.</p>
 """
@@ -791,7 +792,7 @@ def login():
   <p>Accounts are for deep scans and private-repository scans. A free analysis of public code or a ZIP needs
   no account. There is no password: we email you a link.</p>
   <div class="card">
-    <form method="POST" action="/login">
+    <form method="POST" action="/login" onsubmit="var b=this.querySelector('button[type=submit]');if(b){{b.disabled=true;b.textContent='Sending... this can take up to a minute';}}">
       <input type="hidden" name="next" value="{_esc(nxt)}">
       <label for="email">Your email</label>
       <input type="email" id="email" name="email" placeholder="you@example.com"
