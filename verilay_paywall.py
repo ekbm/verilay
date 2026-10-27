@@ -1581,6 +1581,12 @@ _ADMIN_CSS = """<style>.wrap{max-width:1100px}
 .tool span{font-size:12.5px;color:#6b6966;line-height:1.45}
 .tool:hover{border-color:#534AB7}
 .grp{font-size:12px;font-weight:600;color:#534AB7;letter-spacing:.08em;text-transform:uppercase;margin:1.4rem 0 .5rem}
+details.tgroup{border-bottom:0.5px solid #e8e6e0}
+details.tgroup>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;padding:.15rem 0}
+details.tgroup>summary::-webkit-details-marker{display:none}
+details.tgroup>summary::after{content:"+";font-size:18px;color:#534AB7;font-weight:400}
+details.tgroup[open]>summary::after{content:"−"}
+details.tgroup>summary .n{font-weight:400;color:#6b6966;letter-spacing:0;text-transform:none}
 </style>"""
 
 # (group, [(name, address, one-line explanation)]). To add an admin tool, add one line here.
@@ -1606,12 +1612,16 @@ _ADMIN_TOOLS = [
 
 
 def _admin_tools_html():
+    """Each group folds up (27 Oct 2026, Moses: too many on a phone). Closed on phones, open on wider screens; a tap opens
+    or closes one."""
     out = []
     for group, tools in _ADMIN_TOOLS:
         cards = "".join(f'<a class="tool" href="{_esc(href)}" target="_blank" rel="noopener"><b>{_esc(name)}</b><span>{_esc(why)}</span></a>'
                         for name, href, why in tools)
-        out.append(f'<div class="grp">{_esc(group)}</div><div class="tgrid">{cards}</div>')
-    return "".join(out)
+        out.append(f'<details class="tgroup"><summary class="grp"><span>{_esc(group)} <span class="n">({len(tools)})</span></span></summary>'
+                   f'<div class="tgrid">{cards}</div></details>')
+    return ("".join(out) + '<script>(function(){try{if(window.matchMedia("(min-width: 768px)").matches)'
+            'document.querySelectorAll("details.tgroup").forEach(function(d){d.open=true;});}catch(e){}})();</script>')
 
 
 def _usd(x, places=2):
