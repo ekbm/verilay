@@ -7261,11 +7261,25 @@ def _scan_rows(limit=60):
 
 
 def _flag(code):
-    """'AU' -> the Australian flag emoji plus the code; '' -> a dash."""
+    """'AU' -> 'AU'; '' -> a dash. Just the code: Windows shows flag emojis as two letters, which doubled it (28 Oct 2026)."""
     c = str(code or "").upper()
-    if not _re.fullmatch(r"[A-Z]{2}", c):
-        return "&ndash;"
-    return "".join(chr(0x1F1E6 + ord(ch) - 65) for ch in c) + " " + c
+    return c if _re.fullmatch(r"[A-Z]{2}", c) else "&ndash;"
+
+
+# A short "built with" label from the AI's sentence (28 Oct 2026: the cut-off sentence read badly); the full sentence
+# shows on hover.
+_BUILT_LABELS = (("lovable", "Lovable"), ("bolt", "Bolt"), ("replit", "Replit"), ("base44", "Base44"), ("v0", "v0"),
+                 ("cursor", "Cursor"), ("windsurf", "Windsurf"), ("bubble", "Bubble"), ("framer", "Framer"),
+                 ("webflow", "Webflow"), ("wix", "Wix"), ("claude", "Claude"), ("chatgpt", "ChatGPT"), ("copilot", "Copilot"))
+
+
+def built_label(text):
+    t = str(text or "").lower()
+    for key, label in _BUILT_LABELS:
+        tail = r"(?:\.dev|(?![a-z0-9.]))" if key == "v0" else r"(?![a-z0-9])"     # "v0.dev" yes, "v0.4 of a library" no
+        if _re.search(r"(?<![a-z0-9])" + _re.escape(key) + tail, t):
+            return label
+    return "Unknown" if t.strip() else ""
 
 
 @app.route("/admin/scans")
@@ -7321,7 +7335,8 @@ def admin_scans():
         else:
             grade = esc(str(r.get("score") or "–"))
         areas = (f'{6 - len(nc)} of 6' if not inc and r.get("input_method") != "url" else "–")
-        built = esc(str(r.get("built") or "").split(" — ")[0].split(" - ")[0].split(".")[0][:28])
+        built = (f'<span title="{esc(str(r.get("built") or "")[:300])}">{esc(built_label(r.get("built")))}</span>'
+                 if r.get("built") else "")
         extras = []
         if r.get("user_id"):
             extras.append("signed in")
