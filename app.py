@@ -5240,6 +5240,7 @@ def blog():
   """ + featured_html + """
   <div style="font-size:12px;font-weight:600;color:#6b6966;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.75rem;margin-top:1.5rem">More posts</div>
   <div class="grid">""" + grid_html + """</div>
+  """ + (paywall.newsletter_box_html("blog") if _HAS_PAYWALL else "") + """
   <div style="margin-top:3rem;padding-top:1.5rem;border-top:0.5px solid #e8e6e0;text-align:center">
     <p style="font-size:13px;color:#6b6966">Ready to check your own app?</p>
     <a href="/" class="cta-btn" style="margin-top:.75rem;font-size:13px;padding:8px 20px;background:#534AB7;color:#fff;border-radius:20px;text-decoration:none">Run a free analysis</a>
@@ -5572,6 +5573,7 @@ def render_post(post):
   <hr>
 """ + _externalise_links(post.get("body", "")) + """
   """ + _share_bar(post, "Found this useful? Share it") + """
+  """ + (paywall.newsletter_box_html("post") if _HAS_PAYWALL else "") + """
   <div class="cta">
     <strong>Verilay is free at <a href="/">verilay.dev</a> &mdash; no account needed.</strong><br>
     Paste in a GitHub link, a ZIP from Lovable or Replit, or your live app&rsquo;s address, and
@@ -5683,6 +5685,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you rate a report — your thumbs up/down, and any comment or email you choose to add</li>
     <li>If you answer the feedback question after a scan that improved — whether the fix prompts helped, anything you choose to write (your opinion and, only if you want, how you fixed it), any email you add, and the two ticks (whether we may quote you and whether you want early access to fix sessions)</li>
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
+    <li>If you subscribe to the monthly newsletter — your email address, used only to send the newsletter. Every issue has an unsubscribe link</li>
     <li>For each scan, the country it came from (a 2-letter code worked out by our network provider, Cloudflare). We don&rsquo;t keep your IP address or city, and the country is never shown on a report</li>
     <li>If you scan a private repository — your email address (you sign in with it) and the report, which is kept private to your account and removed after the private-report period; never your code</li>
     <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
@@ -6516,6 +6519,7 @@ def sitemap():
         ("https://verilay.dev/checklist", "monthly", "0.6"),
         ("https://verilay.dev/monitoring", "monthly", "0.6"),
         ("https://verilay.dev/pricing", "monthly", "0.7"),
+        ("https://verilay.dev/newsletter", "monthly", "0.5"),
         ("https://verilay.dev/apps", "daily", "0.8"),
     ]
     try:
@@ -6676,7 +6680,7 @@ def whats_next_html(offer, src):
 
 OPTIONS_FOOTER = ('<div class="options-footer" style="text-align:center;font-size:12px;color:#6b6966;margin:1rem 0 .25rem">What else Verilay can do: '
                   'Pro &middot; Self Fix sessions &middot; Monitoring &middot; <a href="/pricing?src=footer" style="color:#534AB7;font-weight:600">'
-                  'See all options &rarr;</a></div>')
+                  'See all options &rarr;</a><br><a href="/newsletter" style="color:#534AB7">Get the monthly newsletter</a></div>')
 
 
 # ── The compare page (25 Oct 2026) ─────────────────────────────────────────────────────────────────────────────────
@@ -7118,6 +7122,11 @@ _LIST_SOURCES = {
     "fix-session-footer": "Self Fix early access (report footer)",
     "fix-sessions": "Fix sessions (after an improved rescan)",
     "private-repos": "Private repos interest",
+    "newsletter-blog": "Monthly newsletter (blog page)",
+    "newsletter-post": "Monthly newsletter (a blog post)",
+    "newsletter-pricing": "Monthly newsletter (Pricing page)",
+    "newsletter-page": "Monthly newsletter (newsletter page)",
+    "newsletter-report": "Monthly newsletter (a report)",
 }
 
 
@@ -7343,6 +7352,7 @@ catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};}
 <div class="eyebrow">Pricing</div><h1>Free to start, pay for depth</h1>
 <p>Every scan starts free. Pay only when you want more detail, every fix prompt, or someone keeping watch.</p>"""
             f'<div class="pgrid" id="pro">{cards}</div>{survey}{fix_form}'
+            + (paywall.newsletter_box_html("pricing") if _HAS_PAYWALL else "") +
             '<p class="note">Prices in Australian dollars, plus any applicable tax at checkout. Planned products are not on sale yet: '
             'their details are our plan and may change before they open.</p>')
     if _HAS_PAYWALL:
@@ -8569,7 +8579,7 @@ _PLAUSIBLE_SNIPPET = (
     '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
 )
 _ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer", "/checklist",
-                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos", "/pricing")
+                    "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos", "/pricing", "/newsletter")
 
 
 @app.after_request

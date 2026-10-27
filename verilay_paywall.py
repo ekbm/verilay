@@ -1164,6 +1164,74 @@ def pro_early_access_submit():
     return jsonify({"ok": True})
 
 
+# ── Monthly newsletter sign-up (27 Oct 2026) ───────────────────────────────────────
+# Moses: a monthly email (what happened at Verilay, one thing to check, AI security news). Subscribing is the consent
+# (the box says exactly what they get), so the email joins the waitlist as "newsletter-<where>". Sending happens in a
+# newsletter tool that handles unsubscribes; Verilay only collects the list. 5 per connection per hour; bot trap.
+NEWSLETTER_PLACES = ("blog", "post", "pricing", "page", "report")
+
+
+def newsletter_box_html(place):
+    """The sign-up box used on the blog, posts, Pricing and /newsletter. Escapes nothing user-supplied (there is none)."""
+    place = place if place in NEWSLETTER_PLACES else "page"
+    return ('<div class="nl-box" style="background:#EEEDFE;border:.5px solid #c9c5f2;border-radius:12px;padding:1rem 1.1rem;margin:1.5rem 0">'
+            '<div style="font-size:16px;font-weight:700;color:#3C3489">The monthly Verilay newsletter</div>'
+            '<p style="font-size:13px;color:#3C3489;margin:.3rem 0 .7rem;line-height:1.55">One short email a month: what&rsquo;s new at Verilay, one thing to check in your AI-built app (with a ready-to-paste prompt), and the AI security news worth knowing. No spam, and you can unsubscribe from any issue.</p>'
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><input class="nl-email" type="email" maxlength="254" autocomplete="email" '
+            'placeholder="you@example.com" aria-label="Your email" style="flex:1;min-width:200px;box-sizing:border-box;border:.5px solid #c9c5f2;'
+            'border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit;background:#fff">'
+            '<input class="nl-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">'
+            f'<button type="button" class="nl-go" data-place="{place}" style="background:#534AB7;color:#fff;border:0;border-radius:8px;padding:9px 16px;'
+            'font-size:14px;font-family:inherit;cursor:pointer">Subscribe</button></div>'
+            '<div class="nl-status" style="font-size:13px;color:#3C3489;margin-top:.45rem"></div></div>'
+            """<script>(function(){document.querySelectorAll('.nl-go').forEach(function(b){if(b._nl)return;b._nl=1;b.onclick=async function(){
+var box=b.closest('.nl-box'),st=box.querySelector('.nl-status'),em=(box.querySelector('.nl-email').value||'').trim();
+if(!em){st.textContent='Add your email to subscribe.';return;}b.disabled=true;st.textContent='';
+try{var r=await fetch('/newsletter/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({email:em,place:b.getAttribute('data-place'),website:box.querySelector('.nl-website').value})}).then(function(x){return x.json();});
+if(r.ok){st.textContent='You are subscribed. The first issue arrives in November.';b.style.display='none';box.querySelector('.nl-email').style.display='none';
+try{if(typeof plausible==='function')plausible('Newsletter Subscribe',{props:{place:b.getAttribute('data-place')}});}catch(e){}return;}
+st.textContent=r.error||'It could not be sent. Try again.';}catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};});})();</script>""")
+
+
+@bp.route("/newsletter/subscribe", methods=["POST"])
+def newsletter_subscribe():
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):
+        return jsonify({"ok": True})
+    email = str(body.get("email") or "").strip().lower()
+    if len(email) > 254 or not _MON_EMAIL.match(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    if not _mon_rate_ok("newsletter:" + _mon_ip()):
+        return jsonify({"error": "Too many sign-ups from this connection. Please try again later."}), 429
+    place = body.get("place") if body.get("place") in NEWSLETTER_PLACES else "page"
+    sb = _sb()
+    if sb is not None:
+        try:
+            sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "newsletter-" + place}).execute()
+        except Exception as e:
+            print(f"[newsletter] not stored (a duplicate is fine): {e}", flush=True)
+    if _mon_notify_ok():
+        threading.Thread(target=notify.send_monitoring_interest_alert,
+                         args=(email, "", {"Signed up for": "The monthly Verilay newsletter", "Where": place},
+                               "Newsletter sign-up."), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@bp.route("/newsletter")
+def newsletter_page():
+    body = ('<div class="eyebrow">Newsletter</div><h1>The monthly Verilay newsletter</h1>'
+            '<p>For people who build apps with AI tools like Lovable, Bolt, Replit or Cursor and want them to be safe, without the jargon.</p>'
+            '<h2>Each issue</h2><ul><li><strong>What&rsquo;s new at Verilay</strong>: one or two things, briefly.</li>'
+            '<li><strong>One thing to check in your app</strong>, with a ready-to-paste prompt for your AI builder.</li>'
+            '<li><strong>AI security news worth knowing</strong>, in plain English, with a link to the source.</li>'
+            '<li><strong>One question for you</strong>: reply, and it shapes what gets built next.</li></ul>'
+            + newsletter_box_html("page") +
+            '<p class="note">Your email is used only to send the newsletter. We never share it, and every issue has an unsubscribe link. '
+            '<a href="/privacy">Privacy policy</a></p>')
+    return _page("Newsletter", body)
+
+
 # ── Private repositories: expression of interest ───────────────────────────────
 # Verilay reads PUBLIC GitHub repositories only. This page measures whether people with private code want a way to
 # connect it, and how, before anything is built. Answers go to the `private_repo_interest` table

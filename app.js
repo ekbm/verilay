@@ -2271,7 +2271,7 @@ function whatsNextHTML(data, h) {
   }
   return line + '<div class="options-footer" style="text-align:center;font-size:12px;color:var(--mut);margin:.85rem 0 .25rem">What else Verilay can do: ' +
     'Pro &middot; Self Fix sessions &middot; Monitoring &middot; <a href="/pricing?src=footer" target="_blank" rel="noopener" style="color:var(--pu);font-weight:600">' +
-    'See all options &rarr;</a></div>';
+    'See all options &rarr;</a><br><a href="/newsletter" target="_blank" rel="noopener" style="color:var(--pu)">Get the monthly newsletter</a></div>';
 }
 
 function renderReport(data) {
