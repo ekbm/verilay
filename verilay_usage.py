@@ -12,6 +12,10 @@ handful of numbers in the existing `stats` table (key = "usage:<date>:<name>", v
 
 Before 22 Oct 2026 the monitor's and the deep scans' AI calls were counted under "scan", so older days cannot be split.
 
+Prompt caching [from 27 Oct 2026; only Ask Verilay uses it]: <kind>_cache_read_tokens are prompt tokens Anthropic served from its
+cache (a tenth of the normal input price), <kind>_cache_write_tokens are tokens saved to the cache (a quarter more than normal).
+Neither is part of <kind>_input_tokens, which is how Anthropic reports them. The cost page shows the net saving.
+
 The numbers are approximate on purpose: two workers can update the same number at the same moment and one update can be lost, and a
 restart can lose the last few seconds. That is fine for working out an average. Nothing here can slow down or break a scan: every call is
 best effort and swallows its own errors.
@@ -95,8 +99,17 @@ MODEL_PRICES = {
 }
 
 
-def record(input_tokens=None, output_tokens=None, kind="scan", now=None, model=None):
-    """One AI call. Token counts may be unknown (None); the call is still counted. Never raises."""
+CACHE_READ_RATE = 0.1      # a prompt token read from Anthropic's cache costs a tenth of a normal input token
+CACHE_WRITE_RATE = 1.25    # saving a prompt token to the (5-minute) cache costs a quarter more than a normal input token
+
+
+def _count(n):
+    return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+
+
+def record(input_tokens=None, output_tokens=None, kind="scan", now=None, model=None, cache_read=None, cache_write=None):
+    """One AI call. Token counts may be unknown (None); the call is still counted. Never raises.
+    cache_read / cache_write: prompt tokens served from / saved to Anthropic's prompt cache (not part of input_tokens)."""
     try:
         if kind not in KINDS:
             return
@@ -107,11 +120,21 @@ def record(input_tokens=None, output_tokens=None, kind="scan", now=None, model=N
             _bump(f"{kind}_input_tokens", input_tokens, now)
         if isinstance(output_tokens, int):
             _bump(f"{kind}_output_tokens", output_tokens, now)
+        cr, cw = _count(cache_read), _count(cache_write)
+        _bump(f"{kind}_cache_read_tokens", cr, now)
+        _bump(f"{kind}_cache_write_tokens", cw, now)
         price = MODEL_PRICES.get(model or "")
         if price and isinstance(input_tokens, int) and isinstance(output_tokens, int):
-            _bump(f"{kind}_cost_micro", int(round(input_tokens * price[0] + output_tokens * price[1])), now)
+            _bump(f"{kind}_cost_micro", int(round(input_tokens * price[0] + output_tokens * price[1]
+                                                  + cr * price[0] * CACHE_READ_RATE + cw * price[0] * CACHE_WRITE_RATE)), now)
             _bump(f"{kind}_priced_input_tokens", input_tokens, now)
             _bump(f"{kind}_priced_output_tokens", output_tokens, now)
+            _bump(f"{kind}_priced_cache_read_tokens", cr, now)
+            _bump(f"{kind}_priced_cache_write_tokens", cw, now)
+            # What caching saved (reads at a tenth instead of full price) and what it cost extra (writes at 1.25x),
+            # kept apart because a stored number cannot go below zero.
+            _bump(f"{kind}_cache_saved_micro", int(round(cr * price[0] * (1 - CACHE_READ_RATE))), now)
+            _bump(f"{kind}_cache_extra_micro", int(round(cw * price[0] * (CACHE_WRITE_RATE - 1))), now)
         _maybe_flush()
     except Exception:
         pass
@@ -121,7 +144,9 @@ def record_from_stream(stream, kind="scan", model=None):
     """Read the token counts from a finished Anthropic streaming call. Counts only; never touches the text. Never raises."""
     try:
         usage = stream.get_final_message().usage
-        record(getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None), kind, model=model)
+        record(getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None), kind, model=model,
+               cache_read=getattr(usage, "cache_read_input_tokens", None),
+               cache_write=getattr(usage, "cache_creation_input_tokens", None))
     except Exception:
         record(None, None, kind, model=model)
 
@@ -185,7 +210,23 @@ def _cost(d, prices, kinds=KINDS):
     for k in kinds:
         tin = d.get(f"{k}_input_tokens", 0) - d.get(f"{k}_priced_input_tokens", 0)
         tout = d.get(f"{k}_output_tokens", 0) - d.get(f"{k}_priced_output_tokens", 0)
-        total += max(0, tin) * prices[0] / 1e6 + max(0, tout) * prices[1] / 1e6 + d.get(f"{k}_cost_micro", 0) / 1e6
+        cr = d.get(f"{k}_cache_read_tokens", 0) - d.get(f"{k}_priced_cache_read_tokens", 0)
+        cw = d.get(f"{k}_cache_write_tokens", 0) - d.get(f"{k}_priced_cache_write_tokens", 0)
+        total += (max(0, tin) * prices[0] / 1e6 + max(0, tout) * prices[1] / 1e6 + d.get(f"{k}_cost_micro", 0) / 1e6
+                  + (max(0, cr) * CACHE_READ_RATE + max(0, cw) * CACHE_WRITE_RATE) * prices[0] / 1e6)
+    return round(total, 4)
+
+
+def _cache_saved(d, prices, kinds=KINDS):
+    """Net money prompt caching saved: cheaper cache reads minus the extra paid for cache writes. Can be below zero
+    (written to the cache, never reused in time). Calls to a model in MODEL_PRICES use their own price; the rest the
+    Railway price."""
+    total = 0.0
+    for k in kinds:
+        cr = d.get(f"{k}_cache_read_tokens", 0) - d.get(f"{k}_priced_cache_read_tokens", 0)
+        cw = d.get(f"{k}_cache_write_tokens", 0) - d.get(f"{k}_priced_cache_write_tokens", 0)
+        total += (max(0, cr) * (1 - CACHE_READ_RATE) - max(0, cw) * (CACHE_WRITE_RATE - 1)) * prices[0] / 1e6
+        total += (d.get(f"{k}_cache_saved_micro", 0) - d.get(f"{k}_cache_extra_micro", 0)) / 1e6
     return round(total, 4)
 
 
@@ -246,7 +287,9 @@ def dashboard(days=30, now=None):
         units = tot.get({"scan": "scans_full", "monitor": "scans_monitor", "deep": "scans_deep", "pro": "scans_pro"}.get(kind, ""), 0)
         cost = _cost(tot, prices, (kind,)) if prices else None
         cats.append({"kind": kind, "label": LABELS[kind], "calls": calls, "input_tokens": tin, "output_tokens": tout, "cost_usd": cost,
-                     "units": units, "cost_per_unit_usd": round(cost / units, 4) if (cost is not None and units) else None})
+                     "units": units, "cost_per_unit_usd": round(cost / units, 4) if (cost is not None and units) else None,
+                     "cache_read_tokens": tot.get(f"{kind}_cache_read_tokens", 0),
+                     "cache_write_tokens": tot.get(f"{kind}_cache_write_tokens", 0)})
     day_rows = []
     for d in base["days"]:
         row = {"date": d["date"], "total_usd": d.get("est_cost_usd")}
@@ -264,6 +307,9 @@ def dashboard(days=30, now=None):
             "total_usd": total_cost, "estimated_per_month_usd": per_month, "hosting_per_month_usd": hosting,
             "all_in_per_month_usd": round(per_month + hosting, 2) if (per_month is not None and hosting is not None) else None,
             "own_app_checks_skipped": tot.get("scans_monitor_skipped", 0), "prices_set": bool(prices),
+            "cache_read_tokens": sum(c["cache_read_tokens"] for c in cats),
+            "cache_write_tokens": sum(c["cache_write_tokens"] for c in cats),
+            "cache_saved_usd": _cache_saved(tot, prices) if prices else None,
             "note": base["note"]}
 
 

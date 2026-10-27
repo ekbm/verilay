@@ -1728,6 +1728,15 @@ def _costs_html(d):
     skipped = d.get("own_app_checks_skipped", 0)
     saved = (f'<p class="note" style="margin-top:.8rem">Own-app checks skipped because the code had not changed: <strong>{skipped:,}</strong> '
              '(each one is an AI scan that was not paid for).</p>')
+    c_read, c_write, c_usd = d.get("cache_read_tokens", 0), d.get("cache_write_tokens", 0), d.get("cache_saved_usd")
+    if c_read or c_write:
+        money = ("" if c_usd is None else
+                 f' Net saving: <strong>{_usd(c_usd, 4)}</strong>' + (" (below zero: saved to the cache but not reused in time)." if c_usd < 0 else "."))
+        saved += (f'<p class="note">Prompt caching (Ask Verilay only): <strong>{c_read:,}</strong> tokens reused from the cache at a tenth '
+                  f'of the price, <strong>{c_write:,}</strong> saved to it at a quarter extra.{money}</p>')
+    else:
+        saved += ('<p class="note">Prompt caching (Ask Verilay only, from 27 Oct 2026): nothing reused yet. It only helps when someone '
+                  'asks again within about 5 minutes.</p>')
     return (_ADMIN_CSS + '<div class="eyebrow">Admin</div><h1>AI costs</h1>' + warn
             + f'<div class="tgrid">{cards}</div>'
             + '<div class="grp">By what it was used for</div>' + table + saved

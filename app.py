@@ -1858,13 +1858,34 @@ def free_ai_gate(ip, method, is_admin=False, now=None):
     return None
 
 
-def ask_claude_call(system, prompt, max_tokens=1500):
+_ASK_CACHE = {"type": "ephemeral"}     # Anthropic keeps a cached prompt start for about 5 minutes, for our account only
+
+
+def ask_cached_parts(system, prompt, context=None):
+    """The system prompt and user message for an Ask Verilay call, marked for prompt caching (27 Oct 2026).
+
+    Caching reuses only the START of a request, word for word. The system prompt is the same for every question, and a
+    report's context is the same for every question about that report, so both are marked; the question itself comes
+    last and is never cached. The text Claude reads is unchanged: context + prompt is exactly the old single message.
+    A start shorter than the model's minimum (512-1024 tokens) is simply not cached: no error, no extra cost."""
+    system_blocks = [{"type": "text", "text": system, "cache_control": _ASK_CACHE}]
+    if context:
+        content = [{"type": "text", "text": str(context), "cache_control": _ASK_CACHE},
+                   {"type": "text", "text": str(prompt)}]
+    else:
+        content = str(prompt)
+    return system_blocks, content
+
+
+def ask_claude_call(system, prompt, max_tokens=1500, context=None):
     """Returns PLAIN TEXT (no JSON parsing) and supports a system prompt.
     Used by Ask Verilay, which answers in plain English, not structured JSON.
-    (Named uniquely to avoid colliding with the existing call_claude_text.)"""
+    (Named uniquely to avoid colliding with the existing call_claude_text.)
+    `context` (optional) is the part that stays the same across questions, e.g. a report summary; it is sent before
+    `prompt` and cached (see ask_cached_parts)."""
     if not ANTHROPIC_API_KEY:
         raise ValueError("No ANTHROPIC_API_KEY set.")
-    prompt_str = str(prompt)
+    system_blocks, content = ask_cached_parts(system, prompt, context)
     if _HAS_SDK:
         client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, max_retries=3)
         raw = ""
@@ -1872,8 +1893,8 @@ def ask_claude_call(system, prompt, max_tokens=1500):
         with client.messages.stream(
             model=_model,
             max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": prompt_str}],
+            system=system_blocks,
+            messages=[{"role": "user", "content": content}],
             **model_params(_model)
         ) as stream:
             for text in stream.text_stream:
@@ -1891,8 +1912,8 @@ def ask_claude_call(system, prompt, max_tokens=1500):
         json=dict({
             "model": model_for_call(),
             "max_tokens": max_tokens,
-            "system": system,
-            "messages": [{"role": "user", "content": prompt_str}]
+            "system": system_blocks,
+            "messages": [{"role": "user", "content": content}]
         }, **_raw_params(model_for_call())),
         timeout=90
     )
@@ -1972,12 +1993,16 @@ def build_report_context_summary(data):
     return summary
 
 
-def build_report_ask_prompt(data, question):
+def build_report_ask_parts(data, question):
+    """(context, question part) for a report question. The context is the same for every question about this report,
+    so it is sent first and cached; joined, the two are exactly build_report_ask_prompt()."""
     context = build_report_context_summary(data)
-    return (
-        f"Here is the person's Verilay scan report:\n\n{context}\n\n"
-        f"Their question: {sanitise_for_prompt(question)}"
-    )
+    return (f"Here is the person's Verilay scan report:\n\n{context}\n\n",
+            f"Their question: {sanitise_for_prompt(question)}")
+
+
+def build_report_ask_prompt(data, question):
+    return "".join(build_report_ask_parts(data, question))
 
 
 @app.route("/report/<report_id>/ask", methods=["POST"])
@@ -2008,8 +2033,8 @@ def ask_verilay_report(report_id):
                          f"about this report. General Ask Verilay still works, or check back in a bit."
             }), 429
 
-        prompt = build_report_ask_prompt(data, question)
-        answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500)
+        context, prompt = build_report_ask_parts(data, question)
+        answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500, context=context)
         return jsonify({"ok": True, "answer": answer, "remaining": remaining})
     except Exception:
         return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
@@ -7021,12 +7046,12 @@ def compare_ask(report_id):
         if not allowed:
             return jsonify({"ok": False, "limit_reached": True,
                             "error": f"You've reached the limit of {ASK_REPORT_RATE_LIMIT} questions per hour about this comparison."}), 429
-        prompt = (f"Here is the person's newer Verilay scan report:\n\n{build_report_context_summary(data)}\n\n"
-                  f"And how it compares with their earlier scan of the same app:\n{comparemod.summary_text(data.get('comparison'))}\n\n"
-                  "A finding missing from the newer scan may not be fixed: the scans can read different files and the AI can "
-                  "word things differently. When the earlier scan checked fewer areas, its grade was not a full grade.\n\n"
-                  f"Their question: {sanitise_for_prompt(question)}")
-        answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500)
+        context = (f"Here is the person's newer Verilay scan report:\n\n{build_report_context_summary(data)}\n\n"
+                   f"And how it compares with their earlier scan of the same app:\n{comparemod.summary_text(data.get('comparison'))}\n\n"
+                   "A finding missing from the newer scan may not be fixed: the scans can read different files and the AI can "
+                   "word things differently. When the earlier scan checked fewer areas, its grade was not a full grade.\n\n")
+        prompt = f"Their question: {sanitise_for_prompt(question)}"
+        answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500, context=context)
         return jsonify({"ok": True, "answer": answer, "remaining": remaining})
     except Exception:
         return jsonify({"ok": False, "error": "Something went wrong answering that. Please try again."}), 500
