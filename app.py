@@ -1061,10 +1061,75 @@ SKIP_FOLDERS = {
     'coverage', '.cache', 'tmp', 'temp', 'logs', '.DS_Store'
 }
 
+# ── "Tell me when something unusual happens" (27 Oct 2026) ──────────────────────────────────────────────────────────
+# Moses: keep the upload limit as it is, but let Verilay notice and tell him. Each kind of alert is sent at most once
+# per ALERT_EVERY_SECONDS (per worker), and never more than ALERT_MAX_PER_HOUR in total, so an attack cannot flood his inbox.
+ALERT_EVERY_SECONDS = 3600
+ALERT_MAX_PER_HOUR = 10
+_ALERT_LAST = {}
+_ALERT_SENT = []
+_ALERT_LOCK = threading.Lock()
+
+
+def admin_alert(kind, subject, lines, every=ALERT_EVERY_SECONDS):
+    """Email the admin about something unusual, at most once per `every` seconds for this kind. Never raises."""
+    try:
+        now = time.time()
+        with _ALERT_LOCK:
+            if now - _ALERT_LAST.get(kind, 0) < every:
+                return False
+            _ALERT_SENT[:] = [t for t in _ALERT_SENT if now - t < 3600]
+            if len(_ALERT_SENT) >= ALERT_MAX_PER_HOUR:
+                return False
+            _ALERT_LAST[kind] = now
+            _ALERT_SENT.append(now)
+        print(f"[alert] {kind}: {subject}", flush=True)
+        threading.Thread(target=notify.send_admin_alert, args=(subject, list(lines) + [
+            f"When: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC", f"Country: {visitor_country() or 'unknown'}"]), daemon=True).start()
+        return True
+    except Exception:
+        return False
+
+
+# A ZIP whose contents claim to unpack to far more than any app (a "zip bomb"), or holds an extreme number of files, or
+# names that try to climb out of a folder. Verilay only ever reads a few small files from a ZIP, and reads each one at
+# most a little past its 100 KB cap, so such a file is not unpacked; the admin is told about it.
+ZIP_SUSPECT_UNPACKED = 1024 * 1024 * 1024        # over 1 GB unpacked
+ZIP_SUSPECT_RATIO = 100                           # unpacks to over 100x its size (and over 50 MB)
+ZIP_SUSPECT_FILES = 20000
+
+
+def zip_warning_signs(zf, zip_size):
+    """Plain-English reasons a ZIP looks suspicious, or [] for a normal one."""
+    try:
+        infos = zf.infolist()
+    except Exception:
+        return []
+    unpacked = sum(max(0, int(i.file_size or 0)) for i in infos)
+    signs = []
+    if unpacked > ZIP_SUSPECT_UNPACKED:
+        signs.append(f"says it unpacks to {unpacked / 1024 / 1024 / 1024:.1f} GB")
+    if zip_size and unpacked > 50 * 1024 * 1024 and unpacked / zip_size > ZIP_SUSPECT_RATIO:
+        signs.append(f"unpacks to {unpacked / zip_size:.0f} times its own size")
+    if len(infos) > ZIP_SUSPECT_FILES:
+        signs.append(f"holds {len(infos):,} files")
+    if any(i.filename.startswith(("/", "\\")) or ".." in i.filename.replace("\\", "/").split("/") for i in infos):
+        signs.append("has file names that try to point outside its folder")
+    return signs
+
+
 def fetch_zip(zip_bytes, filename):
     project_name = filename.replace(".zip","")
     files = {}
     with zipfile.ZipFile(zip_bytes) as zf:
+        try:
+            _signs = zip_warning_signs(zf, zip_bytes.getbuffer().nbytes)
+        except Exception:
+            _signs = []
+        if _signs:
+            admin_alert("zip", "an unusual ZIP was uploaded",
+                        [f"File: {filename[:80]} ({zip_bytes.getbuffer().nbytes / 1024 / 1024:.1f} MB)"] + [f"It {s}." for s in _signs]
+                        + ["Verilay read only a few small files from it, as always, and did not unpack the rest."])
         all_names = zf.namelist()
         prefix = ""
         if all_names and "/" in all_names[0]:
@@ -1107,7 +1172,10 @@ def fetch_zip(zip_bytes, filename):
                 info = zf.getinfo(name_map[rel])
                 # Skip files larger than 100KB uncompressed
                 if info.file_size > 100000: return None
-                return zf.read(name_map[rel]).decode("utf-8","replace")[:MAX_FILE_CHARS]
+                with zf.open(info) as fh:                  # never more than the cap, even if the size in the index is wrong
+                    raw = fh.read(100001)
+                if len(raw) > 100000: return None
+                return raw.decode("utf-8","replace")[:MAX_FILE_CHARS]
             except: return None
         for p in PRIORITY_FILES:
             if p in name_map:
@@ -1639,6 +1707,9 @@ def pro_gate(now=None):
     spent = usage.today_cost_usd(now, kinds=("pro",))
     if budget is not None and spent is not None and spent >= budget:
         print(f"[pro] paused for today: ~US${spent:.2f} of US${budget:.2f}", flush=True)
+        admin_alert("budget-pro", "free Pro scans are paused for today (Pro budget reached)",
+                    [f"Today's Pro spend is about US${spent:.2f} of the US${budget:.2f} Pro budget.",
+                     "Pro starts again at midnight UTC. To change it, set VERILAY_PRO_DAILY_BUDGET_USD on Railway."], every=6 * 3600)
         return ("Verilay Pro has reached today's limit during the free launch. It starts again at midnight UTC. "
                 "Your free report is still yours to keep.")
     return None
@@ -1775,6 +1846,10 @@ def free_ai_gate(ip, method, is_admin=False, now=None):
     over, spent, budget = usage.over_budget(now)
     if over:
         print(f"[budget] free scan paused: today's AI spend ~US${spent:.2f} of US${budget:.2f}", flush=True)
+        admin_alert("budget-free", "free scans are paused for today (daily AI budget reached)",
+                    [f"Today's AI spend is about US${spent:.2f} of the US${budget:.2f} daily budget.",
+                     "Free scans start again at midnight UTC. If this is unexpected, check /admin/scans and /admin/costs for "
+                     "a burst of scans; to change the budget, set VERILAY_DAILY_AI_BUDGET_USD on Railway."], every=6 * 3600)
         return BUDGET_MESSAGE.format(h=h, s=plural)
     if method in ("github", "zip"):
         ok, used = daily_scan_check(ip, now=now)

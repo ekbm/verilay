@@ -140,6 +140,28 @@ def send_live_watch_alert(app_name, url, problems):
         return False
 
 
+def send_admin_alert(subject, lines):
+    """A short "something unusual happened" email to the admin (27 Oct 2026: a suspicious upload, free scans paused by
+    the daily budget). Best-effort, returns True/False, never raises. The caller limits how often it is sent."""
+    if not configured() or not SELF_MONITOR_ALERT_EMAIL:
+        return False
+    body = ("\n".join(f"  - {_one_line(x, 240)}" for x in (lines or [])) + "\n\nNothing was shared with the visitor beyond the "
+            "usual message. You can see recent scans on /admin/scans.\n\n- Verilay")
+    msg = MIMEText(body)
+    msg["Subject"] = "Verilay alert: " + _one_line(subject, 90)
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = SELF_MONITOR_ALERT_EMAIL
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
+        print(f"[notify] admin alert sent: {_one_line(subject, 90)}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[notify] admin alert failed: {e}", flush=True)
+        return False
+
+
 def _one_line(s, limit=200):
     """Header-safe: no line breaks, capped."""
     return " ".join(str(s or "").split())[:limit]
