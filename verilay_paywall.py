@@ -27,6 +27,7 @@ import verilay_billing as billing
 import verilay_accounts as accounts
 import verilay_deepscan as deepscan
 import verilay_notify as notify
+import verilay_beehiiv as beehiiv
 
 bp = Blueprint("paywall", __name__)
 
@@ -1189,7 +1190,7 @@ var box=b.closest('.nl-box'),st=box.querySelector('.nl-status'),em=(box.querySel
 if(!em){st.textContent='Add your email to subscribe.';return;}b.disabled=true;st.textContent='';
 try{var r=await fetch('/newsletter/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},
 body:JSON.stringify({email:em,place:b.getAttribute('data-place'),website:box.querySelector('.nl-website').value})}).then(function(x){return x.json();});
-if(r.ok){st.textContent='You are subscribed. The first issue arrives in November.';b.style.display='none';box.querySelector('.nl-email').style.display='none';
+if(r.ok){st.textContent=r.confirm?'Almost done: check your inbox for an email from Verilay and confirm your subscription.':'You are subscribed. The first issue arrives in November.';b.style.display='none';box.querySelector('.nl-email').style.display='none';
 try{if(typeof plausible==='function')plausible('Newsletter Subscribe',{props:{place:b.getAttribute('data-place')}});}catch(e){}return;}
 st.textContent=r.error||'It could not be sent. Try again.';}catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};});})();</script>""")
 
@@ -1211,11 +1212,60 @@ def newsletter_subscribe():
             sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": "newsletter-" + place}).execute()
         except Exception as e:
             print(f"[newsletter] not stored (a duplicate is fine): {e}", flush=True)
-    if _mon_notify_ok():
-        threading.Thread(target=notify.send_monitoring_interest_alert,
-                         args=(email, "", {"Signed up for": "The monthly Verilay newsletter", "Where": place},
-                               "Newsletter sign-up."), daemon=True).start()
-    return jsonify({"ok": True})
+    synced = beehiiv.configured()
+
+    def _after():
+        ok, why = beehiiv.add_subscriber(email, place) if synced else (False, "beehiiv sync not set up")
+        if _mon_notify_ok():
+            notify.send_monitoring_interest_alert(email, "", {"Signed up for": "The monthly Verilay newsletter", "Where": place,
+                                                              "Added to beehiiv": "yes" if ok else f"no ({why})"},
+                                                  "Newsletter sign-up.")
+    threading.Thread(target=_after, daemon=True).start()
+    # With the beehiiv sync on, beehiiv sends a confirmation email (double opt-in) and then the welcome email.
+    return jsonify({"ok": True, "confirm": synced})
+
+
+@bp.route("/admin/newsletter.csv")
+def newsletter_csv():
+    """The opted-in newsletter list as a CSV for beehiiv's import (admin only): people who signed up for the newsletter
+    or ticked "Occasional emails about new Verilay features". One row per email."""
+    if not _is_admin_user(accounts.current_user()):
+        return "Not found", 404
+    rows = []
+    sb = _sb()
+    if sb is not None:
+        try:
+            rows = sb.table("waitlist").select("email,source,created_at").order("created_at").limit(5000).execute().data or []
+        except Exception as e:
+            print(f"[newsletter] csv: {e}", flush=True)
+    seen, out = set(), ["email,signed_up_for,date"]
+    for r in rows:
+        src = str(r.get("source") or "")
+        em = str(r.get("email") or "").strip().lower()
+        if not em or em in seen or not (src.startswith("newsletter-") or src == "verilay-features"):
+            continue
+        seen.add(em)
+        safe = lambda v: re.sub(r'[",\r\n]', " ", v).lstrip("=+-@")        # no spreadsheet formulas, no broken rows
+        out.append(f"{safe(em)},{safe(src)},{safe(str(r.get('created_at') or '')[:10])}")
+    resp = Response("\r\n".join(out) + "\r\n", mimetype="text/csv")
+    resp.headers["Content-Disposition"] = "attachment; filename=verilay-newsletter-list.csv"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def beehiiv_status_html():
+    """A short block for the admin "Users and sign-ups" page: is the sync on, and how the latest attempts went."""
+    if not beehiiv.configured():
+        state = ('<b>beehiiv sync: not set up.</b> New sign-ups stay in this list only. Add BEEHIIV_API_KEY and '
+                 'BEEHIIV_PUBLICATION_ID on Railway to turn it on.')
+    else:
+        rec = beehiiv.recent()[:20]
+        ok = sum(1 for t, good, d in rec if good)
+        bad = [d for t, good, d in rec if not good]
+        state = (f'<b>beehiiv sync: on.</b> Since the last restart: {ok} added' + (f', {len(bad)} not added (latest: {_esc(bad[0])})' if bad else '')
+                 + '. Anyone not added stays in this list; import them with the CSV below.')
+    return (f'<div class="card">{state}<br><a href="/admin/newsletter.csv">Download the newsletter list (CSV for beehiiv)</a>'
+            ' <span class="note">(opted-in people only)</span></div>')
 
 
 @bp.route("/newsletter")

@@ -7275,6 +7275,7 @@ def admin_users():
         f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td><td>{esc(str(r.get("email") or ""))}</td>'
         f'<td>{esc(_LIST_SOURCES.get(r.get("source") or "", r.get("source") or ""))}</td></tr>' for r in waitlist)
     wl_html = (f'<h2>Email lists <span class="note">({len(waitlist)} sign-ups, newest first)</span></h2>'
+               + (paywall.beehiiv_status_html() if _HAS_PAYWALL else "")
                + (f'<div class="card">{count_html}</div>' if count_html else "")
                + '<p class="note">Who asked to hear about what. Only email people about the thing they signed up for.</p>'
                '<div style="overflow-x:auto"><table><tr><th>When (UTC)</th><th>Email</th><th>Signed up for</th></tr>'

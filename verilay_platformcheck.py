@@ -309,6 +309,14 @@ def check_github_app():
     return _res(WARN, f"answered with status {r.status_code}")
 
 
+def check_beehiiv():
+    """The newsletter sync to beehiiv (verilay_beehiiv.py). Shown only when it is set up; reads, never sends."""
+    import verilay_beehiiv as bh
+    status, text = bh.check()
+    return _res({"ok": OK, "warn": WARN, "fail": FAIL}.get(status, SKIP), text,
+                "Newsletter sign-ups still land in Verilay's own list; fix the key and import the CSV from the admin page." if status == "fail" else "")
+
+
 def check_osv():
     try:
         r = http.post("https://api.osv.dev/v1/query", json={"package": {"name": "flask", "ecosystem": "PyPI"}, "version": "0.12"}, timeout=15)
@@ -423,6 +431,8 @@ def _plan():
            ("Vulnerability list (OSV)", check_osv),
            ("Sign-in service (Supabase)", check_supabase_auth),
            ("Payments (Stripe)", check_stripe)]
+    if (os.getenv("BEEHIIV_API_KEY", "") or "").strip():
+        out.append(("Newsletter (beehiiv)", check_beehiiv))
     if (os.getenv("VERILAY_FREE_MODEL", "") or "").strip() and os.getenv("VERILAY_FREE_MODEL", "").strip() != MODEL:
         out.insert(4, ("AI model (free scans)", check_free_model))
     out.insert(4, ("AI model (Pro scans)", lambda: check_free_model(PRO_MODEL)))
