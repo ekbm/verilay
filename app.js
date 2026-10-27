@@ -1440,6 +1440,7 @@ function handleStreamEvent(evt) {
       // Show feedback widget and star prompt
       var fw = document.getElementById('feedback-widget');
       if (fw) fw.style.display = 'block';
+      setTimeout(showRatingNudge, 60000);              // or after a minute of reading, if nothing was copied
       var sp = document.getElementById('star-prompt');
       if (sp) sp.style.display = 'block';
       if (statusEl) statusEl.textContent = 'Report saved';
@@ -3126,6 +3127,7 @@ function renderPart2(data) {
           navigator.clipboard.writeText(prompt).then(function() {
             btn.style.background = 'var(--gr)';
             if (copied) { copied.style.display = 'inline'; }
+            setTimeout(showRatingNudge, 2500);          // the moment Verilay has just helped: ask once
             setTimeout(function() {
               btn.style.background = 'var(--pu)';
               if (copied) { copied.style.display = 'none'; }
@@ -3523,8 +3525,44 @@ function toggleCheck(id) {
 // Feedback functions
 var lastFeedbackHelpful = null;
 
+// "Did this report help?" nudge (27 Oct 2026, Moses: get more ratings, without forcing anyone). A small card slides up
+// once per report: right after a fix prompt is copied (the moment Verilay has just helped), or after a minute of reading.
+// One tap rates; the X closes it; either way it never comes back for that report. Never blocks the report.
+function _ratedKey() { return 'verilay_rated_' + (savedReportId || ''); }
+function _alreadyAsked() {
+  if (lastFeedbackHelpful !== null) return true;
+  try { return !!localStorage.getItem(_ratedKey()); } catch (e) { return false; }
+}
+function _markAsked(v) { try { localStorage.setItem(_ratedKey(), v || '1'); } catch (e) {} }
+function showRatingNudge() {
+  if (!savedReportId || _alreadyAsked() || document.getElementById('rating-nudge')) return;
+  var card = document.createElement('div');
+  card.id = 'rating-nudge';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-label', 'Did this report help?');
+  card.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;background:var(--sur);border:0.5px solid var(--pu);' +
+    'border-radius:14px;box-shadow:0 6px 24px rgba(26,25,23,.18);padding:.7rem .9rem;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px)';
+  card.innerHTML = '<span style="font-size:14px;font-weight:600;color:var(--txt);white-space:nowrap">Did this report help?</span>' +
+    '<button type="button" data-v="up" aria-label="Yes, it helped" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:4px 12px;cursor:pointer">&#128077;</button>' +
+    '<button type="button" data-v="down" aria-label="No, it did not help" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:4px 12px;cursor:pointer">&#128078;</button>' +
+    '<button type="button" data-v="close" aria-label="Close" style="font-size:16px;background:none;border:none;color:var(--mut);cursor:pointer;padding:4px">&#10005;</button>';
+  document.body.appendChild(card);
+  try { if (typeof plausible === 'function') plausible('Rating Nudge Shown'); } catch (e) {}
+  card.querySelectorAll('button').forEach(function(b) {
+    b.onclick = function() {
+      var v = b.getAttribute('data-v');
+      if (v === 'close') { _markAsked('closed'); card.remove(); return; }
+      submitFeedback(v === 'up');
+      card.innerHTML = '<span style="font-size:14px;color:var(--txt)">Thanks! &#128591; ' +
+        '<a href="#feedback-widget" style="color:var(--pu);font-weight:600" onclick="var r=document.getElementById(\'rating-nudge\');if(r)r.remove();">Add a comment</a></span>';
+      setTimeout(function() { var r = document.getElementById('rating-nudge'); if (r) r.remove(); }, 6000);
+    };
+  });
+}
+
 function submitFeedback(helpful) {
   lastFeedbackHelpful = helpful;
+  _markAsked(helpful ? 'up' : 'down');
   var upBtn = document.getElementById('btn-feedback-up');
   var downBtn = document.getElementById('btn-feedback-down');
   if (upBtn) upBtn.style.background = helpful ? '#EAF3DE' : 'none';
