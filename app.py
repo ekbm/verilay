@@ -4358,6 +4358,102 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "building-ai-apps-like-an-engineer",
+        "title": "Building AI Apps Like an Engineer: I’m Learning the Path, and Checking Whether My AI Follows It",
+        "date": "October 27, 2026",
+        "category": "Story",
+        "excerpt": "I'm learning how engineers build software, then checking whether AI app builders follow the same path, and which guardrails make them.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p><em>An introduction to a new series. I&rsquo;m learning the process software engineers follow, checking whether AI builders follow it too, and testing which guardrails make them.</em></p>
+
+<p>Two sentences come up almost every time AI-built apps are mentioned.</p>
+<p>From developers, IT teams and investors: <strong>&ldquo;AI-built apps are half-built. Messy, insecure, not real software.&rdquo;</strong></p>
+<p>From almost everyone else: <strong>&ldquo;I don&rsquo;t understand any of this. Everyone&rsquo;s talking about vibe coding and I feel left behind.&rdquo;</strong></p>
+<p>I&rsquo;ve heard both. I&rsquo;ve felt the second one myself. So I&rsquo;ve decided to find out for myself whether the first one is true, and whether it has to be.</p>
+
+<h2>The question I&rsquo;m trying to answer</h2>
+<p><strong>If I learn how a software engineer builds an app properly, can I get an AI builder to build it that way too?</strong></p>
+<p>Not &ldquo;can AI write code&rdquo;. It clearly can. The real question is whether it follows the same <em>path</em> an engineer follows: the planning, the checks, the testing, the care after launch. And if it doesn&rsquo;t, what guardrails make it?</p>
+<p>That&rsquo;s what this series is: my notes as I learn the path, check the AI against it, and test what works.</p>
+
+<h2>Why the question matters</h2>
+<p>Building an app has never been easier. Lovable, Replit, Bolt, Cursor and others turn an idea into a working app in an afternoon. They&rsquo;re also growing fast, adding hosting, databases, logins, payments and even their own security checks.</p>
+<p>But the worries aren&rsquo;t made up. In May, a security firm called RedAccess reported finding about 380,000 publicly reachable apps built on Lovable, Base44, Netlify and Replit. Around 5,000 of them exposed sensitive information, including business records and personal details. (<a href="https://www.axios.com/2026/05/07/loveable-replit-vibe-coding-privacy" target="_blank" rel="noopener">Axios</a>, <a href="https://securityboulevard.com/2026/05/thousands-of-vibe-coded-apps-exposing-corporate-personal-data-redaccess/" target="_blank" rel="noopener">Security Boulevard</a>)</p>
+<p>What struck me most: <strong>nobody hacked those apps.</strong> Most were simply left open, public when they should have been private. That isn&rsquo;t a clever attack. It&rsquo;s a step in the process that never happened.</p>
+<p>Which made me wonder how many other steps get skipped.</p>
+
+<h2>What I&rsquo;ve learned so far: the path</h2>
+<p>The first thing I learned is that engineers don&rsquo;t just write code. They follow a process, and writing code is only one stage of it. Here&rsquo;s the path as I understand it so far:</p>
+<ul>
+<li><strong>Rules:</strong> agree how the work will be done before it starts.</li>
+<li><strong>Requirements:</strong> who it&rsquo;s for, what data it holds, what it won&rsquo;t do yet.</li>
+<li><strong>Architecture:</strong> which parts run on the user&rsquo;s screen and which run on a server you control. (This is where most leaks seem to start.)</li>
+<li><strong>Build:</strong> keep secrets secret, check permissions in the right place, make small changes.</li>
+<li><strong>Test:</strong> prove it works, including when things go wrong or someone tries what they shouldn&rsquo;t.</li>
+<li><strong>Release:</strong> go live in a way you can undo.</li>
+<li><strong>Operate:</strong> know when something breaks, before your users tell you.</li>
+<li><strong>Maintain:</strong> keep it healthy, because an app that&rsquo;s safe in January can be unsafe in June without you changing a thing.</li>
+</ul>
+<p>And at every stage, engineers ask three questions:</p>
+<ul>
+<li><strong>What could go wrong?</strong></li>
+<li><strong>How would I know if it did?</strong></li>
+<li><strong>How do I undo it?</strong></li>
+</ul>
+
+<h2>My hunch (to be tested)</h2>
+<p>Here&rsquo;s the honest part. My hunch is that AI builders are very good at one stage, writing the code, and quietly skip a lot of the others. Not because they can&rsquo;t do them, but because nobody asks them to.</p>
+<p>I&rsquo;ve seen small signs of it already. When I asked a builder to fix a security problem, it told me it was done. It was, inside the builder. But the fix hadn&rsquo;t reached GitHub, so as far as everything else could see, nothing had changed. &ldquo;Done&rdquo; and &ldquo;done properly&rdquo; weren&rsquo;t the same thing.</p>
+<p>If the hunch is right, the problem with AI-built apps isn&rsquo;t the AI. It&rsquo;s the missing half of the process. And that should be fixable by someone who learns the process, even without writing the code themselves.</p>
+<p>But a hunch isn&rsquo;t a finding. So I&rsquo;m going to check.</p>
+
+<h2>How I&rsquo;ll check</h2>
+<p>For each stage of the path, I&rsquo;ll do the same four things:</p>
+<ol>
+<li><strong>Learn it.</strong> What does an engineer actually do at this stage, and why? In plain English, with every term explained.</li>
+<li><strong>Watch the AI.</strong> Give an AI builder a normal request and see whether it does that stage on its own.</li>
+<li><strong>Add a guardrail.</strong> If it skips the stage, try a guardrail: a standing rule in the builder&rsquo;s instructions, a question to ask at the right moment, or an outside check.</li>
+<li><strong>Check the guardrail held.</strong> Not &ldquo;the AI said it did it&rdquo;, but evidence that it actually did.</li>
+</ol>
+<p>I&rsquo;ll report what I find, including when the AI does better than I expected, and when a guardrail I liked doesn&rsquo;t work.</p>
+
+<h2>The guardrails I&rsquo;m starting with</h2>
+<p>These are my starting ideas. Part of the point is finding out which ones work.</p>
+<ul>
+<li><strong>A rules file.</strong> Most builders let you give standing instructions that are read before every change. Lovable calls it Knowledge, Cursor has Rules, Claude Code reads a CLAUDE.md file. I want to know whether a good rules file can make an AI follow the engineer&rsquo;s path by default.</li>
+<li><strong>The right question at the right moment.</strong> For example, before building: &ldquo;What data does this app store, and what happens if it leaks?&rdquo; Or after a change: &ldquo;Show me the test that proves this works for the wrong user too.&rdquo;</li>
+<li><strong>An outside check.</strong> Something that looks at the result without trusting the builder&rsquo;s word. Some platforms now check their own work. Lovable, for example, runs a quick security scan every time you publish, and its own documentation says those scans don&rsquo;t replace a thorough security review (<a href="https://docs.lovable.dev/features/security" target="_blank" rel="noopener">Lovable docs</a>). That&rsquo;s where my own tool, Verilay, comes in: an independent second look at the code and the live site. I&rsquo;ll be clear about what it can and can&rsquo;t check, the same as any other tool.</li>
+<li><strong>A human, at the right moments.</strong> Engineers have their work reviewed by other engineers as normal practice. I want to find out when that second pair of human eyes matters most.</li>
+</ul>
+
+<h2>Who might find this useful</h2>
+<p><strong>If you&rsquo;ve never built anything</strong> and feel left out of the conversation: you&rsquo;re learning alongside me. Every term gets explained. No question is too basic.</p>
+<p><strong>If you&rsquo;ve built an app with AI</strong> and quietly wonder whether it&rsquo;s &ldquo;proper&rdquo;: you can run the same checks on your own app as I go.</p>
+<p><strong>If you&rsquo;re a developer, in IT, or an investor</strong> and you&rsquo;re sceptical: I&rsquo;d genuinely value you checking my work. If I&rsquo;ve misunderstood how engineers do something, tell me.</p>
+
+<h2>What&rsquo;s coming</h2>
+<p>Roughly in this order, though your questions may change it:</p>
+<ul>
+<li><strong>Start here:</strong> how software gets built, explained from the beginning</li>
+<li><strong>A plain-English glossary</strong>, growing with each post</li>
+<li><strong>The rules file:</strong> can one setting make an AI builder follow the engineer&rsquo;s path?</li>
+<li><strong>The open database:</strong> why it keeps happening, and what catches it</li>
+<li><strong>&ldquo;It works&rdquo; vs &ldquo;it&rsquo;s done&rdquo;:</strong> what proof should look like</li>
+<li><strong>Who checks what:</strong> AI code reviewers, security scanners, penetration testing and human engineers</li>
+<li><strong>When a human engineer is worth it</strong>, and why it&rsquo;s not about distrusting AI</li>
+<li><strong>Choosing an AI app builder:</strong> the questions that actually matter</li>
+<li><strong>Day 30:</strong> what happens after an app goes live</li>
+</ul>
+
+<h2>Tell me where to start</h2>
+<p>Which question would you most like answered first? Email me at <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>.</p>
+<p>And if you feel left behind by all of this: so did I. That&rsquo;s why I&rsquo;m writing it down.</p>
+""",
+    },
+    {
         "slug": "scanner-and-ai-builder-disagree-github-sync",
         "title": "Why Your Security Scanner and Your AI Builder Disagree (and the GitHub Sync Trap)",
         "date": "October 24, 2026",
