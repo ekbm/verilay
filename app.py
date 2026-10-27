@@ -4264,6 +4264,38 @@ def waitlist():
         return jsonify({"ok": False, "error": str(e)})
 
 
+FEEDBACK_ALERTS_PER_HOUR = 20
+_FEEDBACK_SENT = []
+
+
+def _feedback_alert(report_id, data, helpful, comment, email):
+    """Tell the admin about a rating (27 Oct 2026, Moses: "get the feedback immediately"). The thumb arrives first; a
+    comment or email added afterwards comes as a second email. At most FEEDBACK_ALERTS_PER_HOUR, so a flood cannot fill
+    the inbox, and kept apart from the security alerts' own cap."""
+    try:
+        now = time.time()
+        with _ALERT_LOCK:
+            _FEEDBACK_SENT[:] = [t for t in _FEEDBACK_SENT if now - t < 3600]
+            if len(_FEEDBACK_SENT) >= FEEDBACK_ALERTS_PER_HOUR:
+                return False
+            _FEEDBACK_SENT.append(now)
+        d = data if isinstance(data, dict) else {}
+        kind = "Deep" if d.get("is_deep_scan") else ("Pro" if d.get("scan_tier") == "pro" else "Free")
+        thumb = "\U0001F44D" if helpful is True else ("\U0001F44E" if helpful is False else "rating")
+        lines = [f"{thumb} on {str(d.get('repo') or 'a report')[:80]} ({kind} scan, grade {(d.get('health') or {}).get('score') or '?'})",
+                 f"Report: https://verilay.dev/report/{report_id}" if report_id else "Report: not saved"]
+        if comment:
+            lines.append(f"Comment: {comment[:600]}")
+        if email:
+            lines.append(f"Their email (only to follow up on this): {email}")
+        subject = (f"feedback {thumb} on {str(d.get('repo') or 'a report')[:50]}" + (" (with a comment)" if comment else ""))
+        threading.Thread(target=notify.send_admin_alert, args=(subject, lines + [
+            f"When: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC", f"Country: {visitor_country() or 'unknown'}"]), daemon=True).start()
+        return True
+    except Exception:
+        return False
+
+
 @app.route("/feedback", methods=["POST"])
 def feedback():
     try:
@@ -4277,6 +4309,13 @@ def feedback():
         email = str(data.get("email") or "").strip()[:254]
         report_id = str(data.get("report_id") or "")[:64]
         print(f"Feedback: helpful={helpful} report={report_id} email={email} comment={comment[:100]}", flush=True)
+        _fb_data = None
+        try:
+            _fb_data = get_report_data(report_id) if report_id else None
+        except Exception:
+            _fb_data = None
+        if helpful in (True, False) or comment or email:
+            _feedback_alert(report_id, _fb_data, helpful, comment, email)
         if _HAS_SUPABASE and report_id:
             try:
                 existing = get_report_data(report_id)
@@ -7082,11 +7121,13 @@ def _scan_rows(limit=60):
                  "files": (v.get("data") or {}).get("files_read"), "notchecked": (v.get("data") or {}).get("layers_not_checked"),
                  "built": (v.get("data") or {}).get("built_with"), "user_id": None, "compared": (v.get("data") or {}).get("comparison"),
                  "survey": (v.get("data") or {}).get("pro_survey"), "deleted": str(bool((v.get("data") or {}).get("deleted"))).lower(),
-                 "incomplete": (v.get("data") or {}).get("analysis_incomplete"), "country": (v.get("data") or {}).get("country")}
+                 "incomplete": (v.get("data") or {}).get("analysis_incomplete"), "country": (v.get("data") or {}).get("country"),
+                 "rating": (v.get("data") or {}).get("feedback_helpful")}
                 for k, v in list(_reports.items())[-limit:]][::-1]
     cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
             "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
-            "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country")
+            "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
+            "rating:data->>feedback_helpful")
     try:
         return _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
     except Exception as e:
@@ -7133,6 +7174,12 @@ def admin_scans():
     countries = ('<br><b>Where from</b> (these scans): ' + " &middot; ".join(f"{_flag(k)}: {n}" for k, n in top)
                  + (f' &middot; <span class="note">{sum(1 for r in rows if not r.get("country"))} without a country (older scans, or deep scans)</span>'
                     if any(not r.get("country") for r in rows) else "")) if top else ""
+    def _rating(r):
+        v = str(r.get("rating")).strip().lower()
+        return "up" if v in ("true", "1") else ("down" if v in ("false", "0") else "")
+    ups, downs = sum(1 for r in rows if _rating(r) == "up"), sum(1 for r in rows if _rating(r) == "down")
+    countries += (f'<br><b>Ratings</b> (these scans): {ups} &#128077; &middot; {downs} &#128078;' if ups or downs else
+                  '<br><b>Ratings</b> (these scans): none yet')
     summary = (f'<div class="card"><b>Today (UTC):</b> {len(todays)} scan{"" if len(todays) == 1 else "s"}'
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(counts.items())) if counts else "")
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(how_counts.items())) if how_counts else "")
@@ -7165,7 +7212,9 @@ def admin_scans():
                   f'<td><a href="/report/{esc(str(r.get("id") or ""))}" target="_blank" rel="noopener">{esc(str(r.get("repo") or "Untitled")[:60])}</a>'
                   f'{" &#128274;" if priv else ""}</td><td>{_flag(r.get("country"))}</td><td>{how}</td>'
                   f'<td><span class="pill" style="background:{bg};color:{fg}">{k}</span></td><td><b>{grade}</b></td><td>{areas}</td>'
-                  f'<td>{esc(str(r.get("files") or "–"))}</td><td>{built}</td><td class="note">{", ".join(extras)}</td></tr>')
+                  f'<td>{esc(str(r.get("files") or "–"))}</td><td>{built}</td>'
+                  f'<td>{"&#128077;" if _rating(r) == "up" else ("&#128078;" if _rating(r) == "down" else "")}</td>'
+                  f'<td class="note">{", ".join(extras)}</td></tr>')
     body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" '
             f'content="width=device-width,initial-scale=1"><title>Latest scans</title><style>body{{font-family:-apple-system,sans-serif;'
             f'background:#f8f8f7;margin:0;padding:24px 16px;color:#1a1917}}.w{{max-width:1100px;margin:0 auto}}.card{{background:#fff;border:.5px solid #e5e3dc;'
@@ -7175,7 +7224,7 @@ def admin_scans():
             f'.pill{{font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px}}a{{color:#534AB7}}</style></head><body>'
             f'<div class="w"><a href="/admin">&larr; Admin</a><h1>Latest scans</h1>{summary}<div style="overflow-x:auto"><table>'
             f'<tr><th>When (UTC)</th><th>App</th><th>Country</th><th>How</th><th>Kind</th><th>Grade</th><th>Areas checked</th><th>Files</th>'
-            f'<th>Built with</th><th>Notes</th></tr>{lines}</table></div>'
+            f'<th>Built with</th><th>Rating</th><th>Notes</th></tr>{lines}</table></div>'
             f'<p class="note">&#128274; = private repository (only you, as admin, and its owner can open it).</p></div></body></html>')
     resp = Response(body, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-store"
@@ -9760,6 +9809,22 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   <!-- "What's next": one line for this report, and the quiet "see all options" footer (whatsNextHTML) -->
   <div id="report-next"></div>
 
+  <!-- Feedback widget: right under the report (27 Oct 2026; it used to sit under the footer links, where few saw it) -->
+  <div id="feedback-widget" style="display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;text-align:center">
+    <div style="font-size:14px;font-weight:500;margin-bottom:.65rem">Was this report helpful?</div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:.5rem">
+      <button id="btn-feedback-up" onclick="submitFeedback(true)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-base) var(--ease-out)">👍</button>
+      <button id="btn-feedback-down" onclick="submitFeedback(false)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-base) var(--ease-out)">👎</button>
+    </div>
+    <div id="feedback-text-area" style="display:none;margin-top:.5rem">
+      <textarea id="feedback-text" placeholder="What could be better? (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;background:var(--bg);color:var(--txt)"></textarea>
+      <input id="feedback-email" type="email" placeholder="Your email — only if you'd like us to follow up (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;margin-top:6px;box-sizing:border-box;background:var(--bg);color:var(--txt)" />
+      <div style="font-size:12px;color:var(--mut);margin-top:4px;text-align:left">We'll only use your email to follow up about this feedback.</div>
+      <button onclick="sendFeedbackText()" style="margin-top:6px;font-size:13px;padding:5px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Send feedback</button>
+    </div>
+    <div id="feedback-thanks" style="display:none;font-size:14px;color:var(--mut)">Thanks for the feedback! 🙏</div>
+  </div>
+
   <!-- Layers injected here by appendLayers -->
   <div id="layers-container"></div>
 
@@ -9782,21 +9847,6 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     </div>
   </div>
 
-  <!-- Feedback widget -->
-  <div id="feedback-widget" style="display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;text-align:center">
-    <div style="font-size:14px;font-weight:500;margin-bottom:.65rem">Was this analysis helpful?</div>
-    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:.5rem">
-      <button id="btn-feedback-up" onclick="submitFeedback(true)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-base) var(--ease-out)">👍</button>
-      <button id="btn-feedback-down" onclick="submitFeedback(false)" style="font-size:20px;background:none;border:0.5px solid var(--bdr);border-radius:8px;padding:6px 16px;cursor:pointer;transition:transform var(--dur-fast) var(--ease-out),border-color var(--dur-base) var(--ease-out)">👎</button>
-    </div>
-    <div id="feedback-text-area" style="display:none;margin-top:.5rem">
-      <textarea id="feedback-text" placeholder="What could be better? (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;background:var(--bg);color:var(--txt)"></textarea>
-      <input id="feedback-email" type="email" placeholder="Your email — only if you'd like us to follow up (optional)" style="width:100%;border:0.5px solid var(--bdr);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;margin-top:6px;box-sizing:border-box;background:var(--bg);color:var(--txt)" />
-      <div style="font-size:12px;color:var(--mut);margin-top:4px;text-align:left">We'll only use your email to follow up about this feedback.</div>
-      <button onclick="sendFeedbackText()" style="margin-top:6px;font-size:13px;padding:5px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer">Send feedback</button>
-    </div>
-    <div id="feedback-thanks" style="display:none;font-size:14px;color:var(--mut)">Thanks for the feedback! 🙏</div>
-  </div>
 
   <div class="bottom-cta">
     <div style="font-size:14px;font-weight:500;margin-bottom:.4rem">Analyse another app?</div>
