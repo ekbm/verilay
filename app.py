@@ -7103,6 +7103,113 @@ def admin_scans():
     return resp
 
 
+# ── Users and sign-ups, for the admin (27 Oct 2026) ───────────────────────────────────────────────────────────────
+# Moses: "there is no admin visibility of users who sign up". Two lists in one place: the accounts (Supabase sign-in:
+# email, joined, last sign-in, scans saved to the account, private reports, deep scans bought) and the email lists
+# people joined (the waitlist table, by source: Pro early access, Self Fix early access, feature emails...). Admin
+# only, never cached. Emails are personal data: this page is for running Verilay, not for exporting lists.
+_LIST_SOURCES = {
+    "pro-scan": "Pro early access",
+    "pro-launch-updates": "Tell me when Pro and Self Fix open",
+    "verilay-features": "Occasional feature emails",
+    "fix-session": "Self Fix early access (Pricing page)",
+    "fix-session-report": "Self Fix early access (line on a report)",
+    "fix-session-compare": "Self Fix early access (compare page)",
+    "fix-session-footer": "Self Fix early access (report footer)",
+    "fix-sessions": "Fix sessions (after an improved rescan)",
+    "private-repos": "Private repos interest",
+}
+
+
+def _accounts():
+    """[(email, joined, last_sign_in, id)] newest first, from Supabase sign-in. [] when not available."""
+    if not _HAS_SUPABASE:
+        return []
+    out = []
+    try:
+        for page in range(1, 6):                       # up to 1,000 accounts; plenty for now
+            users = _sb.auth.admin.list_users(page=page, per_page=200) or []
+            for u in users:
+                g = (lambda k: getattr(u, k, None) if not isinstance(u, dict) else u.get(k))
+                out.append((str(g("email") or ""), str(g("created_at") or "")[:16].replace("T", " "),
+                            str(g("last_sign_in_at") or "")[:16].replace("T", " "), str(g("id") or "")))
+            if len(users) < 200:
+                break
+    except Exception as e:
+        print(f"/admin/users: accounts unavailable: {type(e).__name__}: {e}", flush=True)
+        return None
+    return sorted(out, key=lambda r: r[1], reverse=True)
+
+
+@app.route("/admin/users")
+def admin_users():
+    """Accounts and email-list sign-ups (admin only)."""
+    if not _request_is_admin():
+        return "Not found", 404
+    esc = _htmlmod.escape
+    accounts = _accounts()
+    per_user, priv_user, bought = {}, {}, {}
+    waitlist = []
+    if _HAS_SUPABASE:
+        try:
+            for r in (_sb.table("reports").select("user_id,private:data->>private").not_.is_("user_id", "null")
+                      .limit(5000).execute().data or []):
+                per_user[r["user_id"]] = per_user.get(r["user_id"], 0) + 1
+                if str(r.get("private")).lower() == "true":
+                    priv_user[r["user_id"]] = priv_user.get(r["user_id"], 0) + 1
+        except Exception as e:
+            print(f"/admin/users: report counts unavailable: {e}", flush=True)
+        try:
+            for r in (_sb.table("purchases").select("email").limit(5000).execute().data or []):
+                em = str(r.get("email") or "").lower()
+                bought[em] = bought.get(em, 0) + 1
+        except Exception as e:
+            print(f"/admin/users: purchases unavailable: {e}", flush=True)
+        try:
+            waitlist = (_sb.table("waitlist").select("email,source,created_at").order("created_at", desc=True)
+                        .limit(300).execute().data or [])
+        except Exception as e:
+            print(f"/admin/users: waitlist unavailable: {e}", flush=True)
+    week_ago = (datetime.utcnow() - _dt.timedelta(days=7)).strftime("%Y-%m-%d")
+    if accounts is None:
+        acc_html = '<div class="card">The account list could not be read just now (see the Railway log line "/admin/users").</div>'
+    else:
+        new_week = sum(1 for e_, j, l, i in accounts if j[:10] >= week_ago)
+        rows = "".join(
+            f'<tr><td>{esc(e_)}</td><td>{esc(j)}</td><td>{esc(l or "never")}</td><td>{per_user.get(i, 0)}</td>'
+            f'<td>{priv_user.get(i, 0) or ""}</td><td>{bought.get(e_.lower(), 0) or ""}</td></tr>' for e_, j, l, i in accounts)
+        acc_html = (f'<h2>Accounts <span class="note">({len(accounts)} in total, {new_week} new in the last 7 days)</span></h2>'
+                    '<p class="note">People who signed in with an email link: deep-scan buyers, private-repo users, and anyone who '
+                    'signed in from the login page.</p><div style="overflow-x:auto"><table><tr><th>Email</th><th>Joined (UTC)</th>'
+                    '<th>Last sign-in (UTC)</th><th>Scans saved</th><th>Private reports</th><th>Deep scans bought</th></tr>'
+                    + (rows or '<tr><td colspan="6" class="note">No accounts yet.</td></tr>') + '</table></div>')
+    counts = {}
+    for r in waitlist:
+        counts[r.get("source") or "?"] = counts.get(r.get("source") or "?", 0) + 1
+    count_html = " &middot; ".join(f"{esc(_LIST_SOURCES.get(k, k))}: <b>{n}</b>" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
+    wl_rows = "".join(
+        f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td><td>{esc(str(r.get("email") or ""))}</td>'
+        f'<td>{esc(_LIST_SOURCES.get(r.get("source") or "", r.get("source") or ""))}</td></tr>' for r in waitlist)
+    wl_html = (f'<h2>Email lists <span class="note">({len(waitlist)} sign-ups, newest first)</span></h2>'
+               + (f'<div class="card">{count_html}</div>' if count_html else "")
+               + '<p class="note">Who asked to hear about what. Only email people about the thing they signed up for.</p>'
+               '<div style="overflow-x:auto"><table><tr><th>When (UTC)</th><th>Email</th><th>Signed up for</th></tr>'
+               + (wl_rows or '<tr><td colspan="3" class="note">No sign-ups yet.</td></tr>') + '</table></div>'
+               '<p class="note">Monitoring interest and private-repo interest have their own lists on the Admin page; the Pro '
+               'launch survey is on <a href="/admin/pro-survey">its own page</a>.</p>')
+    body = (f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" '
+            f'content="width=device-width,initial-scale=1"><title>Users and sign-ups</title><style>body{{font-family:-apple-system,sans-serif;'
+            f'background:#f8f8f7;margin:0;padding:24px 16px;color:#1a1917}}.w{{max-width:1000px;margin:0 auto}}.card{{background:#fff;'
+            f'border:.5px solid #e5e3dc;border-radius:10px;padding:.7rem 1rem;margin:.5rem 0 1rem;font-size:14px;line-height:1.7}}'
+            f'.note{{color:#6b6966;font-size:12px;font-weight:400}}h2{{font-size:18px;margin:1.6rem 0 .3rem}}table{{border-collapse:collapse;'
+            f'width:100%;font-size:13px;background:#fff}}td,th{{border-bottom:.5px solid #e5e3dc;padding:6px 8px;text-align:left;vertical-align:top}}'
+            f'th{{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b6966}}a{{color:#534AB7}}</style></head><body>'
+            f'<div class="w"><a href="/admin">&larr; Admin</a><h1>Users and sign-ups</h1>{acc_html}{wl_html}</div></body></html>')
+    resp = Response(body, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 # ── Pricing page (25 Oct 2026) ────────────────────────────────────────────────────
 # Every option side by side, kept apart from the deep-scan sales page. Only what exists is offered for use or sale;
 # planned products are marked as planned and lead to early access. The Pro card follows the launch state.
