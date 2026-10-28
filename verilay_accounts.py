@@ -45,12 +45,13 @@ except Exception:
 
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-# Auth calls should use the anon (publishable) key. It is the right key for
-# "sign this person in" and it is what Supabase's own examples use. If only the
-# one existing key is set we fall back to it so nothing breaks, but see
-# PAYWALL_SETUP.md — set SUPABASE_ANON_KEY.
-SUPABASE_ANON_KEY = (os.getenv("SUPABASE_ANON_KEY", "").strip()
-                     or os.getenv("SUPABASE_KEY", "").strip())
+# Auth calls use the anon (publishable) key, the right key for "sign this person in". There is no fallback to
+# SUPABASE_KEY any more (28 Oct 2026, Verilay's own deep scan: "sign-in falls back to the powerful database key"):
+# without SUPABASE_ANON_KEY, sign-in is switched off and /platform-health says so, instead of quietly running sign-in
+# with the key that ignores every privacy rule.
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
+if not SUPABASE_ANON_KEY and os.getenv("SUPABASE_KEY", "").strip():
+    print("[accounts] SUPABASE_ANON_KEY is not set: sign-in is switched off (see PAYWALL_SETUP.md)", flush=True)
 
 SESSION_DAYS = 30
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")

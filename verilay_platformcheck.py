@@ -146,7 +146,10 @@ def check_db_write():
 
 def check_supabase_auth():
     url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
-    key = (os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY") or "").strip()
+    key = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
+    if url and not key and (os.getenv("SUPABASE_KEY") or "").strip():
+        return _res(FAIL, "SUPABASE_ANON_KEY is not set", "Sign-in is switched off until SUPABASE_ANON_KEY (the publishable key) "
+                    "is added on Railway. It no longer falls back to the database key.")
     if not url or not key:
         return _res(SKIP, "not configured")
     try:
