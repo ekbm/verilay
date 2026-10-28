@@ -7863,7 +7863,13 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
               "pro": "Up to 50 files read, a fix prompt for every finding",
               "free": ("A quick check, with a fix prompt for the most serious problem" if data.get("scan_tier") == "lite"
                        else "A quick check of your code")}[_tier]
-    deep_badge = (f'<div class="tier-band" data-tier="{_tier}" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;'
+    # How the app was shared, next to the kind of scan (28 Oct 2026; same labels as app.js tierBandHTML).
+    _tmethod = {"github": "GitHub", "zip": "ZIP", "url": "Live URL", "github_private": "Private repo"}.get(raw_data.get("input_method") or "", "")
+    if _tmethod:
+        _tlabel = f"{_tlabel} &middot; {_tmethod}"
+    if raw_data.get("input_method") == "url":
+        _twhat = "What the site shows a browser, not the source code"
+    deep_badge = (f'<div class="tier-band" data-tier="{_tier}" data-method="{_htmlmod.escape(raw_data.get("input_method") or "")}" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;'
                   f'margin-bottom:.6rem"><span style="background:{_tline};color:#fff;font-size:12px;font-weight:700;padding:3px 11px;'
                   f'border-radius:20px">{_tlabel}</span><span style="font-size:12px;color:{_ttext}">{_twhat}</span></div>'
                   + (f'<a href="/apps/list/{_htmlmod.escape(report_id)}" style="display:inline-block;font-size:12px;color:#534AB7;'

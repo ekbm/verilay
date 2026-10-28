@@ -568,14 +568,19 @@ function reportTier(data) {
   if (data && data.is_deep_scan) return 'deep';
   return data && data.scan_tier === 'pro' ? 'pro' : 'free';
 }
+// How the app was shared, next to the kind of scan (28 Oct 2026, Moses: tell at a glance what a scan looked at).
+var _METHOD = {github: ['GitHub', 'ti-brand-github'], zip: ['ZIP', 'ti-file-zip'], url: ['Live URL', 'ti-world'],
+               github_private: ['Private repo', 'ti-lock']};
 function tierBandHTML(data) {
-  var t = reportTier(data), c = _TIERS[t];
+  var t = reportTier(data), c = _TIERS[t], m = _METHOD[data.input_method] || null;
   var what = t === 'deep' ? 'Up to 150 files read, every risky package named'
            : t === 'pro' ? 'Up to 50 files read, a fix prompt for every finding'
            : (data.scan_tier === 'lite' ? 'A quick check, with a fix prompt for the most serious problem' : 'A quick check of your code');
-  return '<div id="tier-band" data-tier="' + t + '" style="background:' + c[1] + ';border-left:4px solid ' + c[2] + ';border-radius:var(--r);' +
+  if (data.input_method === 'url') what = 'What the site shows a browser, not the source code';
+  return '<div id="tier-band" data-tier="' + t + '" data-method="' + esc(data.input_method || '') + '" style="background:' + c[1] + ';border-left:4px solid ' + c[2] + ';border-radius:var(--r);' +
     'padding:.55rem .9rem;margin-bottom:10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
-    '<span style="font-size:14px;font-weight:700;color:' + c[3] + '">' + c[0] + '</span>' +
+    '<span style="font-size:14px;font-weight:700;color:' + c[3] + '">' + c[0] +
+    (m ? ' &middot; <i class="ti ' + m[1] + '" style="font-size:14px"></i> ' + m[0] : '') + '</span>' +
     '<span style="font-size:13px;color:' + c[3] + '">' + what + '</span></div>';
 }
 function showProBadge() {
