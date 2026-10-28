@@ -787,6 +787,21 @@ SECURITY_KEYWORDS = [
 def smart_file_selection(files, max_files=25):
     """Intelligently select the most security-relevant files from a repo."""
     all_paths = list(files.keys())
+    # A repository that holds the same files twice (for example a copied js/ and js/js/ folder) used to spend reading
+    # slots on identical files (28 Oct 2026, a 25-file scan read three files twice). Keep one copy of each identical
+    # file, the one with the shortest path; tiny files (under 20 characters) are left alone.
+    _seen, _dups = {}, set()
+    for _p in sorted(all_paths, key=lambda x: (x.count("/"), len(x), x)):
+        _c = files.get(_p)
+        if not isinstance(_c, str) or len(_c) < 20:
+            continue
+        _h = _hashlib.sha1(_c.encode("utf-8", "ignore")).hexdigest()
+        if _h in _seen:
+            _dups.add(_p)
+        else:
+            _seen[_h] = _p
+    if _dups:
+        all_paths = [p for p in all_paths if p not in _dups]
 
     # Build a set of priority filenames for O(1) lookup
     priority_names = set()
@@ -2792,7 +2807,8 @@ def analyse_step1(files, tree, repo_name, method):
         "DEPTH: " + ("surface" if is_surface else "full") + "\n"
         "VERDICT: ready|needs_work|not_ready\n"
         "CONFIDENCE: high|medium|low\n"
-        "REASON: one sentence verdict\n"
+        "REASON: one sentence verdict about the app itself. Never say which files you were or were not given: "
+        "the code is reviewed separately, area by area\n"
         "CRITICAL: number of critical issues\n"
         "WARNINGS: number of warnings\n"
         "PASSING: number of passing checks\n"
