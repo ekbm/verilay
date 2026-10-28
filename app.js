@@ -1142,6 +1142,7 @@ async function runAnalysis() {
   window._discoverySum = null;
   window._incompleteLayers = [];
   window._layerErrorMsgs = [];
+  window._p2AutoStarted = false;      // each new scan starts its own Part 2
   stopTrickle();
   stopP2Trickle();
   var p2banner = document.getElementById('p2-banner');
@@ -1456,8 +1457,19 @@ function handleStreamEvent(evt) {
       updateStepsProgress(100);
       var lb = document.getElementById('steps23-loading');
       if (lb) lb.style.display = 'none';
+      // Part 2 (the fix prompts, and the Verilay Pro line after a free scan) now starts by itself (28 Oct 2026): behind a
+      // "Yes, run Part 2" button many people never saw their fix prompt or the Pro offer. The button stays as the
+      // fallback when nothing could be checked, or if the automatic start fails.
       var p2 = document.getElementById('p2-banner');
-      if (p2 && !(currentReport && currentReport.preview_only)) p2.style.display = 'block';
+      if (p2 && !(currentReport && currentReport.preview_only)) {
+        if (!scanFullyIncomplete() && !window._p2AutoStarted) {
+          window._p2AutoStarted = true;
+          try { if (typeof plausible === 'function') plausible('Part 2 Auto Start'); } catch (e) {}
+          setTimeout(function() { runPart2().catch(function() { p2.style.display = 'block'; }); }, 400);
+        } else {
+          p2.style.display = 'block';
+        }
+      }
       showCompareOffer();
       setTimeout(showMonitoringOffer, 1500);
       break;
