@@ -197,30 +197,25 @@ def send_report_email(email, ip, base_url, report_url, repo, headline, want_save
                        f"check your inbox and spam folder first. You can ask again in about {wait} seconds.")
     if not _allow_send(email, ip):
         return False, "We have sent several emails to that address already. Check your inbox and spam folder, or try again in an hour."
-    link = _save_link(email, base_url) if (want_save and notify.configured()) else None
-    separate = False
-    if want_save and not link:
-        # Fall back to Supabase's normal sign-in email: signing in with it still saves the report.
-        if not configured():
-            return False, "Saving reports by email is not available right now. Please try again later."
-        try:
-            _auth_client().auth.sign_in_with_otp({"email": email, "options": {
-                "should_create_user": True, "email_redirect_to": f"{base_url.rstrip('/')}/auth/callback"}})
-            separate = True
-        except Exception as e:
-            print(f"[accounts] report save sign-in email failed for {email}: {e}", flush=True)
-            return False, "Sending is taking longer than usual. Please wait a minute, check your inbox, then try again."
-    sent = notify.send_report_email(email, repo, headline, report_url, save_link=link, separate_save=separate)
-    if not sent and not separate:
-        return False, "We could not send the email just now. Please try again in a minute."
-    if not want_save:
-        return True, f"We emailed a copy of this report to {email}."
-    if separate and not sent:
-        return True, f"We sent a sign-in link to {email}. Click it to save this report to your account."
-    if separate:
-        return True, (f"We sent the report link to {email}, and a separate sign-in link: click that one to save it. "
+    if not want_save:                                  # already in an account: just a copy
+        if notify.send_report_email(email, repo, headline, report_url):
+            return True, f"We emailed a copy of this report to {email}."
+        return False, "We could not email a copy just now. The report is already saved to your account page."
+    link = _save_link(email, base_url) if notify.configured() else None
+    if link and notify.send_report_email(email, repo, headline, report_url, save_link=link):
+        return True, (f"We sent the report link to {email}. Click \u201cSave my report\u201d in the email to keep it. "
                       "It can take a minute or two, so check spam too.")
-    return True, (f"We sent the report link to {email}. Click \u201cSave my report\u201d in the email to keep it. "
+    # Verilay's own email could not go out (no save link, or the email service refused it; 28 Oct 2026 the first real
+    # try failed this way). Supabase's normal sign-in email instead: signing in with it still saves the report.
+    if not configured():
+        return False, "Saving reports by email is not available right now. Please try again later."
+    try:
+        _auth_client().auth.sign_in_with_otp({"email": email, "options": {
+            "should_create_user": True, "email_redirect_to": f"{base_url.rstrip('/')}/auth/callback"}})
+    except Exception as e:
+        print(f"[accounts] report save sign-in email failed for {email}: {e}", flush=True)
+        return False, "Sending is taking longer than usual. Please wait a minute, check your inbox, then try again."
+    return True, (f"We sent a sign-in link to {email}. Click it and this report is saved to your account. "
                   "It can take a minute or two, so check spam too.")
 
 
