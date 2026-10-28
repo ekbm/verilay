@@ -1836,6 +1836,7 @@ function updateHealthDisplay() {
   var vb = document.getElementById('verdict-banner');
   if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc) : (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
   refreshStartHere();
+  refreshAskChips(h);
   var ls = document.getElementById('sec-layers-sum');
   if (ls) ls.textContent = layersSummaryText(h, notChecked);
 }
@@ -2444,6 +2445,35 @@ function layerCountChip(layer) {
   return '<span class="lchip" title="No issues found" style="background:var(--grl);color:var(--grt)">&#10003;</span>';
 }
 
+// Suggested questions for "Ask Verilay about your report", fitted to the result.
+function askChipsHTML(data, h) {
+  var qs;
+  h = h || {};
+  if (data && data.preview_only) qs = ['Why should I scan my code instead?', 'What did this check look at?', 'Is my site set up safely?'];
+  else if ((h.critical || 0) > 0) qs = ['What should I fix first?', 'Explain the critical issue simply', 'Is my app safe to launch?'];
+  else if ((h.warnings || 0) > 0) qs = ['What should I fix first?', 'What do the warnings mean for me?', 'Is my app safe to launch?'];
+  else qs = ['Is my app safe to launch?', 'How do I keep it this way?', 'What did Verilay check?'];
+  return qs.map(function(q) {
+    return '<button type="button" class="ask-chip" onclick="askChip(this.textContent)" style="border:0.5px solid var(--pu);background:var(--sur);' +
+      'color:var(--put);border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer">' + esc(q) + '</button>';
+  }).join('');
+}
+function refreshAskChips(h) {
+  var box = document.getElementById('report-ask-chips');
+  if (box && currentReport) box.innerHTML = askChipsHTML(currentReport, h || currentReport.health || {});
+}
+function askChip(q) {
+  var input = document.getElementById('report-ask-input'), btn = document.getElementById('report-ask-btn');
+  if (!input || !btn) return;
+  if (btn.disabled && !savedReportId) {           // the report is not saved yet: say so instead of doing nothing
+    var hint = document.getElementById('report-ask-hint'); if (hint) hint.style.display = 'block';
+    return;
+  }
+  input.value = q;
+  try { if (typeof plausible === 'function') plausible('Report Ask Chip'); } catch (e) {}
+  askAboutReport();
+}
+
 function renderReport(data) {
   currentReport = data;
   // Load verifications from saved report data
@@ -2501,9 +2531,13 @@ function renderReport(data) {
   // Ask Verilay still exists as its own separate page/nav link, just not
   // duplicated inside every report anymore.
   var askStart = html.length;
-  html += '<div style="margin:.75rem 0;padding:1rem;background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r)">';
-  html += '<div style="font-size:14px;font-weight:600;color:var(--put);margin-bottom:2px">💬 Have questions about your results?</div>';
-  html += '<div style="font-size:13px;color:var(--put);margin-bottom:.85rem;line-height:1.55">Ask Verilay a quick question below, using your real results &mdash; or open Claude for a longer conversation about your specific code.</div>';
+  // 28 Oct 2026 (Moses liked the compare page's Ask): a visible card right after the fix prompts, with suggested
+  // questions to tap; it is no longer folded inside "More".
+  html += '<div style="margin:.85rem 0;padding:1rem;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r)">';
+  html += '<div style="font-size:16px;font-weight:600;color:var(--txt);margin-bottom:2px">&#128172; Ask Verilay about your report</div>';
+  html += '<div style="font-size:13px;color:var(--mut);margin-bottom:.6rem;line-height:1.55">Plain-English answers about your results. Tap a question or type your own.</div>';
+  html += '<div id="report-ask-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:.6rem">' + askChipsHTML(data, h) + '</div>';
+  html += '<div id="report-ask-hint" style="display:none;font-size:12px;color:var(--mut);margin-bottom:.4rem">Your report is still being saved; you can ask in a moment.</div>';
   // Report-grounded inline box -- disabled until the 'saved' SSE event sets
   // savedReportId (this card renders on step1, well before the report is
   // actually saved). See the 'saved' case in handleStreamEvent for the
@@ -2519,7 +2553,7 @@ function renderReport(data) {
   html += '<button onclick="askAIAboutReport()" style="font-size:13px;padding:7px 16px;border-radius:20px;background:var(--pu);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:500">Open Claude with my findings &rarr;</button>';
   html += '<span style="font-size:12px;color:var(--put);opacity:.7;margin-left:8px">Free Claude.ai account &mdash; digs into your specific code</span>';
   html += '</div>';
-  var askHtml = html.slice(askStart);
+  var askHtml = html.slice(askStart);    // shown in its own card under the fixes (#report-ask), not in "More"
   html = html.slice(0, askStart);
 
   var pills = (data.stack||[]).map(function(s) {
@@ -2614,7 +2648,8 @@ function renderReport(data) {
   if (discoveryInner) more.push(['sec-similar', 'Similar apps', secHtml('sec-similar', 'Similar open-source projects', window._discoverySum || 'See what already exists',
                                           '<div id="discovery-slot">' + discoveryInner + '</div>', false)]);
   more.push(['sec-diagram', 'How your app fits together', secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false)]);
-  more.push(['sec-ask', 'Ask Verilay', secHtml('sec-ask', 'Ask Verilay about your results', 'Plain-English answers', askHtml, false)]);
+  var askBox = document.getElementById('report-ask');
+  if (askBox) askBox.innerHTML = askHtml;
   if (!isPreview) {
     more.unshift(['sec-grade', 'About your grade', secHtml('sec-grade', 'About your grade', 'What the grade means and how to reach the next one', gradeHtml, false)]);
     more.unshift(['sec-details', 'Scan details', secHtml('sec-details', 'Scan details', 'What was scanned, the tech stack and the numbers', detailsHtml, false)]);
@@ -3361,6 +3396,7 @@ function renderPart2(data) {
                        ['sec-second', 'Second opinions', secHtml('sec-second', 'Second opinions and next steps', 'Prompts to verify the findings with any AI, and tools to go further', _extras, false)]];
   renderMoreBox((window._moreBase || []).concat(window._moreExtra));
   refreshStartHere();
+  refreshAskChips();
 }
 
 // Start everything when DOM is ready

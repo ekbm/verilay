@@ -2020,6 +2020,56 @@ def build_report_ask_prompt(data, question):
     return "".join(build_report_ask_parts(data, question))
 
 
+def report_ask_questions(is_preview, critical, warnings):
+    """Suggested questions for "Ask Verilay about your report", fitted to the result (same as app.js askChipsHTML)."""
+    try:
+        critical, warnings = int(critical or 0), int(warnings or 0)
+    except (TypeError, ValueError):
+        critical, warnings = 0, 0
+    if is_preview:
+        return ["Why should I scan my code instead?", "What did this check look at?", "Is my site set up safely?"]
+    if critical > 0:
+        return ["What should I fix first?", "Explain the critical issue simply", "Is my app safe to launch?"]
+    if warnings > 0:
+        return ["What should I fix first?", "What do the warnings mean for me?", "Is my app safe to launch?"]
+    return ["Is my app safe to launch?", "How do I keep it this way?", "What did Verilay check?"]
+
+
+def report_ask_card_html(report_id, questions, claude_url):
+    """The saved report's Ask card: tap a question or type one, answered from this report by /report/<id>/ask."""
+    esc = _htmlmod.escape
+    chips = "".join('<button type="button" class="rask-chip" style="border:.5px solid #534AB7;background:#fff;color:#3C3489;'
+                    'border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer">' + esc(q) + '</button>'
+                    for q in questions)
+    script = r"""<script>(function(){
+var rid=%s,q=document.getElementById('rask-q'),go=document.getElementById('rask-go'),out=document.getElementById('rask-out');
+if(!q||!go||!out)return;
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function ask(text){if(!text||go.disabled)return;go.disabled=true;var p=document.createElement('p');p.style.cssText='font-size:13px;color:#6b6966';
+ p.textContent='Thinking...';out.prepend(p);
+ try{var r=await fetch('/report/'+rid+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:text})}).then(function(x){return x.json();});
+  p.outerHTML=r.ok?'<div style="background:#F6F5F2;border-radius:8px;padding:.7rem .85rem;margin-top:.7rem;font-size:14px;line-height:1.6"><div style="font-size:13px;color:#6b6966;margin-bottom:.3rem">'+esc(text)+'</div>'
+   +esc(r.answer).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')+'</div>':'<p style="font-size:13px;color:#6b6966">'+esc(r.error||'That could not be answered. Try again.')+'</p>';}
+ catch(e){p.textContent='That could not be answered. Try again.';}
+ go.disabled=false;q.value='';}
+go.onclick=function(){ask((q.value||'').trim());};
+q.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();ask((q.value||'').trim());}};
+document.querySelectorAll('.rask-chip').forEach(function(b){b.onclick=function(){ask(b.textContent);};});
+})();</script>""" % json.dumps(report_id)
+    return ('<div class="card" id="report-ask" style="margin:1rem 0">'
+            '<div style="font-size:16px;font-weight:600;margin-bottom:2px">&#128172; Ask Verilay about your report</div>'
+            '<div style="font-size:13px;color:#6b6966;margin-bottom:.6rem;line-height:1.55">Plain-English answers about your results. '
+            'Tap a question or type your own.</div>'
+            f'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:.6rem">{chips}</div>'
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="rask-q" maxlength="1000" placeholder="Type your question..." '
+            'aria-label="Your question" style="flex:1;min-width:180px;border:.5px solid #d3d1c7;border-radius:6px;padding:8px 10px;'
+            'font-size:14px;font-family:inherit"><button type="button" id="rask-go" style="background:#534AB7;color:#fff;border:0;'
+            'border-radius:6px;padding:8px 16px;font-size:14px;font-family:inherit;cursor:pointer">Ask</button></div>'
+            '<div id="rask-out"></div>'
+            f'<div style="margin-top:.7rem;font-size:12px"><a href="{esc(claude_url)}" target="_blank" rel="noopener" class="ask-ai-cta" '
+            'style="color:#534AB7">Or open Claude with my findings &rarr;</a></div></div>' + script)
+
+
 @app.route("/report/<report_id>/ask", methods=["POST"])
 def ask_verilay_report(report_id):
     """Report-grounded Ask Verilay -- same shape as /ask, but scoped to one
@@ -7787,7 +7837,7 @@ Run a new analysis &rarr;</a>
     # Report tidy-up (25 Oct 2026): sections go into groups and are written in this order: the summary and numbers,
     # what was found, the automatic checks, how to fix it, one offer (the comparison), then everything else in one
     # collapsed "More details" box. Nothing is removed; only the order and the grouping change.
-    _B = {"head": out, "found": [], "checks": [], "fix": [], "offer": [], "more": [], "foot": []}
+    _B = {"head": out, "found": [], "checks": [], "fix": [], "ask": [], "offer": [], "more": [], "foot": []}
     out.append(f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8148,13 +8198,14 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                 + _dep_advice + selfcheck.render(["old_packages"]) + '</div>'
             )
 
-    out = _B["more"]
-    # Ask AI button
+    out = _B["ask"]
+    # "Ask Verilay about your report": a visible card after the fixes, with suggested questions, answered from this
+    # report by /report/<id>/ask (28 Oct 2026; it used to be only a link out to Claude, inside "More details").
     import urllib.parse as _urlparse
     _critical = [f'{l.get("name")}: {f2.get("title","")}' for l in layers for f2 in l.get("expert",{}).get("findings",[]) if f2.get("severity") in ["critical","warning"]]
     _ask_q = f"I ran Verilay on {data.get('repo','my app')} (Score {h.get('score','?')}) and got these issues:\n" + ("\n".join(_critical[:5]) or "No critical issues") + "\n\nExplain these simply and how to fix them. I am not a developer."
     _ask_url = "https://claude.ai/new?q=" + _urlparse.quote(_ask_q)
-    out.append(f'<div style="margin:.75rem 0;padding:.85rem 1rem;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px"><div><div style="font-size:13px;font-weight:600;color:#3C3489;margin-bottom:2px">🤖 Confused about a finding?</div><div style="font-size:12px;color:#3C3489">Ask AI to explain any issue in plain English and suggest how to fix it.</div></div><a href="{_ask_url}" target="_blank" class="ask-ai-cta" style="font-size:12px;padding:7px 16px;border-radius:20px;background:#534AB7;color:#fff;text-decoration:none;white-space:nowrap;font-weight:500;transition:transform var(--dur-fast) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)">Ask AI about this report →</a></div>')
+    out.append(report_ask_card_html(report_id, report_ask_questions(is_preview, h.get("critical"), h.get("warnings")), _ask_url))
 
     out = _B["found"]
     # Layers — <details> rather than a plain <div>: this page has no JS at
@@ -8209,7 +8260,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _more_html = ('<details class="card" id="more-details" style="margin-top:1rem"><summary style="cursor:pointer;font-size:14px;'
                   'font-weight:600;color:#3C3489">More details: scan stats, tech stack, how your app fits together, similar '
                   'projects, second opinions</summary><div style="margin-top:.75rem">' + _more + '</div></details>') if _more.strip() else ""
-    return "".join(_B["head"] + _B["found"] + _B["checks"] + _B["fix"] + _B["offer"] + [_more_html] + _B["foot"])
+    return "".join(_B["head"] + _B["found"] + _B["checks"] + _B["fix"] + _B["ask"] + _B["offer"] + [_more_html] + _B["foot"])
 
 
 @app.route("/report/<report_id>/it-review")
@@ -9967,6 +10018,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
   </div>
 
   <div id="p2-results"></div>
+
+  <!-- "Ask Verilay about your report": its own card under the fixes, with suggested questions (28 Oct 2026) -->
+  <div id="report-ask"></div>
 
   <!-- "More": checks, similar apps, diagram, Ask Verilay, share and IT pack (renderMoreBox), under the fixes -->
   <div id="report-more"></div>
