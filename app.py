@@ -2097,7 +2097,8 @@ def email_me_report(report_id):
             return jsonify({"ok": False, "error": "That could not be sent just now. Please try again."}), 500
     base = paywall.billing.BASE_URL if _HAS_PAYWALL else "https://verilay.dev"
     ok, msg = _acc.send_report_email(email, get_ip(), base, f"{base}/report/{report_id}",
-                                     str(data.get("repo") or "your app")[:120], report_email_headline(data), want_save)
+                                     str(data.get("repo") or "your app")[:120], report_email_headline(data), want_save,
+                                     report_id=report_id)
     if not ok:
         return jsonify({"ok": False, "error": msg}), 429
     if want_save:

@@ -28,8 +28,10 @@ import os
 import smtplib
 import email as _email
 from email.header import decode_header as _decode_header, make_header as _make_header
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import parseaddr as _parseaddr
+from html import escape as _esc
 
 import requests
 
@@ -89,11 +91,19 @@ class _ZeptoAPI:
     def sendmail(self, envelope_from, to_addrs, msg_string):
         msg = _email.message_from_string(msg_string)
         name, address = _parseaddr(_header_text(msg.get("From")) or envelope_from)
-        payload = msg.get_payload(decode=True)
-        body = payload.decode(msg.get_content_charset() or "utf-8", "replace") if isinstance(payload, bytes) else str(msg.get_payload())
+        bodies = {}
+        for part in (msg.walk() if msg.is_multipart() else [msg]):
+            ctype = part.get_content_type()
+            if ctype not in ("text/plain", "text/html") or ctype in bodies:
+                continue
+            payload = part.get_payload(decode=True)
+            bodies[ctype] = (payload.decode(part.get_content_charset() or "utf-8", "replace")
+                             if isinstance(payload, bytes) else str(part.get_payload()))
         data = {"from": {"address": address or envelope_from, "name": name or "Verilay"},
                 "to": [{"email_address": {"address": a}} for a in to_addrs],
-                "subject": _header_text(msg.get("Subject")), "textbody": body}
+                "subject": _header_text(msg.get("Subject")), "textbody": bodies.get("text/plain", "")}
+        if bodies.get("text/html"):
+            data["htmlbody"] = bodies["text/html"]
         reply_name, reply_to = _parseaddr(_header_text(msg.get("Reply-To")))
         if reply_to:
             data["reply_to"] = [{"address": reply_to, **({"name": reply_name} if reply_name else {})}]
@@ -151,6 +161,27 @@ def send_scan_complete_email(email, repo, report_url):
         return False
 
 
+def _report_email_html(repo, headline, report_url, save_link, separate_save):
+    """The same email with buttons. Plain inline styles: email apps ignore style sheets."""
+    btn = ("display:inline-block;padding:11px 20px;border-radius:8px;font-weight:600;font-size:15px;text-decoration:none;")
+    parts = [f'<p style="font-size:18px;font-weight:700;margin:0 0 6px">Your Verilay report for {_esc(repo)}</p>',
+             f'<p style="font-size:15px;margin:0 0 18px">{_esc(headline)}</p>',
+             f'<p style="margin:0 0 22px"><a href="{_esc(report_url)}" style="{btn}background:#ffffff;color:#534AB7;'
+             f'border:1px solid #534AB7">See your report</a></p>']
+    if save_link:
+        parts += ['<p style="font-size:14px;margin:0 0 10px">Save it to your account so it is kept for good. Free reports are '
+                  'deleted after 90 days. No password needed.</p>',
+                  f'<p style="margin:0 0 22px"><a href="{_esc(save_link)}" style="{btn}background:#534AB7;color:#ffffff">'
+                  'Save my report</a></p>',
+                  '<p style="font-size:12px;color:#6b6966;margin:0 0 18px">Didn\'t ask for this? Ignore this email and nothing is saved.</p>']
+    elif separate_save:
+        parts.append('<p style="font-size:14px;margin:0 0 18px">To keep it for good, click the sign-in link we sent in a separate email.</p>')
+    parts.append('<p style="font-size:12px;color:#6b6966;margin:0">Verilay &middot; <a href="https://verilay.dev" '
+                 'style="color:#534AB7">verilay.dev</a></p>')
+    return ('<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;color:#1a1917;'
+            'max-width:520px;margin:0 auto;padding:20px">' + "".join(parts) + "</div>")
+
+
 def send_report_email(email, repo, headline, report_url, save_link=None, separate_save=False):
     """ "Email me this report" (28 Oct 2026): the report link, and (for a report not yet in an account) a one-click
     link that signs them in and saves it. Best-effort: returns True/False, never raises."""
@@ -165,7 +196,9 @@ def send_report_email(email, repo, headline, report_url, save_link=None, separat
     elif separate_save:
         lines += ["To keep it for good, click the sign-in link we sent in a separate email.", ""]
     lines += ["— Verilay", "https://verilay.dev"]
-    msg = MIMEText("\n".join(lines))
+    msg = MIMEMultipart("alternative")
+    msg.attach(MIMEText("\n".join(lines), "plain", "utf-8"))
+    msg.attach(MIMEText(_report_email_html(repo, headline, report_url, save_link, separate_save), "html", "utf-8"))
     msg["Subject"] = f"Your Verilay report for {repo}"
     msg["From"] = FROM_ADDRESS
     msg["To"] = email

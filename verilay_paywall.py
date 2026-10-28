@@ -876,6 +876,46 @@ def auth_callback():
     return _page("Signing in", body, robots="noindex")
 
 
+# "Save my report" from the report email (28 Oct 2026). Opening the link only shows a button: some mail services open
+# every link in an email to check it, which would use up the one-time code before the person clicks. Pressing the button
+# checks the code, signs them in (which saves the report, see _establish) and goes to the report.
+_SAVE_RID = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
+
+
+@bp.route("/save", methods=["GET", "POST"])
+def save_report_link():
+    code = (request.values.get("code") or "")[:200]
+    vtype = (request.values.get("t") or "")[:20]
+    rid = request.values.get("r") or ""
+    rid = rid if _SAVE_RID.match(rid) else ""
+    back = f"/report/{rid}" if rid else "/"
+    if request.method == "POST":
+        user, err = accounts.verify_save_code(code, vtype)
+        if not err:
+            _establish(user)
+            return redirect(f"/report/{rid}?saved=1" if rid else "/account")
+        body = f"""
+  <div class="err">{_esc(err)}</div>
+  <h1>That link did not work</h1>
+  <p>Each "Save my report" link works once. Open <a href="{_esc(back)}">your report</a> and use "Email me this report"
+  to get a new one, or <a href="/login">sign in</a> with the same email: your report is saved when you do.</p>
+"""
+        return _page("Save my report", body, robots="noindex,nofollow")
+    body = f"""
+  <h1>Save your report</h1>
+  <p>Press the button to save this report to your Verilay account. It is then kept for good, and your next free scans
+  are saved too. No password needed.</p>
+  <form method="POST" action="/save">
+    <input type="hidden" name="code" value="{_esc(code)}">
+    <input type="hidden" name="t" value="{_esc(vtype)}">
+    <input type="hidden" name="r" value="{_esc(rid)}">
+    <button class="btn" type="submit">Save my report</button>
+  </form>
+  <p class="note">Didn't ask for this? Close this page and nothing is saved.</p>
+"""
+    return _page("Save my report", body, robots="noindex,nofollow")
+
+
 @bp.route("/auth/session", methods=["POST"])
 def auth_session():
     data = request.get_json(silent=True) or {}

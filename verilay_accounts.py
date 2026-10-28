@@ -31,6 +31,7 @@ import os
 import re
 import time
 import threading
+from urllib.parse import urlencode
 from functools import wraps
 
 from flask import session, redirect, request
@@ -163,10 +164,14 @@ def send_login_email(email, ip=None, base_url="https://verilay.dev", create_user
 
 
 # ── "Email me this report" ──────────────────────────────────────────────────────
-def _save_link(email, base_url):
-    """A one-click sign-in link made by Supabase but sent in Verilay's own email, so that email can carry the report.
-    "magiclink" is for an existing account, "invite" creates one. None when neither works (then the caller falls back
-    to the normal sign-in email). Needs the server's own database key (SUPABASE_KEY)."""
+SAVE_CODE_TYPES = ("magiclink", "invite", "signup", "email")
+
+
+def _save_link(email, base_url, report_id=None):
+    """A one-click sign-in link for Verilay's own email, so that email can carry the report. Supabase makes the one-time
+    code ("magiclink" for an existing account, "invite" creates one); the link itself is on verilay.dev (28 Oct 2026,
+    Moses: a supabase.co link in a verilay.dev email looks like phishing). None when no code can be made (then the
+    caller falls back to the normal sign-in email). Needs the server's own database key (SUPABASE_KEY)."""
     key = os.getenv("SUPABASE_KEY", "").strip()
     if not (_HAS_SUPABASE_LIB and SUPABASE_URL and key):
         return None
@@ -175,15 +180,36 @@ def _save_link(email, base_url):
         try:
             res = _create_client(SUPABASE_URL, key).auth.admin.generate_link(
                 {"type": kind, "email": email, "options": {"redirect_to": redirect_to}})
-            link = getattr(getattr(res, "properties", None), "action_link", "") or ""
-            if link.startswith("https://"):
-                return link
+            props = getattr(res, "properties", None)
+            code = getattr(props, "hashed_token", "") or ""
+            vtype = str(getattr(props, "verification_type", "") or kind)
+            if code and vtype in SAVE_CODE_TYPES:
+                q = {"code": code, "t": vtype}
+                if report_id:
+                    q["r"] = report_id
+                return f"{base_url.rstrip('/')}/save?" + urlencode(q)
         except Exception as e:
             print(f"[accounts] generate_link ({kind}) failed for {email}: {e}", flush=True)
     return None
 
 
-def send_report_email(email, ip, base_url, report_url, repo, headline, want_save=True):
+def verify_save_code(code, vtype):
+    """The code from a "Save my report" link. Returns (user, error). Each code works once."""
+    code = (code or "").strip()
+    if not code or len(code) > 200 or vtype not in SAVE_CODE_TYPES or not configured():
+        return None, "That link is not complete. Copy the whole link from the email, or ask for a new one."
+    try:
+        res = _auth_client().auth.verify_otp({"token_hash": code, "type": vtype})
+    except Exception as e:
+        print(f"[accounts] save code check failed: {e}", flush=True)
+        return None, "That link has expired or was already used."
+    user = getattr(res, "user", None)
+    if not user or not user.email:
+        return None, "That link has expired or was already used."
+    return {"id": str(user.id), "email": user.email.lower()}, None
+
+
+def send_report_email(email, ip, base_url, report_url, repo, headline, want_save=True, report_id=None):
     """Email a report link; with `want_save`, also a link that signs them in and saves the report to their account.
     Shares the sign-in email limits, so it cannot be used to send mail to strangers. Returns (ok, message)."""
     import verilay_notify as notify
@@ -201,7 +227,7 @@ def send_report_email(email, ip, base_url, report_url, repo, headline, want_save
         if notify.send_report_email(email, repo, headline, report_url):
             return True, f"We emailed a copy of this report to {email}."
         return False, "We could not email a copy just now. The report is already saved to your account page."
-    link = _save_link(email, base_url) if notify.configured() else None
+    link = _save_link(email, base_url, report_id) if notify.configured() else None
     if link and notify.send_report_email(email, repo, headline, report_url, save_link=link):
         return True, (f"We sent the report link to {email}. Click \u201cSave my report\u201d in the email to keep it. "
                       "It can take a minute or two, so check spam too.")
