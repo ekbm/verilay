@@ -2445,6 +2445,50 @@ function layerCountChip(layer) {
   return '<span class="lchip" title="No issues found" style="background:var(--grl);color:var(--grt)">&#10003;</span>';
 }
 
+// "Email me this report" (28 Oct 2026): keeps a free report for good by saving it to an account. The button waits
+// for the report to be saved (savedReportId); the email's link signs them in and the report joins their account.
+function emailReportHTML() {
+  return '<div id="em-card" style="margin:.85rem 0;padding:1rem;background:var(--sur);border:1px solid var(--pu);border-radius:var(--r)">' +
+    '<div style="font-size:16px;font-weight:600;color:var(--txt);margin-bottom:2px">&#9993;&#65039; Email me this report</div>' +
+    '<div style="font-size:13px;color:var(--mut);margin-bottom:.6rem;line-height:1.55">Get the link in your inbox and keep this report. ' +
+    'Free reports are deleted after 90 days unless you save them.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="em-email" type="email" maxlength="254" autocomplete="email" ' +
+    'placeholder="you@example.com" aria-label="Your email" style="flex:1;min-width:180px;border:0.5px solid var(--bdr);border-radius:6px;' +
+    'padding:8px 10px;font-size:14px;font-family:inherit;background:var(--bg);color:var(--txt)">' +
+    '<button type="button" id="em-go" onclick="emailReport()" style="background:var(--pu);color:#fff;border:0;border-radius:6px;' +
+    'padding:8px 16px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Email it to me</button></div>' +
+    '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--mut);margin-top:.6rem">' +
+    '<input type="checkbox" id="em-news" style="margin-top:3px"> Also send me the monthly Verilay newsletter (tips for AI-built apps). Optional.</label>' +
+    '<div style="font-size:12px;color:var(--mut);margin-top:.5rem">No password needed. Your next free scans are saved too, so you can compare them later.</div>' +
+    '<div id="em-status" style="font-size:13px;color:var(--red, #A32D2D);margin-top:.4rem"></div></div>';
+}
+function emailReport() {
+  var input = document.getElementById('em-email'), btn = document.getElementById('em-go'), st = document.getElementById('em-status');
+  if (!input || !btn || btn.disabled) return;
+  var em = (input.value || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { st.textContent = 'Please enter your email address.'; return; }
+  if (!savedReportId) { st.textContent = 'Your report is still being saved. Try again in a moment.'; return; }
+  btn.disabled = true; btn.textContent = 'Sending...'; st.textContent = '';
+  fetch('/report/' + savedReportId + '/email-me', {method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Report-Token': reportToken(savedReportId)},
+    body: JSON.stringify({email: em, newsletter: !!(document.getElementById('em-news') || {}).checked})})
+    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (r.ok) {
+        try { if (typeof plausible === 'function') plausible('Email Report Sent'); } catch (e) {}
+        var card = document.getElementById('em-card');
+        card.style.background = '#E1F5EE'; card.style.borderColor = '#9fe1cb';
+        card.innerHTML = '<div style="font-size:16px;font-weight:600;color:#085041;margin-bottom:3px">&#10003; ' +
+          (r.saved ? 'Sent' : 'Check your inbox') + '</div><div style="font-size:13px;color:#085041;line-height:1.55">' +
+          esc(r.message || 'Sent.') + '</div>';
+        return;
+      }
+      st.textContent = r.error || 'That could not be sent. Please try again.';
+      btn.disabled = false; btn.textContent = 'Email it to me';
+    })
+    .catch(function() { st.textContent = 'That could not be sent. Please try again.'; btn.disabled = false; btn.textContent = 'Email it to me'; });
+}
+
 // Suggested questions for "Ask Verilay about your report", fitted to the result.
 function askChipsHTML(data, h) {
   var qs;
@@ -2650,6 +2694,8 @@ function renderReport(data) {
   more.push(['sec-diagram', 'How your app fits together', secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false)]);
   var askBox = document.getElementById('report-ask');
   if (askBox) askBox.innerHTML = askHtml;
+  var emBox = document.getElementById('report-email');
+  if (emBox) emBox.innerHTML = data.private ? '' : emailReportHTML();
   if (!isPreview) {
     more.unshift(['sec-grade', 'About your grade', secHtml('sec-grade', 'About your grade', 'What the grade means and how to reach the next one', gradeHtml, false)]);
     more.unshift(['sec-details', 'Scan details', secHtml('sec-details', 'Scan details', 'What was scanned, the tech stack and the numbers', detailsHtml, false)]);

@@ -162,6 +162,68 @@ def send_login_email(email, ip=None, base_url="https://verilay.dev", create_user
     return True, "Check your email — we have sent you a sign-in link."
 
 
+# ── "Email me this report" ──────────────────────────────────────────────────────
+def _save_link(email, base_url):
+    """A one-click sign-in link made by Supabase but sent in Verilay's own email, so that email can carry the report.
+    "magiclink" is for an existing account, "invite" creates one. None when neither works (then the caller falls back
+    to the normal sign-in email). Needs the server's own database key (SUPABASE_KEY)."""
+    key = os.getenv("SUPABASE_KEY", "").strip()
+    if not (_HAS_SUPABASE_LIB and SUPABASE_URL and key):
+        return None
+    redirect_to = f"{base_url.rstrip('/')}/auth/callback"
+    for kind in ("magiclink", "invite"):
+        try:
+            res = _create_client(SUPABASE_URL, key).auth.admin.generate_link(
+                {"type": kind, "email": email, "options": {"redirect_to": redirect_to}})
+            link = getattr(getattr(res, "properties", None), "action_link", "") or ""
+            if link.startswith("https://"):
+                return link
+        except Exception as e:
+            print(f"[accounts] generate_link ({kind}) failed for {email}: {e}", flush=True)
+    return None
+
+
+def send_report_email(email, ip, base_url, report_url, repo, headline, want_save=True):
+    """Email a report link; with `want_save`, also a link that signs them in and saves the report to their account.
+    Shares the sign-in email limits, so it cannot be used to send mail to strangers. Returns (ok, message)."""
+    import verilay_notify as notify
+    email = (email or "").strip().lower()
+    if not valid_email(email):
+        return False, "That does not look like an email address."
+    since = seconds_since_last_send(email)
+    if since is not None and since < RESEND_WAIT_SECONDS:
+        wait = max(5, int(RESEND_WAIT_SECONDS - since))
+        return False, (f"We already sent an email to that address just now. It can take a minute or two to arrive, so please "
+                       f"check your inbox and spam folder first. You can ask again in about {wait} seconds.")
+    if not _allow_send(email, ip):
+        return False, "We have sent several emails to that address already. Check your inbox and spam folder, or try again in an hour."
+    link = _save_link(email, base_url) if (want_save and notify.configured()) else None
+    separate = False
+    if want_save and not link:
+        # Fall back to Supabase's normal sign-in email: signing in with it still saves the report.
+        if not configured():
+            return False, "Saving reports by email is not available right now. Please try again later."
+        try:
+            _auth_client().auth.sign_in_with_otp({"email": email, "options": {
+                "should_create_user": True, "email_redirect_to": f"{base_url.rstrip('/')}/auth/callback"}})
+            separate = True
+        except Exception as e:
+            print(f"[accounts] report save sign-in email failed for {email}: {e}", flush=True)
+            return False, "Sending is taking longer than usual. Please wait a minute, check your inbox, then try again."
+    sent = notify.send_report_email(email, repo, headline, report_url, save_link=link, separate_save=separate)
+    if not sent and not separate:
+        return False, "We could not send the email just now. Please try again in a minute."
+    if not want_save:
+        return True, f"We emailed a copy of this report to {email}."
+    if separate and not sent:
+        return True, f"We sent a sign-in link to {email}. Click it to save this report to your account."
+    if separate:
+        return True, (f"We sent the report link to {email}, and a separate sign-in link: click that one to save it. "
+                      "It can take a minute or two, so check spam too.")
+    return True, (f"We sent the report link to {email}. Click \u201cSave my report\u201d in the email to keep it. "
+                  "It can take a minute or two, so check spam too.")
+
+
 # ── Verifying ──────────────────────────────────────────────────────────────────
 def verify_code(email, code):
     """Exchange a six-digit code for a user. Returns (user_dict, error_message)."""

@@ -895,6 +895,12 @@ def _establish(user):
         billing.link_purchases_to_user(_sb(), user["email"], user["id"])
     except Exception as e:
         print(f"[paywall] link_purchases_to_user failed: {e}", flush=True)
+    # "Email me this report": reports waiting for this address are saved to the account (set by app.py).
+    if _deps.get("on_sign_in"):
+        try:
+            _deps["on_sign_in"](user)
+        except Exception as e:
+            print(f"[paywall] on_sign_in failed: {e}", flush=True)
     print(f"[paywall] Signed in: {user['email']}", flush=True)
 
 
@@ -1206,6 +1212,15 @@ def newsletter_subscribe():
     if not _mon_rate_ok("newsletter:" + _mon_ip()):
         return jsonify({"error": "Too many sign-ups from this connection. Please try again later."}), 429
     place = body.get("place") if body.get("place") in NEWSLETTER_PLACES else "page"
+    synced = newsletter_add(email, place)
+    # With the beehiiv sync on, beehiiv sends a confirmation email (double opt-in) and then the welcome email.
+    return jsonify({"ok": True, "confirm": synced})
+
+
+def newsletter_add(email, place):
+    """Add an opted-in address to the newsletter list (and beehiiv when its sync is on). Returns whether beehiiv is synced.
+    Also used by "Email me this report" when its newsletter box is ticked."""
+    place = place if place in NEWSLETTER_PLACES else "page"
     sb = _sb()
     if sb is not None:
         try:
@@ -1221,8 +1236,7 @@ def newsletter_subscribe():
                                                               "Added to beehiiv": "yes" if ok else f"no ({why})"},
                                                   "Newsletter sign-up.")
     threading.Thread(target=_after, daemon=True).start()
-    # With the beehiiv sync on, beehiiv sends a confirmation email (double opt-in) and then the welcome email.
-    return jsonify({"ok": True, "confirm": synced})
+    return synced
 
 
 @bp.route("/admin/newsletter.csv")

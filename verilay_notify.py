@@ -70,6 +70,35 @@ def send_scan_complete_email(email, repo, report_url):
         return False
 
 
+def send_report_email(email, repo, headline, report_url, save_link=None, separate_save=False):
+    """ "Email me this report" (28 Oct 2026): the report link, and (for a report not yet in an account) a one-click
+    link that signs them in and saves it. Best-effort: returns True/False, never raises."""
+    if not configured():
+        print("[notify] ZEPTOMAIL_TOKEN not set — skipping report email", flush=True)
+        return False
+    lines = [f"Your Verilay report for {repo}", "", headline, "", f"See your report: {report_url}", ""]
+    if save_link:
+        lines += ["Save it to your account so it is kept for good (free reports are deleted after 90 days).",
+                  "No password needed, just click:", "", f"Save my report: {save_link}", "",
+                  "Didn't ask for this? Ignore this email and nothing is saved.", ""]
+    elif separate_save:
+        lines += ["To keep it for good, click the sign-in link we sent in a separate email.", ""]
+    lines += ["— Verilay", "https://verilay.dev"]
+    msg = MIMEText("\n".join(lines))
+    msg["Subject"] = f"Your Verilay report for {repo}"
+    msg["From"] = FROM_ADDRESS
+    msg["To"] = email
+    try:
+        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            server.login("emailapikey", ZEPTOMAIL_TOKEN)
+            server.sendmail(FROM_ADDRESS, [email], msg.as_string())
+        print(f"[notify] Report email sent to {email} for {repo}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[notify] Report email failed for {email}: {e}", flush=True)
+        return False
+
+
 def send_self_monitor_alert(app_name, repo, score, critical, warnings, prev_critical):
     """Best-effort — returns True/False, never raises.
 

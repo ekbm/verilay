@@ -713,6 +713,7 @@ def get_ip():
 if _HAS_PAYWALL:
     try:
         paywall.init(app, sb=_sb, get_ip=get_ip, get_report_data=get_report_data)
+        paywall._deps["on_sign_in"] = lambda user: claim_saved_for_email(user)
         print("✓ Paid path registered"
               + ("" if billing.PAYWALL_ENABLED else " (paywall OFF — nothing for sale)"),
               flush=True)
@@ -2018,6 +2019,136 @@ def build_report_ask_parts(data, question):
 
 def build_report_ask_prompt(data, question):
     return "".join(build_report_ask_parts(data, question))
+
+
+# ── "Email me this report" (28 Oct 2026) ──────────────────────────────────────────
+# Free reports are deleted after 90 days unless they belong to an account. Under the report, someone can ask for it by
+# email; the email carries a one-click sign-in link, and signing in (on any device) saves the report to their account.
+# Only the browser that made the report can ask (its manage token), and the address only gets the report once its owner
+# signs in, so a mistyped address saves nothing.
+def report_email_headline(data):
+    h = (data or {}).get("health") or {}
+    if (data or {}).get("preview_only") or h.get("score") is None:
+        return "A check of what your live site shows a browser (not graded)."
+    try:
+        c, w = int(h.get("critical") or 0), int(h.get("warnings") or 0)
+    except (TypeError, ValueError):
+        c, w = 0, 0
+    return (f"Grade {h.get('score')}: {c} critical problem{'' if c == 1 else 's'}, "
+            f"{w} warning{'' if w == 1 else 's'}.")
+
+
+def claim_saved_for_email(user):
+    """On sign-in: reports whose browser asked to save them for this address join the account."""
+    if not _HAS_SUPABASE or not user:
+        return 0
+    email, uid = str(user.get("email") or "").strip().lower(), user.get("id")
+    if not email or not uid:
+        return 0
+    n = 0
+    try:
+        rows = (_sb.table("reports").select("id").eq("data->>save_for_email", email).is_("user_id", "null")
+                .limit(50).execute().data or [])
+        for r in rows:
+            _sb.table("reports").update({"user_id": uid}).eq("id", r["id"]).is_("user_id", "null").execute()
+            n += 1
+    except Exception as e:
+        print(f"[email-report] claim for {email} failed: {e}", flush=True)
+    if n:
+        print(f"[email-report] {n} report(s) saved to the account of {email}", flush=True)
+    return n
+
+
+@app.route("/report/<report_id>/email-me", methods=["POST"])
+def email_me_report(report_id):
+    from flask import session as _fsession
+    import verilay_accounts as _acc
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):                       # the hidden field only robots fill in
+        return jsonify({"ok": True, "message": "Sent."})
+    if not _can_write_report(report_id):
+        return jsonify({"ok": False, "error": "Only the browser that made this report can email it. Run a new analysis to get your own."}), 403
+    data, owner = _report_auth_info(report_id)
+    if data is None or data.get("private"):
+        return jsonify({"ok": False, "error": "This report cannot be emailed."}), 404
+    email = str(body.get("email") or "").strip().lower()[:254]
+    if not _acc.valid_email(email):
+        return jsonify({"ok": False, "error": "Please enter a valid email address."}), 400
+    me = _acc.current_user()
+    saved = bool(owner)
+    want_save = not owner
+    if me and me.get("email") == email:            # signed in with this address: save it straight away, send a copy
+        if not owner and _HAS_SUPABASE:
+            try:
+                _sb.table("reports").update({"user_id": me["id"]}).eq("id", report_id).is_("user_id", "null").execute()
+                saved = True
+            except Exception as e:
+                print(f"[email-report] direct save of {report_id} failed: {e}", flush=True)
+        want_save = not saved
+    if want_save and data.get("save_for_email") != email:
+        data["save_for_email"] = email
+        try:
+            if _HAS_SUPABASE:
+                _sb.table("reports").update({"data": data}).eq("id", report_id).execute()
+            elif report_id in _reports:
+                _reports[report_id]["data"] = data
+        except Exception as e:
+            print(f"[email-report] could not mark {report_id} for {email}: {e}", flush=True)
+            return jsonify({"ok": False, "error": "That could not be sent just now. Please try again."}), 500
+    base = paywall.billing.BASE_URL if _HAS_PAYWALL else "https://verilay.dev"
+    ok, msg = _acc.send_report_email(email, get_ip(), base, f"{base}/report/{report_id}",
+                                     str(data.get("repo") or "your app")[:120], report_email_headline(data), want_save)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 429
+    if want_save:
+        _fsession["login_next"] = f"/report/{report_id}?saved=1"   # this browser comes back to the report
+    if body.get("newsletter") is True and _HAS_PAYWALL:
+        try:
+            paywall.newsletter_add(email, "report")
+        except Exception as e:
+            print(f"[email-report] newsletter add failed: {e}", flush=True)
+    print(f"[email-report] {report_id} emailed to {email} (save link: {want_save})", flush=True)
+    return jsonify({"ok": True, "message": msg, "saved": saved})
+
+
+def report_email_box_html(report_id, state):
+    """The saved report's "Email me this report" box. `state`: "saved" (the signed-in owner is looking: one line),
+    "box" (shown only in the browser that made the report, which holds its manage token)."""
+    esc = _htmlmod.escape
+    if state == "saved":
+        return ('<div class="card" id="report-email" style="background:#E1F5EE;border-color:#9fe1cb;color:#085041;font-size:14px">'
+                '&#10003; Saved to your account, so it is kept for good. Find it any time on '
+                '<a href="/account" style="color:#534AB7;font-weight:600">your account page</a>.</div>')
+    script = r"""<script>(function(){
+var rid=%s,box=document.getElementById('report-email'),tok='';try{tok=localStorage.getItem('verilay_tok_'+rid)||'';}catch(e){}
+if(!box||!tok)return;box.style.display='block';
+var go=document.getElementById('rem-go'),st=document.getElementById('rem-status');
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+go.onclick=async function(){var em=(document.getElementById('rem-email').value||'').trim();
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){st.textContent='Please enter your email address.';return;}
+ go.disabled=true;go.textContent='Sending...';st.textContent='';
+ try{var r=await fetch('/report/'+rid+'/email-me',{method:'POST',headers:{'Content-Type':'application/json','X-Report-Token':tok},
+  body:JSON.stringify({email:em,newsletter:document.getElementById('rem-news').checked,website:document.getElementById('rem-website').value})}).then(function(x){return x.json();});
+  if(r.ok){box.style.background='#E1F5EE';box.style.borderColor='#9fe1cb';
+   box.innerHTML='<div style="font-size:16px;font-weight:600;color:#085041;margin-bottom:3px">&#10003; '+(r.saved?'Sent':'Check your inbox')+'</div>'
+    +'<div style="font-size:13px;color:#085041;line-height:1.55">'+esc(r.message||'Sent.')+'</div>';return;}
+  st.textContent=r.error||'That could not be sent. Please try again.';}
+ catch(e){st.textContent='That could not be sent. Please try again.';}
+ go.disabled=false;go.textContent='Email it to me';};
+})();</script>""" % json.dumps(report_id)
+    return ('<div class="card" id="report-email" style="display:none;border-color:#534AB7;margin:1rem 0">'
+            '<div style="font-size:16px;font-weight:600;margin-bottom:2px">&#9993;&#65039; Email me this report</div>'
+            '<div style="font-size:13px;color:#6b6966;margin-bottom:.6rem;line-height:1.55">Get the link in your inbox and keep this report. '
+            'Free reports are deleted after 90 days unless you save them.</div>'
+            '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="rem-email" type="email" maxlength="254" autocomplete="email" '
+            'placeholder="you@example.com" aria-label="Your email" style="flex:1;min-width:180px;border:.5px solid #d3d1c7;border-radius:6px;'
+            'padding:8px 10px;font-size:14px;font-family:inherit"><button type="button" id="rem-go" style="background:#534AB7;color:#fff;border:0;'
+            'border-radius:6px;padding:8px 16px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Email it to me</button></div>'
+            '<input id="rem-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">'
+            '<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#6b6966;margin-top:.6rem">'
+            '<input type="checkbox" id="rem-news" style="margin-top:3px"> Also send me the monthly Verilay newsletter (tips for AI-built apps). Optional.</label>'
+            '<div style="font-size:12px;color:#6b6966;margin-top:.5rem">No password needed. Your next free scans are saved too, so you can compare them later.</div>'
+            '<div id="rem-status" style="font-size:13px;color:#A32D2D;margin-top:.4rem"></div></div>' + script)
 
 
 def report_ask_questions(is_preview, critical, warnings):
@@ -4241,7 +4372,8 @@ def report_data(report_id):
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
-                                                       "improvement_story", "pro_survey", "compare_feedback", "country")}
+                                                       "improvement_story", "pro_survey", "compare_feedback", "country",
+                                                       "save_for_email")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -8206,6 +8338,13 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _ask_q = f"I ran Verilay on {data.get('repo','my app')} (Score {h.get('score','?')}) and got these issues:\n" + ("\n".join(_critical[:5]) or "No critical issues") + "\n\nExplain these simply and how to fix them. I am not a developer."
     _ask_url = "https://claude.ai/new?q=" + _urlparse.quote(_ask_q)
     out.append(report_ask_card_html(report_id, report_ask_questions(is_preview, h.get("critical"), h.get("warnings")), _ask_url))
+    if not raw_data.get("private"):
+        try:
+            _, _owner = _report_auth_info(report_id)
+        except Exception:
+            _owner = None
+        _me = _current_uid()
+        out.append(report_email_box_html(report_id, "saved" if (_owner and _me and str(_me) == str(_owner)) else "box"))
 
     out = _B["found"]
     # Layers — <details> rather than a plain <div>: this page has no JS at
@@ -10021,6 +10160,8 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
   <!-- "Ask Verilay about your report": its own card under the fixes, with suggested questions (28 Oct 2026) -->
   <div id="report-ask"></div>
+  <!-- "Email me this report": keeps a free report for good by saving it to an account (28 Oct 2026) -->
+  <div id="report-email"></div>
 
   <!-- "More": checks, similar apps, diagram, Ask Verilay, share and IT pack (renderMoreBox), under the fixes -->
   <div id="report-more"></div>
