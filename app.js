@@ -1164,6 +1164,7 @@ async function runAnalysis() {
   window._step2Done = false;
   window._step3Done = false;
   window._analysisComplete = false;
+  window._scanStreaming = true;       // "Start here" holds the grade until every area is in (28 Oct 2026)
   window._pendingHalfLabel = null;
   window._discoveryHtml = null;
   window._discoverySum = null;
@@ -1481,6 +1482,8 @@ function handleStreamEvent(evt) {
       }
       break;
     case 'layers_complete':
+      window._scanStreaming = false;
+      if (typeof refreshStartHere === 'function') refreshStartHere();
       stopTrickle();
       updateStepsProgress(100);
       var lb = document.getElementById('steps23-loading');
@@ -1502,6 +1505,7 @@ function handleStreamEvent(evt) {
       setTimeout(showMonitoringOffer, 1500);
       break;
     case 'error':
+      window._scanStreaming = false;
       stopTrickle();
       stopMsgs();
       if (document.getElementById('ld').classList.contains('vis')) {
@@ -2329,10 +2333,21 @@ function _firstFix(data) {
   }
   return null;
 }
+// Which AI builder made the app, from the AI's "built with" sentence. Only its opening words count (the sentence starts
+// with the answer, e.g. "Lovable - the index.html has the badge"), so "Unknown - no markers (e.g., .lovable, .bolt)" is
+// not read as Lovable (28 Oct 2026: Verilay's own repo was shown "Copy the fix prompt for Lovable").
+function builderFromBuiltWith(text) {
+  var lead = String(text || '').toLowerCase().split(/\s[\u2014\u2013-]\s|[(:;,.]/)[0];
+  if (/\b(unknown|unclear|not|no|none|human|hand|custom)\b/.test(lead)) return '';
+  if (/\blovable\b/.test(lead)) return 'Lovable';
+  if (/\breplit\b/.test(lead)) return 'Replit';
+  if (/\bbolt\b/.test(lead)) return 'Bolt';
+  if (/\bv0\b/.test(lead)) return 'v0';
+  if (/\bcursor\b/.test(lead)) return 'Cursor';
+  return '';
+}
 function _fixPrompt(f, data) {
-  var bw = ((data && data.built_with) || '').toLowerCase();
-  var tool = bw.indexOf('lovable') !== -1 ? 'Lovable' : bw.indexOf('replit') !== -1 ? 'Replit' : bw.indexOf('bolt') !== -1 ? 'Bolt'
-           : /\bv0\b/.test(bw) ? 'v0' : bw.indexOf('cursor') !== -1 ? 'Cursor' : '';
+  var tool = builderFromBuiltWith(data && data.built_with);
   var p = f.general_prompt || f.lovable_prompt || '';
   if (tool === 'Lovable' && f.lovable_prompt) p = f.lovable_prompt;
   else if (tool === 'Replit' && f.replit_prompt) p = f.replit_prompt;
@@ -2348,6 +2363,14 @@ function startHereHTML(data, h, hasLayers, isPreview) {
       'Checking your app&hellip; your grade and the first thing to fix appear here.</div></div>';
   }
   if (scanFullyIncomplete()) return '';            // the "could not finish" note below explains it
+  // While a scan is still running, the grade is not shown: it was worked out from the first areas and could change
+  // (Moses saw B turn into C). It appears once every area is in.
+  var done = Object.keys(currentLayers || {}).length;
+  if (window._scanStreaming && !window._analysisComplete && done < 6) {
+    return '<div style="' + box + '">' + head + '<div style="display:flex;gap:10px;align-items:center;margin-top:.55rem;font-size:15px;color:var(--mut)">' +
+      '<div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>' +
+      '<span>Still checking: ' + done + ' of 6 areas done. Your grade and the first thing to fix appear here when all are in.</span></div></div>';
+  }
   var s = h.score || '?', tone = _GRADE_TONE[s] || ['#F1EFE8', '#444441'];
   var crit = h.critical || 0, warn = h.warnings || 0;
   var html = '<div style="' + box + '">' + head +
@@ -3178,10 +3201,11 @@ function renderPart2(data) {
   });
   // Build platform-specific "where to paste" instruction
   var builtWith = (currentReport && currentReport.built_with) ? currentReport.built_with.toLowerCase() : '';
-  var isLovable = builtWith.includes('lovable');
-  var isReplit  = builtWith.includes('replit');
-  var isBolt    = builtWith.includes('bolt');
-  var isV0      = builtWith.includes('v0');
+  var _builder  = builderFromBuiltWith(currentReport && currentReport.built_with);   // its opening words only
+  var isLovable = _builder === 'Lovable';
+  var isReplit  = _builder === 'Replit';
+  var isBolt    = _builder === 'Bolt';
+  var isV0      = _builder === 'v0';
 
   var whereToGo = 'your AI builder chat';
   var whereDetail = 'Open your AI builder and paste the prompt into the chat';
