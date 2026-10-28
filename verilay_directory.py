@@ -324,7 +324,7 @@ def _send_mail(to, subject, body, reply_to=None, personal=False):
             msg["To"] = to
             if reply_to:
                 msg["Reply-To"] = reply_to
-            with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+            with notify._mail_server() as server:        # ZeptoMail's API (Railway blocks the email port)
                 server.login("emailapikey", notify.ZEPTOMAIL_TOKEN)
                 server.sendmail(envelope, [to], msg.as_string())
             return True

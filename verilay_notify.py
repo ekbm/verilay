@@ -26,7 +26,12 @@ stay usable even when the paid path (_HAS_PAYWALL) fails to import.
 
 import os
 import smtplib
+import email as _email
+from email.header import decode_header as _decode_header, make_header as _make_header
 from email.mime.text import MIMEText
+from email.utils import parseaddr as _parseaddr
+
+import requests
 
 ZEPTOMAIL_TOKEN = os.getenv("ZEPTOMAIL_TOKEN", "").strip()
 _ADMIN_EMAILS = [e.strip() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
@@ -39,6 +44,82 @@ MONITORING_INTEREST_NOTIFY_EMAIL = (os.getenv("MONITORING_INTEREST_NOTIFY_EMAIL"
 
 def configured():
     return bool(ZEPTOMAIL_TOKEN)
+
+
+# ── Sending: ZeptoMail's web API, not the email port (28 Oct 2026) ───────────────
+# Railway's Hobby plan blocks outgoing SMTP (ports 465/587), so every email Verilay sent itself waited ~10 seconds and
+# failed, while Supabase's sign-in emails (sent from Supabase's servers through the same ZeptoMail agent) arrived.
+# The same messages now go over HTTPS. ZEPTOMAIL_API_KEY is used when set (the agent's "API key"), else ZEPTOMAIL_TOKEN.
+# VERILAY_EMAIL_SMTP=1 goes back to SMTP (for example on a Railway plan that allows it).
+ZEPTOMAIL_API_HOSTS = [h.strip().rstrip("/") for h in
+                       os.getenv("ZEPTOMAIL_API_HOSTS", "https://api.zeptomail.com,https://cpaas.zoho.com").split(",") if h.strip()]
+_REAL_SMTP_SSL = smtplib.SMTP_SSL
+
+
+def _api_key(fallback):
+    key = (os.getenv("ZEPTOMAIL_API_KEY", "") or fallback or "").strip()
+    for prefix in ("zoho-enczapikey ", "Zoho-enczapikey "):
+        if key.startswith(prefix):
+            key = key[len(prefix):].strip()
+    return key
+
+
+def _header_text(value):
+    try:
+        return str(_make_header(_decode_header(value or "")))
+    except Exception:
+        return value or ""
+
+
+class _ZeptoAPI:
+    """Stands in for smtplib.SMTP_SSL: the same login/sendmail calls, sent through ZeptoMail's /v1.1/email API."""
+
+    def __init__(self):
+        self._token = ""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def login(self, _user, token):
+        self._token = token
+
+    def sendmail(self, envelope_from, to_addrs, msg_string):
+        msg = _email.message_from_string(msg_string)
+        name, address = _parseaddr(_header_text(msg.get("From")) or envelope_from)
+        payload = msg.get_payload(decode=True)
+        body = payload.decode(msg.get_content_charset() or "utf-8", "replace") if isinstance(payload, bytes) else str(msg.get_payload())
+        data = {"from": {"address": address or envelope_from, "name": name or "Verilay"},
+                "to": [{"email_address": {"address": a}} for a in to_addrs],
+                "subject": _header_text(msg.get("Subject")), "textbody": body}
+        reply_name, reply_to = _parseaddr(_header_text(msg.get("Reply-To")))
+        if reply_to:
+            data["reply_to"] = [{"address": reply_to, **({"name": reply_name} if reply_name else {})}]
+        headers = {"Authorization": "Zoho-enczapikey " + _api_key(self._token), "Accept": "application/json",
+                   "Content-Type": "application/json"}
+        last = None
+        for host in ZEPTOMAIL_API_HOSTS:
+            try:
+                r = requests.post(host + "/v1.1/email", json=data, headers=headers, timeout=15)
+            except requests.RequestException as e:
+                last = f"{host}: {e}"
+                continue
+            if 200 <= r.status_code < 300:
+                return {}
+            last = f"{host}: HTTP {r.status_code} {r.text[:300]}"
+            if r.status_code not in (404, 405):        # a real refusal (bad key, sender not allowed): don't try elsewhere
+                break
+        raise smtplib.SMTPException("ZeptoMail API refused the email: " + str(last))
+
+
+def _mail_server():
+    """Where an email goes: ZeptoMail's API, or the SMTP relay when VERILAY_EMAIL_SMTP=1. Tests that swap
+    smtplib.SMTP_SSL for a fake server keep getting it."""
+    if smtplib.SMTP_SSL is not _REAL_SMTP_SSL or os.getenv("VERILAY_EMAIL_SMTP") == "1":
+        return smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15)
+    return _ZeptoAPI()
 
 
 def send_scan_complete_email(email, repo, report_url):
@@ -60,7 +141,7 @@ def send_scan_complete_email(email, repo, report_url):
     msg["To"] = email
 
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [email], msg.as_string())
         print(f"[notify] Completion email sent to {email} for {repo}", flush=True)
@@ -89,7 +170,7 @@ def send_report_email(email, repo, headline, report_url, save_link=None, separat
     msg["From"] = FROM_ADDRESS
     msg["To"] = email
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [email], msg.as_string())
         print(f"[notify] Report email sent to {email} for {repo}", flush=True)
@@ -131,7 +212,7 @@ def send_self_monitor_alert(app_name, repo, score, critical, warnings, prev_crit
     msg["To"] = SELF_MONITOR_ALERT_EMAIL
 
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
         print(f"[notify] Self-monitor alert sent for {app_name}", flush=True)
@@ -159,7 +240,7 @@ def send_live_watch_alert(app_name, url, problems):
     msg["From"] = FROM_ADDRESS
     msg["To"] = SELF_MONITOR_ALERT_EMAIL
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
         print(f"[notify] Live-site alert sent for {app_name}", flush=True)
@@ -181,7 +262,7 @@ def send_admin_alert(subject, lines):
     msg["From"] = FROM_ADDRESS
     msg["To"] = SELF_MONITOR_ALERT_EMAIL
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
         print(f"[notify] admin alert sent: {_one_line(subject, 90)}", flush=True)
@@ -216,7 +297,7 @@ def send_deep_scan_recommendation(app_name, repo, reasons, titles=None, last_dee
     msg["From"] = FROM_ADDRESS
     msg["To"] = SELF_MONITOR_ALERT_EMAIL
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [SELF_MONITOR_ALERT_EMAIL], msg.as_string())
         print(f"[notify] Deep scan recommendation sent for {app_name}", flush=True)
@@ -244,7 +325,7 @@ def send_private_repo_interest_alert(email, answers, notes=""):
     msg["From"] = FROM_ADDRESS
     msg["To"] = to
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [to], msg.as_string())
         return True
@@ -273,7 +354,7 @@ def send_monitoring_interest_alert(email, repo, answers, notes=""):
     msg["From"] = FROM_ADDRESS
     msg["To"] = to
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [to], msg.as_string())
         print("[notify] Monitoring-interest alert sent", flush=True)
@@ -318,7 +399,7 @@ def send_improvement_story_alert(report_id, story, repo=""):
     msg["From"] = FROM_ADDRESS
     msg["To"] = to
     try:
-        with smtplib.SMTP_SSL("smtp.zeptomail.com", 465, timeout=15) as server:
+        with _mail_server() as server:
             server.login("emailapikey", ZEPTOMAIL_TOKEN)
             server.sendmail(FROM_ADDRESS, [to], msg.as_string())
         return True
