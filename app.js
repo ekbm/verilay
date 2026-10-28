@@ -2337,12 +2337,12 @@ function _firstFix(data) {
 // with the answer, e.g. "Lovable - the index.html has the badge"), so "Unknown - no markers (e.g., .lovable, .bolt)" is
 // not read as Lovable (28 Oct 2026: Verilay's own repo was shown "Copy the fix prompt for Lovable").
 function builderFromBuiltWith(text) {
-  var lead = String(text || '').toLowerCase().split(/\s[\u2014\u2013-]\s|[(:;,.]/)[0];
+  var lead = String(text || '').toLowerCase().split(/\s[\u2014\u2013-]\s|[(:;,]|\.(?=\s|$)/)[0];   // "v0.4", "Bolt.new" stay whole
   if (/\b(unknown|unclear|not|no|none|human|hand|custom)\b/.test(lead)) return '';
   if (/\blovable\b/.test(lead)) return 'Lovable';
   if (/\breplit\b/.test(lead)) return 'Replit';
   if (/\bbolt\b/.test(lead)) return 'Bolt';
-  if (/\bv0\b/.test(lead)) return 'v0';
+  if (/\bv0(?:\.dev\b|(?![\w.]))/.test(lead)) return 'v0';     // "v0.dev" or "v0", not "v0.4 of a library"
   if (/\bcursor\b/.test(lead)) return 'Cursor';
   return '';
 }

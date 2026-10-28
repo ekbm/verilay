@@ -7274,12 +7274,18 @@ _BUILT_LABELS = (("lovable", "Lovable"), ("bolt", "Bolt"), ("replit", "Replit"),
 
 
 def built_label(text):
-    t = str(text or "").lower()
+    # Only the sentence's opening words count: the AI starts with its answer ("Lovable - the badge..."), and a sentence
+    # like "Unknown - no markers (e.g., .lovable, .bolt)" must not read as Lovable (28 Oct 2026; same rule as app.js
+    # builderFromBuiltWith).
+    full = str(text or "").lower()
+    t = _re.split(r"\s[\u2014\u2013-]\s|[(:;,]|\.(?=\s|$)", full)[0]     # a full stop only when it ends a sentence ("v0.4", "Bolt.new" stay)
+    if _re.search(r"\b(unknown|unclear|not|no|none|human|hand|custom)\b", t):
+        return "Unknown"
     for key, label in _BUILT_LABELS:
         tail = r"(?:\.dev|(?![a-z0-9.]))" if key == "v0" else r"(?![a-z0-9])"     # "v0.dev" yes, "v0.4 of a library" no
         if _re.search(r"(?<![a-z0-9])" + _re.escape(key) + tail, t):
             return label
-    return "Unknown" if t.strip() else ""
+    return "Unknown" if full.strip() else ""
 
 
 @app.route("/admin/scans")
