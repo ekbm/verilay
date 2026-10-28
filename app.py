@@ -9154,6 +9154,7 @@ input:focus{border-color:var(--pu);box-shadow:0 0 0 3px var(--pul)}
 .si{border-radius:8px;padding:.6rem .85rem;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
 .so-card{background:var(--sur);border:0.5px solid var(--bdr);border-radius:8px;padding:.85rem;margin-bottom:8px}
 /* Results page: collapsible groups (2026-10-10). One summary on top, detail on request. */
+.lchip{font-size:11px;font-weight:700;border-radius:20px;min-width:20px;padding:1px 6px;margin-right:6px;text-align:center;white-space:nowrap;flex-shrink:0}
 details.sec{background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);margin:.6rem 0;overflow:hidden}
 details.sec>summary{list-style:none;cursor:pointer;padding:.8rem 1rem;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;-webkit-tap-highlight-color:transparent}
 details.sec>summary::-webkit-details-marker{display:none}

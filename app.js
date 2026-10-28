@@ -542,7 +542,7 @@ function proOfferHTML(data) {
 // the long read. Free (light) scans during the launch only.
 function showProTopBanner(data) {
   if (!data || !data.lite || !(data.pro_launch && data.pro_launch.active) || document.getElementById('pro-top')) return;
-  var anchor = document.getElementById('verdict-banner');
+  var anchor = document.getElementById('start-here') || document.getElementById('verdict-banner');
   if (!anchor || !anchor.parentNode) return;
   var h = (currentReport && currentReport.health) || {};
   var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
@@ -1170,6 +1170,7 @@ async function runAnalysis() {
   window._incompleteLayers = [];
   window._layerErrorMsgs = [];
   window._p2AutoStarted = false;      // each new scan starts its own Part 2
+  window._moreExtra = []; window._p2Fixes = null; window._startPrompt = '';
   stopTrickle();
   stopP2Trickle();
   var p2banner = document.getElementById('p2-banner');
@@ -1824,8 +1825,8 @@ function updateHealthDisplay() {
   var banner = document.getElementById('score-banner');
   if (banner) banner.innerHTML = inc.length ? '' : scoreBannerHTML(h.score, true, false, h.critical);
   var vb = document.getElementById('verdict-banner');
-  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc)
-    : verdictBannerHTML(h.score, currentReport ? currentReport.prev_score : null, h.critical) + (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
+  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc) : (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
+  refreshStartHere();
   var ls = document.getElementById('sec-layers-sum');
   if (ls) ls.textContent = layersSummaryText(h, notChecked);
 }
@@ -2314,6 +2315,116 @@ function whatsNextHTML(data, h) {
     'See all options &rarr;</a><br><a href="/newsletter" target="_blank" rel="noopener" style="color:var(--pu)">Get the monthly newsletter</a></div>';
 }
 
+// ── "Start here" (28 Oct 2026, Moses: everything at once felt like a cognitive load) ──────────────────────────────────
+// The report now opens with three answers: how is my app doing (grade + one sentence), what should I do first (the most
+// serious fix with its copy button), and the next step (the Pro strip, added under this card by showProTopBanner).
+// Everything else is one tap away: the areas below, the other fixes folded, the extras in "More".
+var _VERDICT_SHORT = {A: 'Ready for real users', B: 'Safe to launch', C: 'Needs some work before real users',
+                      D: 'Not ready for real users yet', F: 'Not ready: several serious problems'};
+var _GRADE_TONE = {A: ['#E1F5EE', '#085041'], B: ['#EFF6FF', '#1D4ED8'], C: ['#FAEEDA', '#633806'], D: ['#FCEBEB', '#A32D2D'], F: ['#FCEBEB', '#7F1D1D']};
+function _whyGrade(score, crit) {
+  if (score === 'A') return 'No critical or warning findings in what Verilay read. Keep your packages up to date as you add features, and scan again after big changes.';
+  if (score === 'B') return 'No critical problems. B is the realistic target for apps built with AI tools: safe to put in front of real users. Reaching A needs a developer-level review.';
+  if (score === 'C') return crit ? 'There is at least one serious problem. Fix the one below first: on its own it often lifts the grade to a B, the realistic goal for apps built with AI tools.'
+                                 : 'No critical problems, but several warnings add up. Work through them, starting with the one below, to reach a B.';
+  return crit ? 'There are serious problems that could expose your users or your data. Fix them, starting with the one below, before inviting real users.'
+              : 'Several problems add up to a low grade. Work through them, starting with the one below, before inviting real users.';
+}
+function _firstFix(data) {
+  var list = (window._p2Fixes && window._p2Fixes.length) ? window._p2Fixes : ((data && data.top_fixes) || []);
+  for (var i = 0; i < list.length; i++) {
+    var f = list[i] || {};
+    if (f.title && !/no critical fixes needed/i.test(f.title)) return f;
+  }
+  return null;
+}
+function _fixPrompt(f, data) {
+  var bw = ((data && data.built_with) || '').toLowerCase();
+  var tool = bw.indexOf('lovable') !== -1 ? 'Lovable' : bw.indexOf('replit') !== -1 ? 'Replit' : bw.indexOf('bolt') !== -1 ? 'Bolt'
+           : /\bv0\b/.test(bw) ? 'v0' : bw.indexOf('cursor') !== -1 ? 'Cursor' : '';
+  var p = f.general_prompt || f.lovable_prompt || '';
+  if (tool === 'Lovable' && f.lovable_prompt) p = f.lovable_prompt;
+  else if (tool === 'Replit' && f.replit_prompt) p = f.replit_prompt;
+  return [p, tool ? 'Copy the fix prompt for ' + tool : 'Copy the fix prompt for your AI builder'];
+}
+function startHereHTML(data, h, hasLayers, isPreview) {
+  if (isPreview) return '';
+  var head = '<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)">Start here &middot; ' + esc(data.repo || 'your app') + '</div>';
+  var box = 'background:var(--sur);border:1.5px solid var(--txt);border-radius:16px;padding:1rem 1.1rem;margin:0 0 10px';
+  if (!hasLayers) {
+    return '<div style="' + box + '">' + head + '<div style="display:flex;gap:10px;align-items:center;margin-top:.55rem;font-size:15px;color:var(--mut)">' +
+      '<div style="width:18px;height:18px;border:2px solid var(--pul);border-top-color:var(--pu);border-radius:50%;animation:sp 1s linear infinite;flex-shrink:0"></div>' +
+      'Checking your app&hellip; your grade and the first thing to fix appear here.</div></div>';
+  }
+  if (scanFullyIncomplete()) return '';            // the "could not finish" note below explains it
+  var s = h.score || '?', tone = _GRADE_TONE[s] || ['#F1EFE8', '#444441'];
+  var crit = h.critical || 0, warn = h.warnings || 0;
+  var html = '<div style="' + box + '">' + head +
+    '<div style="display:flex;gap:14px;align-items:center;margin:.55rem 0 .15rem">' +
+    '<div style="width:64px;height:64px;border-radius:16px;background:' + tone[0] + ';color:' + tone[1] + ';font-size:36px;font-weight:800;display:flex;' +
+    'align-items:center;justify-content:center;flex-shrink:0">' + esc(s) + '</div><div style="min-width:0">' +
+    '<div style="font-size:19px;font-weight:700;line-height:1.3">' + esc(_VERDICT_SHORT[s] || 'Your result') + '</div>' +
+    '<div style="font-size:13px;color:var(--mut)">' + areasCheckedText() + ' areas checked &middot; ' + crit + ' critical &middot; ' + warn + ' warning' + (warn === 1 ? '' : 's') + '</div>' +
+    '<a href="#" onclick="var t=document.getElementById(\'start-why\');t.style.display=t.style.display===\'block\'?\'none\':\'block\';return false;" ' +
+    'style="font-size:13px;color:var(--pu);font-weight:600">Why this grade?</a></div></div>' +
+    '<div id="start-why" style="display:none;font-size:13px;color:var(--mut);background:var(--bg);border-radius:8px;padding:.6rem .75rem;margin-top:.4rem;line-height:1.55">' +
+    esc(_whyGrade(s, crit)) + ' <a href="#" onclick="openSection(\'sec-grade\');return false;" style="color:var(--pu)">More about your grade</a></div>';
+  var f = _firstFix(data);
+  if (f) {
+    var pr = _fixPrompt(f, data);
+    var _w = String(f.why_it_matters || ''), _m = _w.match(/^[^.!?]*[.!?]/);      // the first sentence (no look-behind: older Safari)
+    var why = (_m ? _m[0] : _w).slice(0, 220);
+    var sevRed = (f.severity || '') === 'critical';
+    html += '<div style="background:' + (sevRed ? 'var(--rdl)' : 'var(--orl)') + ';border-radius:12px;padding:.85rem .95rem;margin-top:.9rem">' +
+      '<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:' + (sevRed ? 'var(--rdt)' : 'var(--ort)') + '">Do this first</div>' +
+      '<div style="font-size:16px;font-weight:700;margin:.15rem 0 .2rem;line-height:1.35">' + esc(f.title) + '</div>' +
+      (why ? '<div style="font-size:13px;color:#444;line-height:1.5">' + esc(why) + '</div>' : '') +
+      (pr[0] ? '<button type="button" id="start-copy" style="margin-top:.6rem;background:var(--pu);color:#fff;border:0;border-radius:10px;padding:9px 16px;' +
+               'font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">' + esc(pr[1]) + '</button>' +
+               '<span id="start-copied" style="display:none;font-size:13px;color:var(--grt);margin-left:8px">&#10003; Copied. Paste it into your AI chat.</span>' : '') +
+      '</div>';
+    window._startPrompt = pr[0];
+  } else if (s === 'A' || s === 'B') {
+    html += '<div style="background:var(--grl);color:var(--grt);border-radius:12px;padding:.75rem .95rem;margin-top:.9rem;font-size:14px">' +
+      '<strong>Nothing urgent to fix.</strong> Keep it that way: scan again after big changes.</div>';
+  } else {
+    html += '<div style="font-size:13px;color:var(--mut);margin-top:.8rem">Preparing the first thing to fix&hellip;</div>';
+  }
+  return html + '</div>';
+}
+function refreshStartHere() {
+  var box = document.getElementById('start-here');
+  if (!box || !currentReport) return;
+  var h = currentReport.health || {};
+  var has = Object.keys(currentLayers || {}).length > 0;
+  box.innerHTML = startHereHTML(currentReport, h, has, !!currentReport.preview_only);
+}
+// The copy button in "Start here": the same safety reminder as the other fix prompts, then the rating nudge.
+document.addEventListener('click', function(e) {
+  var b = e.target && e.target.closest ? e.target.closest('#start-copy') : null;
+  if (!b || !window._startPrompt) return;
+  var ok = confirm('Before applying this advice:\n\n1. Paste it into your AI builder\n2. Read its response carefully\n' +
+                   '3. Ask it to ADVISE first, not make changes yet\n4. Only apply changes it confirms are safe\n\nCopy the fix prompt?');
+  if (!ok) return;
+  navigator.clipboard.writeText(window._startPrompt).then(function() {
+    var c = document.getElementById('start-copied'); if (c) c.style.display = 'inline';
+    try { if (typeof plausible === 'function') plausible('Start Here Copy'); } catch (err) {}
+    setTimeout(showRatingNudge, 2500);
+  });
+});
+// A small count badge next to each area's name (the words are in its tooltip): red = critical, amber = warnings,
+// green tick = no issues, grey dash = not checked. Compact so it fits the narrow area buttons on a phone.
+function layerCountChip(layer) {
+  if (!layer) return '';
+  if (layer.status === 'not_checked') return '<span class="lchip" title="Not checked" style="background:#F1EFE8;color:#5F5E5A">&ndash;</span>';
+  var fs = (layer.expert && layer.expert.findings) || layer.findings || [];
+  var c = 0, w = 0;
+  fs.forEach(function(x) { var s = (x && x.severity || '').toLowerCase(); if (s === 'critical') c++; else if (s === 'warning') w++; });
+  if (c) return '<span class="lchip" title="' + c + ' critical' + (w ? ', ' + w + ' warning' + (w === 1 ? '' : 's') : '') + '" style="background:var(--rdl);color:var(--rdt)">' + c + '</span>';
+  if (w) return '<span class="lchip" title="' + w + ' warning' + (w === 1 ? '' : 's') + '" style="background:var(--orl);color:var(--ort)">' + w + '</span>';
+  return '<span class="lchip" title="No issues found" style="background:var(--grl);color:var(--grt)">&#10003;</span>';
+}
+
 function renderReport(data) {
   currentReport = data;
   // Load verifications from saved report data
@@ -2342,7 +2453,8 @@ function renderReport(data) {
     html += '<div style="background:var(--orl);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:10px;font-size:13px;color:var(--ort)"><strong>Surface scan only.</strong> Use GitHub or ZIP for a full analysis.</div>';
   }
 
-  html += '<div id="verdict-banner">' + (!isPreview && hasLayers ? verdictBannerHTML(h.score, data.prev_score, h.critical) : '') + '</div>';
+  html += '<div id="start-here">' + startHereHTML(data, h, hasLayers, isPreview) + '</div>';
+  html += '<div id="verdict-banner"></div>';     // only the "could not finish" / "not checked" notes now (updateHealthDisplay)
 
   // Static site recommendation: shown under "Checks we ran" (report tidy-up, 25 Oct 2026), not at the top.
   var staticHtml = '';
@@ -2396,6 +2508,7 @@ function renderReport(data) {
     return '<span class="pill" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(s.name||'') + ' ' + esc(s.version||'') + '</span>';
   }).join('');
 
+  var detailsStart = html.length;
   html += '<div class="rh">';
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
   html += '<div style="font-size:16px;font-weight:600">' + esc(data.repo||'') + '</div>';
@@ -2405,11 +2518,10 @@ function renderReport(data) {
   html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:.65rem">' + pills + '</div>';
   html += '<div class="hg" id="health-grid">' + healthCardsHTML(h, hasLayers, isPreview) + '</div></div>';
 
-  html += '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview, h.critical) + '</div>';
-
-  html += '<div class="actrow">' +
-    '<button class="btn-sm" id="btn-ask-top" onclick="openSection(\'sec-ask\', \'report-ask-input\')"><i class="ti ti-message-circle" style="font-size:14px"></i> Ask Verilay about these results</button>' +
-    '<span class="actlinks"><a onclick="toggleAllSections(true)">Expand all</a><a onclick="toggleAllSections(false)">Collapse all</a></span></div>';
+  var detailsHtml = html.slice(detailsStart);          // repo, stack and the numbers: in "More" (Scan details)
+  html = html.slice(0, detailsStart);
+  var gradeHtml = '<div id="score-banner">' + scoreBannerHTML(h.score, hasLayers, isPreview, h.critical) + '</div>';
+  if (isPreview) html += detailsHtml + gradeHtml;      // a live-address preview has no "Start here": keep its header in place
   var topHtml = html;
   html = '';
 
@@ -2431,7 +2543,7 @@ function renderReport(data) {
   var lbtns = (data.layers||[]).map(function(l) {
     return '<button class="lb" data-layer="' + esc(l.name) + '">' +
       '<div class="lico" style="background:' + (sibg[l.status]||sibg.passing) + ';color:' + (siclr[l.status]||siclr.passing) + '"><i class="ti ' + (icons[l.name]||'ti-code') + '"></i></div>' +
-      '<span style="flex:1">' + esc(l.name) + '</span>' +
+      '<span style="flex:1">' + esc(l.name) + '</span>' + layerCountChip(l) +
       '<div class="ldot" style="background:' + (sdot[l.status]||sdot.passing) + '"></div>' +
       '</button>';
   }).join('');
@@ -2484,11 +2596,16 @@ function renderReport(data) {
                                           '<div id="discovery-slot">' + discoveryInner + '</div>', false)]);
   more.push(['sec-diagram', 'How your app fits together', secHtml('sec-diagram', 'How your app fits together', 'A map of the parts', diagramHtml, false)]);
   more.push(['sec-ask', 'Ask Verilay', secHtml('sec-ask', 'Ask Verilay about your results', 'Plain-English answers', askHtml, false)]);
+  if (!isPreview) {
+    more.unshift(['sec-grade', 'About your grade', secHtml('sec-grade', 'About your grade', 'What the grade means and how to reach the next one', gradeHtml, false)]);
+    more.unshift(['sec-details', 'Scan details', secHtml('sec-details', 'Scan details', 'What was scanned, the tech stack and the numbers', detailsHtml, false)]);
+  }
   more.push(['sec-share', 'Share and IT pack', secHtml('sec-share', 'Share and IT pack', 'Share link, README badge, app directory, IT Review Pack',
     '<div id="share-slot"></div><div style="font-size:13px;margin-top:.4rem"><a href="#" onclick="var b=document.getElementById(\'btn-it-review\');if(b)b.click();return false;" style="color:var(--pu);font-weight:600">Open the IT Review Pack</a> &middot; a printable checklist for IT teams approving this app</div>', false)]);
   document.getElementById('report-content').innerHTML = topHtml;
   document.getElementById('report-sections').innerHTML = sections;
-  renderMoreBox(more);
+  window._moreBase = more;
+  renderMoreBox(more.concat(window._moreExtra || []));
   var nextBox = document.getElementById('report-next');
   if (nextBox) nextBox.innerHTML = (!isPreview && hasLayers && !scanFullyIncomplete()) ? whatsNextHTML(data, h) : '';
   document.getElementById('rpt').classList.add('vis');
@@ -2881,7 +2998,7 @@ function appendLayers(newLayers) {
     btn.innerHTML =
       '<div class="lico" style="background:' + (sibg[layer.status]||sibg.passing) + ';color:' + (siclr[layer.status]||siclr.passing) + '">' +
       '<i class="ti ' + (icons[layer.name]||'ti-code') + '"></i></div>' +
-      '<span style="flex:1">' + esc(layer.name) + '</span>' +
+      '<span style="flex:1">' + esc(layer.name) + '</span>' + layerCountChip(layer) +
       '<div class="ldot" style="background:' + (sdot[layer.status]||sdot.passing) + '"></div>';
 
     btn.addEventListener('click', function() {
@@ -3044,6 +3161,7 @@ function renderPart2(data) {
       'Hardcoded secrets (like API keys written directly in code) are visible to anyone who views your source. They should always be in environment variables instead.',
       'Green = no hardcoded keys found in visible code. Red = potential secrets detected in source. Surface scans can only check client-side code.']
   ];
+  var _ckStart = html.length;          // the checklist goes into "More" (28 Oct 2026)
   html += '<div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.5rem">Security checklist</div>';
   checks.forEach(function(c) {
     var v = sec[c[0]]; var inv = c[2];
@@ -3081,7 +3199,8 @@ function renderPart2(data) {
   if (isBolt) { whereToGo = 'Bolt'; whereDetail = 'Go to bolt.new → open your project → paste in the chat'; }
   if (isV0) { whereToGo = 'v0'; whereDetail = 'Go to v0.dev → open your project → paste in the chat'; }
 
-  html += '<div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Advice prompts</div>';
+  var _ckEnd = html.length;
+  html += '<div style="font-size:12px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin:.85rem 0 .5rem">Fix prompts</div>';
   html += '<div style="background:var(--pul);border:0.5px solid var(--pu);border-radius:8px;padding:.75rem 1rem;margin-bottom:.75rem;font-size:13px;color:var(--put);line-height:1.6">';
   html += '<strong>How to use these:</strong> ';
   html += whereDetail + '. ';
@@ -3115,7 +3234,7 @@ function renderPart2(data) {
     // non-developer can open one fix at a time instead of facing every
     // fix's full advice prompt expanded at once. Summary shows just enough
     // (priority + title) to decide whether to open it.
-    html += '<details class="fc"><summary style="cursor:pointer;display:flex;gap:12px;align-items:center">';
+    html += '<details class="fc"' + (fi === 0 ? ' open' : '') + '><summary style="cursor:pointer;display:flex;gap:12px;align-items:center">';
     html += '<div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;background:var(--pul);color:var(--put)">' + (f.priority||'') + '</div>';
     var fixLabel = [f.area || '', (f.tech && f.tech.length) ? f.tech.join(', ') : ''].filter(Boolean).join(' · ');
     html += '<div style="flex:1"><div style="font-size:14px;font-weight:500">' + esc(f.title||'') + '</div>' +
@@ -3139,8 +3258,15 @@ function renderPart2(data) {
     html += '</div></details>';
   });
 
-  // Light free scan: the other fix prompts are part of Verilay Pro.
-  if (data.lite) html += proLockedHTML(data);
+  // Light free scan: the other fix prompts are part of Verilay Pro (a folded, locked row, then the Pro card).
+  if (data.lite) {
+    var _hh = (currentReport && currentReport.health) || {};
+    var _more = Math.max(0, (_hh.critical || 0) + (_hh.warnings || 0) - (data.top_fixes || []).length);
+    if (_more) html += '<details class="fc" style="opacity:.6"><summary style="cursor:pointer;font-size:14px;font-weight:600">&#128274; ' + _more + ' more fix prompt' +
+      (_more === 1 ? '' : 's') + ' (Verilay Pro)</summary><div style="font-size:13px;color:var(--mut);padding:.4rem 0">Included in Verilay Pro' +
+      ((data.pro_launch && data.pro_launch.active) ? ', free during the launch' : '') + '. See below.</div></details>';
+    html += proLockedHTML(data);
+  }
 
   // Wire fix buttons after render
   setTimeout(function() {
@@ -3183,6 +3309,7 @@ function renderPart2(data) {
     ['Security verification', so.security_prompt, 'ti-shield-check'],
     ['Production readiness', so.prod_checklist_prompt, 'ti-rocket']
   ];
+  var _xStart = html.length;           // "Recommended next steps" and the second opinions go into "More" (28 Oct 2026)
   // Next steps recommendation
   html += '<div style="background:var(--pul);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0;border-left:3px solid var(--pu)">';
   html += '<div style="font-size:13px;font-weight:600;color:var(--put);margin-bottom:.4rem"><i class="ti ti-arrow-right" style="margin-right:4px"></i>Recommended next steps</div>';
@@ -3205,8 +3332,15 @@ function renderPart2(data) {
     html += '<a href="https://chat.openai.com" target="_blank" style="font-size:12px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--txt);text-decoration:none">Open ChatGPT</a>';
     html += '</div></div>';
   });
-  html += '</div>';
+  var _checklist = html.slice(_ckStart, _ckEnd);
+  var _extras = html.slice(_xStart);
+  html = html.slice(0, _ckStart) + html.slice(_ckEnd, _xStart) + '</div>';
   document.getElementById('p2-results').innerHTML = html;
+  window._p2Fixes = data.top_fixes || null;
+  window._moreExtra = [['sec-checklist', 'Security checklist', secHtml('sec-checklist', 'Security checklist', 'Quick checks with what each one means', _checklist, false)],
+                       ['sec-second', 'Second opinions', secHtml('sec-second', 'Second opinions and next steps', 'Prompts to verify the findings with any AI, and tools to go further', _extras, false)]];
+  renderMoreBox((window._moreBase || []).concat(window._moreExtra));
+  refreshStartHere();
 }
 
 // Start everything when DOM is ready
