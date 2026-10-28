@@ -2264,28 +2264,19 @@ function renderMoreBox(more) {
   if (banner && rpt && box.contains(banner)) rpt.appendChild(banner);       // keep it alive while the box is redrawn
   var dir = document.getElementById('directory-card');
   if (dir && rpt && box.contains(dir)) rpt.appendChild(dir);
+  // Just the folded sections, one line each (28 Oct 2026, Moses: the row of name buttons above them repeated the same
+  // names). Opening one closes the others, so only one is open at a time.
   box.innerHTML = '<div class="more-box" style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0">' +
-    '<div style="font-size:15px;font-weight:600;margin-bottom:.55rem">More</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:.4rem">' + more.map(function(m) {
-      return '<button type="button" class="more-pill" data-sec="' + m[0] + '" style="font-size:13px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);' +
-        'background:var(--sur);color:var(--mut);cursor:pointer;font-family:inherit">' + esc(m[1]) + '</button>';
-    }).join('') + '</div>' + more.map(function(m) { return m[2]; }).join('') + '</div>';
+    '<div style="font-size:15px;font-weight:600;margin-bottom:.35rem">More</div>' +
+    more.map(function(m) { return m[2]; }).join('') + '</div>';
   var slot = document.getElementById('share-slot');
   if (slot && dir) slot.appendChild(dir);
   if (slot && banner) slot.appendChild(banner);
-  box.querySelectorAll('.more-pill').forEach(function(p) {
-    p.onclick = function() {
-      var id = p.getAttribute('data-sec');
-      box.querySelectorAll('details.sec').forEach(function(d) { d.open = (d.id === id); });
-      box.querySelectorAll('.more-pill').forEach(function(o) {
-        var on = o === p;
-        o.style.background = on ? 'var(--pu)' : 'var(--sur)';
-        o.style.color = on ? '#fff' : 'var(--mut)';
-        o.style.borderColor = on ? 'var(--pu)' : 'var(--bdr)';
-      });
-      var d = document.getElementById(id);
-      if (d) d.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-    };
+  box.querySelectorAll('details.sec').forEach(function(d) {
+    d.addEventListener('toggle', function() {
+      if (!d.open) return;
+      box.querySelectorAll('details.sec').forEach(function(o) { if (o !== d) o.open = false; });
+    });
   });
 }
 
