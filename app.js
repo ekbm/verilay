@@ -2267,9 +2267,24 @@ function layerFailed(evt, names) {
 
 // The "More" box under the fixes: one button per section; a button opens its section and closes the others. The share
 // banner (with the directory card that sits next to it) is moved into "Share and IT pack" so its existing code keeps working.
-function renderMoreBox(more) {
+function renderMoreBox(more, keepBase) {
   var box = document.getElementById('report-more');
   if (!box) return;
+  var inner = box.querySelector('.more-box');
+  if (keepBase && inner) {
+    // Part 2 only adds its own sections. The report's sections stay as they are, because they are filled in after they
+    // are drawn (the grade, the scan details, the app diagram). Redrawing them from the copy kept at the start put the
+    // "your score appears once all layers are checked" note back under a finished report (28 Oct 2026, report 65976360e806).
+    var baseIds = (window._moreBase || []).map(function(m) { return m[0]; });
+    more.forEach(function(m) {
+      var old = document.getElementById(m[0]);
+      if (old && baseIds.indexOf(m[0]) !== -1) return;
+      if (old && inner.contains(old)) old.outerHTML = m[2];
+      else inner.insertAdjacentHTML('beforeend', m[2]);
+    });
+    bindMoreToggles(box);
+    return;
+  }
   var banner = document.getElementById('share-banner'), rpt = document.getElementById('rpt');
   if (banner && rpt && box.contains(banner)) rpt.appendChild(banner);       // keep it alive while the box is redrawn
   var dir = document.getElementById('directory-card');
@@ -2282,7 +2297,13 @@ function renderMoreBox(more) {
   var slot = document.getElementById('share-slot');
   if (slot && dir) slot.appendChild(dir);
   if (slot && banner) slot.appendChild(banner);
+  bindMoreToggles(box);
+}
+// Opening one section of "More" closes the others. Each section is bound once.
+function bindMoreToggles(box) {
   box.querySelectorAll('details.sec').forEach(function(d) {
+    if (d._moreBound) return;
+    d._moreBound = true;
     d.addEventListener('toggle', function() {
       if (!d.open) return;
       box.querySelectorAll('details.sec').forEach(function(o) { if (o !== d) o.open = false; });
@@ -3440,7 +3461,7 @@ function renderPart2(data) {
   window._p2Fixes = data.top_fixes || null;
   window._moreExtra = [['sec-checklist', 'Security checklist', secHtml('sec-checklist', 'Security checklist', 'Quick checks with what each one means', _checklist, false)],
                        ['sec-second', 'Second opinions', secHtml('sec-second', 'Second opinions and next steps', 'Prompts to verify the findings with any AI, and tools to go further', _extras, false)]];
-  renderMoreBox((window._moreBase || []).concat(window._moreExtra));
+  renderMoreBox((window._moreBase || []).concat(window._moreExtra), true);
   refreshStartHere();
   refreshAskChips();
 }
