@@ -526,11 +526,36 @@ function proOfferHTML(data) {
   var h = (currentReport && currentReport.health) || {};
   var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
   var lead = more ? more + ' more fix prompt' + (more === 1 ? ' is' : 's are') + ' waiting in Verilay Pro.' : 'Want a fix prompt for every finding?';
-  return '<div id="pro-locked" style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:var(--put);' +
-    'background:var(--pul);border-radius:8px;padding:.5rem .8rem;margin:.6rem 0">' +
-    '<i class="ti ti-sparkles" style="font-size:14px;color:var(--pu)"></i><span>' + lead + ' Try it free: answer a quick survey, ' +
-    'run Pro on this app and compare the difference.</span>' +
-    '<a id="pro-see" href="/pricing#pro" target="_blank" rel="noopener" style="color:var(--pu);font-weight:600;white-space:nowrap">Try Verilay Pro &rarr;</a></div>';
+  // A bold card with a real button (28 Oct 2026, Moses: the small line got missed in a long report).
+  var left = (data.pro_launch && data.pro_launch.left) || 0;
+  return '<div id="pro-locked" style="background:var(--pul);border:2px solid var(--pu);border-radius:14px;padding:1rem 1.1rem;margin:1rem 0">' +
+    '<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pu)">&#10024; Free during the launch' +
+    (left ? ' &middot; ' + left + ' left' : '') + '</div>' +
+    '<div style="font-size:19px;font-weight:700;color:var(--put);margin:.25rem 0 .3rem;line-height:1.3">' + lead + '</div>' +
+    '<div style="font-size:14px;color:var(--put);line-height:1.55">Pro gives a ready-to-paste fix prompt for every finding, reads up to 50 files ' +
+    'with a stronger model, and opens as a new report so you can compare the difference. Answer 4 quick questions and it&rsquo;s free.</div>' +
+    '<a id="pro-see" href="/pricing#pro" target="_blank" rel="noopener" style="display:inline-block;margin-top:.75rem;background:var(--pu);color:#fff;' +
+    'font-size:15px;font-weight:600;padding:10px 18px;border-radius:10px;text-decoration:none">Try Verilay Pro free &rarr;</a></div>';
+}
+
+// The same offer, short, near the top of the report once Part 2 has loaded (it starts by itself), so it is seen before
+// the long read. Free (light) scans during the launch only.
+function showProTopBanner(data) {
+  if (!data || !data.lite || !(data.pro_launch && data.pro_launch.active) || document.getElementById('pro-top')) return;
+  var anchor = document.getElementById('verdict-banner');
+  if (!anchor || !anchor.parentNode) return;
+  var h = (currentReport && currentReport.health) || {};
+  var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
+  var b = document.createElement('div');
+  b.id = 'pro-top';
+  b.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--pu);color:#fff;border-radius:12px;padding:.7rem 1rem;margin:0 0 10px';
+  b.innerHTML = '<span style="font-size:18px">&#10024;</span><span style="flex:1;min-width:200px;font-size:15px;line-height:1.45"><strong>' +
+    (more ? more + ' more fix prompt' + (more === 1 ? '' : 's') + ' waiting in Verilay Pro.' : 'Get a fix prompt for every finding with Verilay Pro.') +
+    '</strong> Free during the launch.</span>' +
+    '<a id="pro-see-top" href="/pricing#pro" target="_blank" rel="noopener" style="background:#fff;color:var(--put);font-size:14px;font-weight:700;' +
+    'padding:8px 14px;border-radius:9px;text-decoration:none;white-space:nowrap">Try it free &rarr;</a>';
+  anchor.parentNode.insertBefore(b, anchor.nextSibling);
+  bindProOffer();
 }
 // Which kind of report this is, in its own colour at the top: Free (grey), Verilay Pro (purple), Deep scan (green).
 // Moses, 25 Oct 2026: a free and a Pro report of the same app should be told apart at a glance.
@@ -566,15 +591,17 @@ function showProBadge() {
 }
 
 function bindProOffer() {
-  var a = document.getElementById('pro-see');
-  if (!a || a._bound) return;
-  a._bound = true;
-  try { if (typeof plausible === 'function') plausible('Pro Launch Offer Shown'); } catch (e) {}
-  // The report id is known only once the report is saved, so the link is completed when it is clicked.
-  a.onclick = function() {
-    a.href = '/pricing' + (savedReportId ? '?from=' + encodeURIComponent(savedReportId) : '') + '#pro';
-    try { if (typeof plausible === 'function') plausible('Pro Launch Offer Click'); } catch (e) {}
-  };
+  ['pro-see', 'pro-see-top'].forEach(function(id) {
+    var a = document.getElementById(id);
+    if (!a || a._bound) return;
+    a._bound = true;
+    if (id === 'pro-see') { try { if (typeof plausible === 'function') plausible('Pro Launch Offer Shown'); } catch (e) {} }
+    // The report id is known only once the report is saved, so the link is completed when it is clicked.
+    a.onclick = function() {
+      a.href = '/pricing' + (savedReportId ? '?from=' + encodeURIComponent(savedReportId) : '') + '#pro';
+      try { if (typeof plausible === 'function') plausible('Pro Launch Offer Click', {props: {place: id === 'pro-see-top' ? 'top' : 'fixes'}}); } catch (e) {}
+    };
+  });
 }
 
 function bindProEarlyAccess() {
@@ -3118,6 +3145,7 @@ function renderPart2(data) {
   // Wire fix buttons after render
   setTimeout(function() {
     bindProEarlyAccess();
+    showProTopBanner(data);
     (data.top_fixes||[]).forEach(function(f, fi) {
       var btn = document.getElementById('fix-btn-' + fi);
       var copied = document.getElementById('fix-copied-' + fi);
