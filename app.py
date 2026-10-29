@@ -4582,6 +4582,65 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "you-can-fix-it-with-ai",
+        "title": "You Built It With AI. You Can Fix It With AI Too.",
+        "date": "October 29, 2026",
+        "category": "Guide",
+        "excerpt": "A security report can feel like a wall if you didn't write the code. What the research says about AI fixing code, and the habit that makes it work.",
+        "medium_url": None,
+        "read_time": "5 min read",
+        "featured": False,
+        "body": """
+<p><em>Part 1 of a short series on fixing AI-built apps with AI, without writing code yourself.</em></p>
+
+<p>The scan finishes. The report says your app has problems. And then the thought arrives:</p>
+<p><em>&ldquo;I didn&rsquo;t write this code. How am I supposed to fix it?&rdquo;</em></p>
+<p>It&rsquo;s a strange feeling. A few weeks ago an AI turned your idea into a working app in an afternoon. Now a list of warnings makes it feel like the app belongs to someone else.</p>
+<p>I&rsquo;ve had that feeling. Here&rsquo;s what changed my mind, and what the research actually says.</p>
+
+<h2>First: the fear is reasonable</h2>
+<p>AI builders do make security mistakes. That&rsquo;s not an opinion.</p>
+<p>In 2025, the security company Veracode gave more than 100 AI models the same 80 coding tasks. Each task had a safe way and an unsafe way to write the code. <strong>The AI chose the unsafe way 45% of the time.</strong> Bigger, newer models weren&rsquo;t significantly better. (<a href="https://www.veracode.com/press-release/ai-generated-code-poses-major-security-risks-in-nearly-half-of-all-development-tasks-veracode-research-reveals/" target="_blank" rel="noopener">Veracode</a>)</p>
+<p>And it&rsquo;s not just beginners who find AI tricky. In Stack Overflow&rsquo;s 2025 survey of more than 49,000 developers, 84% use or plan to use AI tools. But <strong>more of them distrust its accuracy (46%) than trust it (33%)</strong>. Their biggest frustration, named by 66%: answers that are <strong>&ldquo;almost right, but not quite.&rdquo;</strong> (<a href="https://survey.stackoverflow.co/2025/ai" target="_blank" rel="noopener">Stack Overflow Developer Survey 2025</a>)</p>
+<p>So if AI-written code makes you nervous, you&rsquo;re in good company. Professional developers feel it too.</p>
+
+<h2>Now the other side: AI is genuinely good at fixing</h2>
+<p>Here&rsquo;s what surprised me. When AI is pointed at a <em>specific, known problem</em>, the results are strong.</p>
+<ul>
+<li><strong>GitHub</strong> added an AI that suggests fixes for security problems found in code. During its test period in 2024, GitHub reported developers fixed problems in a median of <strong>28 minutes with the AI&rsquo;s help, compared to 1.5 hours by hand</strong>. For one common type of problem (cross-site scripting) it was 22 minutes instead of almost three hours. For another (SQL injection), 18 minutes instead of 3.7 hours. (<a href="https://github.blog/news-insights/product-news/secure-code-more-than-three-times-faster-with-copilot-autofix/" target="_blank" rel="noopener">GitHub</a>)</li>
+<li><strong>DARPA</strong>, the US defence research agency, ran a two-year contest for AI systems that find and fix security holes on their own. In the 2025 final, the systems scanned more than 54 million lines of code. They <strong>found 54 of the 63 problems hidden for the contest and fixed 43 of them</strong>. Along the way they also found 18 real problems nobody had planted, and fixed 11. Cost: about $152 per task. (<a href="https://www.darpa.mil/news/2025/aixcc-results" target="_blank" rel="noopener">DARPA</a>)</li>
+<li><strong>Google</strong> used its Gemini AI to fix one specific type of bug that its own testing kept finding. It fixed <strong>15% of them, which added up to hundreds of bugs</strong>, with an engineer reviewing every fix. (<a href="https://research.google/pubs/pub52980/" target="_blank" rel="noopener">Google Research</a>)</li>
+</ul>
+
+<h2>Here&rsquo;s the honest part</h2>
+<p>None of those numbers mean &ldquo;paste the prompt and walk away.&rdquo;</p>
+<p>Look at them again. GitHub&rsquo;s figures come from GitHub itself, and a developer reviewed every fix before using it. DARPA&rsquo;s problems were planted for a contest, and even the best systems missed some. Google&rsquo;s AI fixed 15%, which means it didn&rsquo;t fix 85%, and an engineer still checked the ones it did.</p>
+<p>In every one of those success stories, <strong>the AI suggested the fix and something else checked it.</strong></p>
+<p>I learned the same thing the hard way. Last week I asked an AI builder to fix a problem in one of my apps. It gave me a &ldquo;safe&rdquo; fix that would quietly have stopped &ldquo;select all&rdquo; working for more than 100 documents. Nobody would have noticed until a real user saw &ldquo;Failed to save&rdquo;. I only caught it because I asked one more question before publishing. (<a href="/blog/scanner-and-ai-builder-disagree-github-sync">I wrote about it here.</a>)</p>
+<p>That&rsquo;s the &ldquo;almost right, but not quite&rdquo; problem from the survey, in real life.</p>
+
+<h2>So what does that mean for you?</h2>
+<p>You don&rsquo;t need to learn to write code to fix your app with AI.</p>
+<p><strong>You need to learn to check.</strong></p>
+<p>Checking isn&rsquo;t a programming skill. It&rsquo;s a habit, made of a few questions you ask at the right moments. Developers ask them almost without thinking. Nobody tells the rest of us what they are.</p>
+<p>That&rsquo;s what this series is about, one part a week:</p>
+<ul>
+<li><strong>Part 2: Understand before you fix.</strong> Getting your AI to explain the problem in plain English before it changes anything: what it is, why it matters, and what the fix might break.</li>
+<li><strong>Part 3: One fix at a time, with an undo button.</strong> Why five fixes pasted at once is how working apps break, and how to save a point you can go back to.</li>
+<li><strong>Part 4: How do you know it worked?</strong> Your builder saying &ldquo;done&rdquo; is not proof. What proof looks like.</li>
+<li><strong>Part 5: When to stop and ask a human.</strong> The honest list: payments, health or personal data, a fix that keeps coming back, anything you can&rsquo;t test.</li>
+</ul>
+
+<h2>Where Verilay fits</h2>
+<p>Verilay is one way to do the checking: it scans your app, explains problems in plain English, and gives you a fix prompt to paste into your builder. After you fix something, you can scan again and compare the two reports, so you&rsquo;re not just taking the builder&rsquo;s word for it.</p>
+<p>It&rsquo;s an AI check, not a professional security audit, and I&rsquo;ll keep saying so. But it means you&rsquo;re never fixing in the dark.</p>
+
+<h2>Over to you</h2>
+<p>Have you ever had an AI builder say &ldquo;fixed&rdquo; when it wasn&rsquo;t? Or a fix that broke something else? Email me at <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>. Your stories will shape the next parts.</p>
+<p>And if a security report has ever made you feel like your own app belongs to someone else: you built it with AI. You can fix it with AI too. You just need to check its work.</p>
+""",
+    },
+    {
         "slug": "building-ai-apps-like-an-engineer",
         "title": "Building AI Apps Like an Engineer: I’m Learning the Path, and Checking Whether My AI Follows It",
         "date": "October 27, 2026",
