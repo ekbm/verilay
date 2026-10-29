@@ -522,18 +522,28 @@ function proLockedHTML(data) {
 // ── Verilay Pro, free during the launch ──
 // The report only says what Pro adds; the 4 questions and the unlock are on /pricing, opened in a new tab so this
 // report stays where it is. After unlocking, the Pro scan runs as its own new report (see the ?pro=1 pickup below).
+// "30 November" from the offer's end date ('2026-11-30'); '' when there is none.
+function launchUntilText(data) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((data && data.pro_launch && data.pro_launch.until) || '');
+  if (!m) return '';
+  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return parseInt(m[3], 10) + ' ' + months[parseInt(m[2], 10) - 1];
+}
+
 function proOfferHTML(data) {
   var h = (currentReport && currentReport.health) || {};
   var more = Math.max(0, (h.critical || 0) + (h.warnings || 0) - (data.top_fixes || []).length);
   var lead = more ? more + ' more fix prompt' + (more === 1 ? ' is' : 's are') + ' waiting in Verilay Pro.' : 'Want a fix prompt for every finding?';
   // A bold card with a real button (28 Oct 2026, Moses: the small line got missed in a long report).
   var left = (data.pro_launch && data.pro_launch.left) || 0;
+  var until = launchUntilText(data);
   return '<div id="pro-locked" style="background:var(--pul);border:2px solid var(--pu);border-radius:14px;padding:1rem 1.1rem;margin:1rem 0">' +
-    '<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pu)">&#10024; Free during the launch' +
-    (left ? ' &middot; ' + left + ' left' : '') + '</div>' +
+    '<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pu)">&#10024; ' +
+    (until ? 'Free until ' + until : 'Free during the launch') + (left ? ' &middot; ' + left + ' left' : '') + '</div>' +
     '<div style="font-size:19px;font-weight:700;color:var(--put);margin:.25rem 0 .3rem;line-height:1.3">' + lead + '</div>' +
     '<div style="font-size:14px;color:var(--put);line-height:1.55">Pro gives a ready-to-paste fix prompt for every finding, reads up to 50 files ' +
-    'with a stronger model, and opens as a new report so you can compare the difference. Answer 4 quick questions and it&rsquo;s free.</div>' +
+    'with a stronger model, and opens as a new report so you can compare the difference. Answer 4 quick questions and it&rsquo;s free' +
+    (until ? ' until ' + until + ', then A$4.99 a scan' : '') + '. No card needed.</div>' +
     '<a id="pro-see" href="/pricing#pro" target="_blank" rel="noopener" style="display:inline-block;margin-top:.75rem;background:var(--pu);color:#fff;' +
     'font-size:15px;font-weight:600;padding:10px 18px;border-radius:10px;text-decoration:none">Try Verilay Pro free &rarr;</a></div>';
 }
@@ -551,7 +561,7 @@ function showProTopBanner(data) {
   b.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--pu);color:#fff;border-radius:12px;padding:.7rem 1rem;margin:0 0 10px';
   b.innerHTML = '<span style="font-size:18px">&#10024;</span><span style="flex:1;min-width:200px;font-size:15px;line-height:1.45"><strong>' +
     (more ? more + ' more fix prompt' + (more === 1 ? '' : 's') + ' waiting in Verilay Pro.' : 'Get a fix prompt for every finding with Verilay Pro.') +
-    '</strong> Free during the launch.</span>' +
+    '</strong> ' + (launchUntilText(data) ? 'Free until ' + launchUntilText(data) + ', no card needed.' : 'Free during the launch.') + '</span>' +
     '<a id="pro-see-top" href="/pricing#pro" target="_blank" rel="noopener" style="background:#fff;color:var(--put);font-size:14px;font-weight:700;' +
     'padding:8px 14px;border-radius:9px;text-decoration:none;white-space:nowrap">Try it free &rarr;</a>';
   anchor.parentNode.insertBefore(b, anchor.nextSibling);
@@ -2282,6 +2292,8 @@ function renderMoreBox(more, keepBase) {
       if (old && inner.contains(old)) old.outerHTML = m[2];
       else inner.insertAdjacentHTML('beforeend', m[2]);
     });
+    var cnt = document.getElementById('more-count');
+    if (cnt) cnt.textContent = '(' + inner.querySelectorAll('details.sec').length + ')';
     bindMoreToggles(box);
     return;
   }
@@ -2291,8 +2303,13 @@ function renderMoreBox(more, keepBase) {
   if (dir && rpt && box.contains(dir)) rpt.appendChild(dir);
   // Just the folded sections, one line each (28 Oct 2026, Moses: the row of name buttons above them repeated the same
   // names). Opening one closes the others, so only one is open at a time.
-  box.innerHTML = '<div class="more-box" style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0">' +
-    '<div style="font-size:15px;font-weight:600;margin-bottom:.35rem">More</div>' +
+  // 29 Oct 2026 (Moses: visitors may not notice "More"): a heading that says what is inside and how much, and a
+  // coloured edge so it reads as part of the report, not page furniture.
+  box.innerHTML = '<div class="more-box" style="background:var(--sur);border:0.5px solid var(--bdr);border-left:4px solid var(--pu);' +
+    'border-radius:var(--r);padding:.85rem 1rem;margin:.85rem 0">' +
+    '<div style="font-size:16px;font-weight:600;color:var(--put);margin-bottom:2px">More details <span id="more-count" ' +
+    'style="font-weight:500;color:var(--mut);font-size:14px">(' + more.length + ')</span></div>' +
+    '<div style="font-size:13px;color:var(--mut);margin-bottom:.4rem">Your grade explained, the checks we ran, how your app fits together and more. Tap one to open it.</div>' +
     more.map(function(m) { return m[2]; }).join('') + '</div>';
   var slot = document.getElementById('share-slot');
   if (slot && dir) slot.appendChild(dir);
@@ -2307,6 +2324,8 @@ function bindMoreToggles(box) {
     d.addEventListener('toggle', function() {
       if (!d.open) return;
       box.querySelectorAll('details.sec').forEach(function(o) { if (o !== d) o.open = false; });
+      // 29 Oct 2026: do visitors open "More" at all, and which parts? Counted before deciding to move anything out of it.
+      try { if (typeof plausible === 'function') plausible('More Section Open', {props: {section: d.id}}); } catch (e) {}
     });
   });
 }

@@ -1649,6 +1649,16 @@ def _pro_count_one():
         print(f"[pro] launch counter not updated: {e}", flush=True)
 
 
+def launch_until_text(st=None):
+    """'30 November' from the free-Pro offer's end date, for wording on the pages."""
+    st = st or pro_launch_state()
+    try:
+        d = datetime.strptime(str(st.get("until") or ""), "%Y-%m-%d")
+        return f"{d.day} {d.strftime('%B')}"
+    except ValueError:
+        return ""
+
+
 def pro_launch_state(now=None):
     """{'active': bool, 'left': int, 'until': 'YYYY-MM-DD'} for the free-Pro launch offer."""
     today = (now or datetime.utcnow()).strftime("%Y-%m-%d")
@@ -7816,7 +7826,9 @@ def pricing_page():
     rid = rid if _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid) else ""
     survey = ""
     if light_on and st["active"]:
-        pro_price, pro_unit, pro_state, pro_ok = "Free", "during the launch", f"Then A$4.99 a scan · {st['left']} free scans left", True
+        _until = launch_until_text(st)
+        pro_price, pro_unit, pro_state, pro_ok = ("Free", f"until {_until}" if _until else "during the launch",
+                                                  f"Then A$4.99 a scan · {st['left']} free scans left", True)
         if rid:
             pro_btn, pro_href = "Get my free Pro scan", "#pro-unlock-box"
             _rd, _ro = _report_auth_info(rid)
@@ -8183,7 +8195,9 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
                    'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro gives a '
-                   'ready-to-paste fix prompt for every finding: free during the launch (4 quick questions on the Pricing page), then '
+                   'ready-to-paste fix prompt for every finding: free '
+                   + (f'until {launch_until_text()}' if launch_until_text() else 'during the launch')
+                   + ' (4 quick questions on the Pricing page, no card needed), then '
                    f'A$4.99 a scan. <a href="/pricing?from={_htmlmod.escape(report_id)}#pro" style="color:#3C3489;'
                    'font-weight:600">See Verilay Pro</a></div></div>')
     out = _B["head"]          # the "not checked" note belongs with the grade it explains
@@ -10218,18 +10232,8 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
 
   <div id="p2-results"></div>
 
-  <!-- "Ask Verilay about your report": its own card under the fixes, with suggested questions (28 Oct 2026) -->
-  <div id="report-ask"></div>
-  <!-- "Email me this report": keeps a free report for good by saving it to an account (28 Oct 2026) -->
-  <div id="report-email"></div>
-
-  <!-- "More": checks, similar apps, diagram, Ask Verilay, share and IT pack (renderMoreBox), under the fixes -->
-  <div id="report-more"></div>
-
-  <!-- "What's next": one line for this report, and the quiet "see all options" footer (whatsNextHTML) -->
-  <div id="report-next"></div>
-
-  <!-- Feedback widget: right under the report (27 Oct 2026; it used to sit under the footer links, where few saw it) -->
+  <!-- Feedback widget: right under the fixes (29 Oct 2026; under the report it was the last thing on the page, and
+       no visitor rated a report) -->
   <div id="feedback-widget" style="display:none;background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:.85rem 1rem;margin-bottom:.75rem;text-align:center">
     <div style="font-size:14px;font-weight:500;margin-bottom:.65rem">Was this report helpful?</div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:.5rem">
@@ -10244,6 +10248,17 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     </div>
     <div id="feedback-thanks" style="display:none;font-size:14px;color:var(--mut)">Thanks for the feedback! 🙏</div>
   </div>
+
+  <!-- "Ask Verilay about your report": its own card under the fixes, with suggested questions (28 Oct 2026) -->
+  <div id="report-ask"></div>
+  <!-- "Email me this report": keeps a free report for good by saving it to an account (28 Oct 2026) -->
+  <div id="report-email"></div>
+
+  <!-- "More": checks, similar apps, diagram, Ask Verilay, share and IT pack (renderMoreBox), under the fixes -->
+  <div id="report-more"></div>
+
+  <!-- "What's next": one line for this report, and the quiet "see all options" footer (whatsNextHTML) -->
+  <div id="report-next"></div>
 
   <!-- Layers injected here by appendLayers -->
   <div id="layers-container"></div>
