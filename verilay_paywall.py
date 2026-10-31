@@ -292,9 +292,54 @@ _WHAT_YOU_GET_3 = (
 )
 
 
+def code_fitness_on():
+    """Code fitness is shown to buyers (app.py code_health_public): the selling pages mention it only then."""
+    return (os.getenv("VERILAY_CODE_HEALTH", "") or "").strip() == "1"
+
+
+_FITNESS_ROW_2 = ('<tr style="border-bottom:0.5px solid #f0efec">'
+                  '<td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Code fitness (is your app getting hard to change?)</td>'
+                  '<td style="padding:8px 8px;font-size:13px;color:#4a4846">Your app&rsquo;s size, for big GitHub apps</td>'
+                  '<td style="padding:8px 0;font-size:13px;color:#4a4846">Copy-paste, giant files, settings typed in many places, '
+                  'leftover screens, plus the 3 things to tidy first</td></tr>')
+_FITNESS_ROW_3 = _row("Code fitness (is your app getting hard to change?)", "Your app&rsquo;s size, for big GitHub apps", "&ndash;",
+                      "<strong>The full check</strong>, plus the 3 things to tidy first")
+
+
+def _with_fitness(html, row):
+    """Add the Code fitness row just before "Checking a fix worked"."""
+    i = html.find("Checking a fix worked")
+    j = html.rfind("<tr", 0, i) if i != -1 else -1
+    return html if j == -1 else html[:j] + row + html[j:]
+
+
 def _compare_html():
-    """The comparison on the pricing page: Free | Pro | Deep once the light free scan is switched on, else the original."""
-    return _WHAT_YOU_GET_3 if "haiku" in (os.getenv("VERILAY_FREE_MODEL", "") or "") else _WHAT_YOU_GET
+    """The comparison on the pricing page: Free | Pro | Deep once the light free scan is switched on, else the original.
+    With Code fitness switched on, it has a row of its own (31 Oct 2026)."""
+    three = "haiku" in (os.getenv("VERILAY_FREE_MODEL", "") or "")
+    html = _WHAT_YOU_GET_3 if three else _WHAT_YOU_GET
+    if code_fitness_on():
+        html = _with_fitness(html, _FITNESS_ROW_3 if three else _FITNESS_ROW_2)
+    return html
+
+
+_FITNESS_CARD = """
+    <div class="dcard star">
+      <span class="badge">New &middot; only in the deep scan</span>
+      <h3>Code fitness: is your app getting hard to change?</h3>
+      <p>Counted from every file in your app, not just a sample. It starts with things you&rsquo;ve probably noticed
+      (&ldquo;fixed a bug and it came back?&rdquo;, &ldquo;the AI said done but nothing changed?&rdquo;) and shows the
+      reason in your code: copy-pasted code, giant files, a price or limit typed in many places, leftover test screens.
+      Then the 3 things to tidy first, each with a &ldquo;report first, change nothing yet&rdquo; prompt for your AI builder.</p>
+    </div>"""
+
+
+def _deep_benefits():
+    """The deep scan's benefit cards, with the Code fitness card while it is switched on."""
+    if not code_fitness_on():
+        return _DEEP_BENEFITS
+    marker = '    <div class="dcard">\n      <h3>6&times; more of your code read</h3>'
+    return _DEEP_BENEFITS.replace(marker, _FITNESS_CARD.lstrip("\n") + "\n" + marker, 1) if marker in _DEEP_BENEFITS else _DEEP_BENEFITS
 
 
 _DEEP_STYLE = """
@@ -530,13 +575,13 @@ def deep_scan_landing():
   <h1>Know what's really inside your app before you launch</h1>
   <p style="font-size:15px">You built it with an AI tool, so you didn't write the code and nobody has
   checked it. The deep scan reads up to 150 of your files, names every risky package, shows who can see
-  your data if you use Supabase, finds similar projects you can learn from or partner with, and gives you
+  your data if you use Supabase, finds similar projects you can learn from or partner with,{" checks how easy your app is to change (Code fitness)," if code_fitness_on() else ""} and gives you
   fixes you can paste straight into Lovable, Replit, Cursor or Bolt.</p>
   <div class="price">{_esc(price)}</div>
   <p class="note" style="margin-top:-.5rem">plus applicable tax, calculated at checkout for your location.
   One payment, no subscription, and re-scans of the same app for 30 days are included.</p>
   <div class="heroactions"><a class="btn" href="#start">Start my deep scan</a> {sample}</div>
-  {_DEEP_BENEFITS}
+  {_deep_benefits()}
   {_compare_html()}
   {_DEEP_HOW}
   {_DEEP_FIT}

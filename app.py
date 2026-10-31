@@ -4710,6 +4710,73 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "why-ai-app-builders-burn-credits-as-your-app-grows",
+        "title": "Why AI App Builders Burn Credits as Your App Grows (and How to Fix It)",
+        "date": "October 31, 2026",
+        "category": "Story",
+        "excerpt": "Your AI builder burning credits and breaking things as your app grows? Why it happens, what changed in 2026, and how to make your app easier to change.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p>January. I&rsquo;d type what I wanted. Wait. Watch the agent work. Then it would stop and ask me a question.</p>
+<p>The same question it had asked ten minutes earlier.</p>
+<p>I&rsquo;d answer again. It would carry on, change something it had already changed, and ask again. Every round cost credits. By the end of the build, I&rsquo;d spent thousands of dollars in credits and weeks of evenings on an app that, on a good day, did what I&rsquo;d asked the first time.</p>
+<p>If you built something in that era, you probably know the feeling.</p>
+
+<h2>What it actually felt like</h2>
+<ul>
+<li><strong>It forgot.</strong> The agent couldn&rsquo;t hold the whole picture for long. Decisions we&rsquo;d made an hour earlier were gone.</li>
+<li><strong>It added instead of fixing.</strong> Ask for a change, and it often wrote new code on top of the old, rather than changing what was there.</li>
+<li><strong>Everything got bigger.</strong> The app grew far beyond what it needed to be, and some single files ran to many thousands of lines. Every request after that touched a giant file, so every request was slower, cost more, and broke something I hadn&rsquo;t asked it to touch.</li>
+<li><strong>It said &ldquo;done&rdquo;.</strong> Often it was. Sometimes the screen didn&rsquo;t change at all, because it had edited an old copy of the file nobody used any more.</li>
+</ul>
+<p>I blamed myself for a while. I wasn&rsquo;t asking it the right way. Then I realised the tool itself had limits, and I was paying for them.</p>
+
+<h2>What&rsquo;s changed since</h2>
+<p>Quite a lot, and it&rsquo;s measurable.</p>
+<p><strong>AI can now work on much longer tasks.</strong> METR, a research group that tests AI systems, found that the length of tasks AI agents can complete has been doubling about every seven months. (<a href="https://metr.substack.com/p/2025-03-19-measuring-ai-ability-to-complete-long-tasks" target="_blank" rel="noopener">METR</a>)</p>
+<p><strong>The builders keep changing, fast.</strong> The agent I used was already able to work on its own &ldquo;for up to 200 minutes&rdquo;, and to test itself in a real browser. (<a href="https://docs.replit.com/updates/2025/09/12/changelog" target="_blank" rel="noopener">Replit, September 2025</a>) Running longer didn&rsquo;t stop it forgetting what we&rsquo;d agreed. Then, a few weeks after I finished, Replit launched Agent 4, built around planning first: a Plan mode to &ldquo;map out your build before any code is written&rdquo;, a Design Canvas to try designs before committing to code, and several tasks running at once. (<a href="https://docs.replit.com/updates/2026/03/13/changelog" target="_blank" rel="noopener">Replit, March 2026</a>) Plan first, then build is exactly what I was missing in January.</p>
+
+<h2>A small look of my own</h2>
+<p>I wanted to see whether the code itself looks different, not just the marketing. So I took 14 public apps built with Lovable, 7 created in early 2025 and 7 created this year, and ran them through the same counting tool Verilay uses. I left out portfolios and practice projects.</p>
+<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:15px;margin:.5rem 0 1rem">
+<tr><th style="padding:7px 10px;text-align:left">Middle value of 7 apps each</th><th style="padding:7px 10px">Early 2025</th><th style="padding:7px 10px">Mid 2026</th></tr>
+<tr><td style="padding:7px 10px;border-top:1px solid #e5e3dc">Copy-pasted blocks per 1,000 lines</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">14.4</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">2.4</td></tr>
+<tr><td style="padding:7px 10px;border-top:1px solid #e5e3dc">Code that may be unused</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">8.2%</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">1.5%</td></tr>
+<tr><td style="padding:7px 10px;border-top:1px solid #e5e3dc">Lines in the biggest file</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">603</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">1,583</td></tr>
+</table></div>
+<p>The newer apps repeat themselves far less, and leave much less dead code behind. That matches what I&rsquo;ve felt building with today&rsquo;s tools.</p>
+<p>But look at the last row. <strong>The newer apps have bigger single files.</strong> Today&rsquo;s builders write tidier code, and still let files grow.</p>
+
+<h2>Here&rsquo;s the honest part</h2>
+<p>Fourteen apps is a small sample. Newer apps might be smaller simply because they do less, and plenty of early apps were tidy. So I&rsquo;m not claiming proof. What I&rsquo;m comfortable saying is this:</p>
+<ul>
+<li><strong>AI builders really have got better</strong> at not repeating themselves and not leaving old code behind.</li>
+<li><strong>Apps built in the early era still carry the mess.</strong> The tools improved; your code didn&rsquo;t improve with them. It&rsquo;s exactly as tangled as the day it was written.</li>
+<li><strong>Even today, files keep growing,</strong> and a giant file is where AI changes start to go wrong.</li>
+</ul>
+<p>So if your app started in 2024 or early 2025, or it&rsquo;s grown past 20,000 lines, it&rsquo;s worth knowing what&rsquo;s in there.</p>
+
+<h2>What a deep scan does now</h2>
+<p>This is why I&rsquo;ve added <strong>Code fitness</strong> to Verilay&rsquo;s deep scan.</p>
+<p>A deep scan reads every file in your repository, not just a sample, and checks it for security problems, layer by layer, with a fix prompt for each one. Now it also answers a second question: <strong>is your app getting hard to change?</strong></p>
+<p>It doesn&rsquo;t use jargon. It starts with things you&rsquo;ve probably noticed:</p>
+<ul>
+<li><em>Fixed a bug, and it came back somewhere else?</em> Usually the same code is copied into two places.</li>
+<li><em>Changed a price or trial length, and some screens still show the old one?</em> Usually the same setting is typed into many files.</li>
+<li><em>Did your AI builder say &ldquo;done&rdquo;, but nothing changed on screen?</em> Often there&rsquo;s an old version of a file still lying around.</li>
+<li><em>Do changes take longer, or break things you didn&rsquo;t touch?</em> Usually a file has grown too big for the AI to keep in mind.</li>
+</ul>
+<p>For each, it shows the number behind it, measured in your code, and the files involved. Then it gives you the <strong>three things to tidy first</strong>, each with a prompt for your AI builder that starts with <strong>&ldquo;report first, change nothing yet&rdquo;</strong>. One step at a time, so nothing breaks while you tidy.</p>
+<p>When you&rsquo;ve made a change, scan again. The numbers tell you whether it worked, not the builder&rsquo;s word. (How to fix safely, step by step, is its own series: <a href="/blog/you-can-fix-it-with-ai">Fix it with AI</a>.)</p>
+
+<h2>Over to you</h2>
+<p>If you started building early, especially if your app is past 20,000 lines: does any of this sound familiar? Did changes get slower and more expensive as it grew? Email me at <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>. I read every reply.</p>
+<p>And if you want to know what&rsquo;s in your own app, the free scan is at <a href="https://verilay.dev">verilay.dev</a>, and the <a href="/deep-scan">deep scan</a> now includes Code fitness.</p>
+""",
+    },
+    {
         "slug": "you-can-fix-it-with-ai",
         "title": "You Built It With AI. You Can Fix It With AI Too.",
         "date": "October 29, 2026",
@@ -8009,8 +8076,9 @@ def pricing_page():
                        "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November"],
                       pro_btn, pro_href, star=True),
         _pricing_card("Deep scan", "A$19", "one-off", "Available", True,
-                      ["Up to 150 files read", "Every risky package named, with its fix", "Up to 6 similar projects",
-                       "Re-scans of the same app for 30 days"], "See the deep scan", "/deep-scan"),
+                      ["Up to 150 files read", "Every risky package named, with its fix"]
+                      + (["Code fitness: what&rsquo;s making your app hard to change"] if code_health_public() else [])
+                      + ["Up to 6 similar projects", "Re-scans of the same app for 30 days"], "See the deep scan", "/deep-scan"),
         _pricing_card("Monitoring", "A$3.99", "a month", "Planned · early access", False,
                       ["Daily checks for new package problems and exposed keys",
                        "AI re-review weekly (Basic) or daily (Active, about A$9.99)", "An email when your grade drops"],
