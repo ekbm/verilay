@@ -2057,6 +2057,47 @@ def build_report_ask_prompt(data, question):
 # email; the email carries a one-click sign-in link, and signing in (on any device) saves the report to their account.
 # Only the browser that made the report can ask (its manage token), and the address only gets the report once its owner
 # signs in, so a mistyped address saves nothing.
+# ── Code health (Nov 2026) ─────────────────────────────────────────────────────────
+# The deep scan measures it in the private package; this decides who sees it. VERILAY_CODE_HEALTH=1 on Railway shows
+# it to every deep-scan buyer and turns on the free teaser; until then only the admin sees it (to try it first).
+def code_health_public():
+    return os.getenv("VERILAY_CODE_HEALTH", "") == "1"
+
+
+def code_health_visible():
+    return code_health_public() or _request_is_admin()
+
+
+_SIZE_EXT = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".py", ".go", ".java", ".kt", ".rb", ".php", ".cs", ".rs", ".swift",
+             ".dart", ".vue", ".svelte")
+_SIZE_SKIP = _re.compile(r"(^|/)(node_modules|dist|build|\.next|vendor|migrations)/|\.min\.js$|\.d\.ts$|(^|/)components/ui/", _re.I)
+
+
+def code_size(all_text):
+    """{'lines', 'huge'}: lines of app code, and files over 3,000 lines. Counting only, no AI."""
+    lines, huge = 0, 0
+    for p, t in (all_text or {}).items():
+        if isinstance(t, str) and p.lower().endswith(_SIZE_EXT) and not _SIZE_SKIP.search(p):
+            n = t.count("\n") + 1
+            lines += n
+            huge += n >= 3000
+    return {"lines": lines, "huge": huge}
+
+
+def big_app(size):
+    """Worth the free teaser: over 20,000 lines, or any file over 3,000 lines (decided 31 Oct 2026)."""
+    return bool(size) and (size.get("lines", 0) > 20000 or size.get("huge", 0) >= 1)
+
+
+def code_health_teaser_html(size):
+    return ('<div class="card" id="code-health-teaser" style="border-left:4px solid #534AB7;font-size:14px">'
+            f'<b>Your app is large</b> (about {int(size.get("lines", 0)):,} lines'
+            + (f', {int(size["huge"])} very large file{"s" if int(size["huge"]) != 1 else ""}' if size.get("huge") else "")
+            + '). Big apps get slower and costlier for an AI builder to change. A '
+            '<a href="/deep-scan" style="color:#534AB7;font-weight:600">deep scan</a> includes a code health check: what is '
+            'making yours hard to change, and what to tidy first.</div>')
+
+
 def report_email_headline(data):
     h = (data or {}).get("health") or {}
     if (data or {}).get("preview_only") or h.get("score") is None:
@@ -4037,6 +4078,10 @@ def analyse_stream():
             if getattr(_MODEL_LOCAL, "tier", None) == "pro":
                 s1["scan_tier"] = "pro"      # Verilay Pro, free during the launch
             s1["files_read"] = len(files)
+            if method == "github" and _all_text:
+                s1["code_size"] = code_size(_all_text)
+                if code_health_public() and big_app(s1["code_size"]):
+                    s1["code_health_teaser"] = True
             if private_scan is not None:
                 s1["private"] = True      # kept private: never cached, never listed, shown only to this browser
             s1["files_total"] = len(tree) if tree else len(files)
@@ -8496,6 +8541,15 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                 + _dep_advice + selfcheck.render(["old_packages"]) + '</div>'
             )
 
+    # Code health (deep scans): drawn by the private package so its wording stays private. Admin only until
+    # VERILAY_CODE_HEALTH=1 (code_health_visible).
+    if raw_data.get("is_deep_scan") and raw_data.get("code_health") and code_health_visible() and getattr(deepscan, "AVAILABLE", False):
+        _ch_html = deepscan.render_code_health_html(raw_data["code_health"])
+        if _ch_html:
+            _B["fix"].append(_ch_html)
+            if deepreport._COPY_SCRIPT not in "".join(_B["fix"]):
+                _B["fix"].append(deepreport._COPY_SCRIPT)
+
     out = _B["ask"]
     # "Ask Verilay about your report": a visible card after the fixes, with suggested questions, answered from this
     # report by /report/<id>/ask (28 Oct 2026; it used to be only a link out to Claude, inside "More details").
@@ -8554,6 +8608,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append(f'<div class="st">Second Opinion Prompts</div><div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:.35rem">General review</div><div class="pb">{so["summary_prompt"]}</div></div>')
 
     out = _B["foot"]
+    if raw_data.get("code_health_teaser") and not raw_data.get("is_deep_scan") and code_health_public() and big_app(raw_data.get("code_size")):
+        out.append(code_health_teaser_html(raw_data.get("code_size")))
     if not is_preview and not data.get("analysis_incomplete"):
         _kind = "deep" if raw_data.get("is_deep_scan") else ("pro" if raw_data.get("scan_tier") == "pro" else "free")
         out.append(whats_next_html(next_offer_for_report(_kind, h.get("score"), h.get("critical"), h.get("warnings")), "report"))

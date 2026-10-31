@@ -2506,6 +2506,18 @@ function layerCountChip(layer) {
 
 // "Email me this report" (28 Oct 2026): keeps a free report for good by saving it to an account. The button waits
 // for the report to be saved (savedReportId); the email's link signs them in and the report joins their account.
+// "Your app is large": one line on a free GitHub report when the server says so (code_health_teaser, Nov 2026).
+function codeHealthTeaserHTML(data) {
+  var s = (data && data.code_size) || {};
+  if (!data || !data.code_health_teaser || data.is_deep_scan || !(s.lines > 0)) return '';
+  try { if (typeof plausible === 'function') plausible('Code Health Teaser Shown'); } catch (e) {}
+  return '<div id="code-health-teaser" style="margin:.85rem 0;padding:.8rem 1rem;background:var(--sur);border:0.5px solid var(--bdr);' +
+    'border-left:4px solid var(--pu);border-radius:var(--r);font-size:14px;line-height:1.55"><b>Your app is large</b> (about ' +
+    Number(s.lines).toLocaleString('en-AU') + ' lines' + (s.huge ? ', ' + s.huge + ' very large file' + (s.huge === 1 ? '' : 's') : '') +
+    '). Big apps get slower and costlier for an AI builder to change. A <a href="/deep-scan" style="color:var(--pu);font-weight:600">deep scan</a> ' +
+    'includes a code health check: what is making yours hard to change, and what to tidy first.</div>';
+}
+
 function emailReportHTML() {
   return '<div id="em-card" style="margin:.85rem 0;padding:1rem;background:var(--sur);border:1px solid var(--pu);border-radius:var(--r)">' +
     '<div style="font-size:16px;font-weight:600;color:var(--txt);margin-bottom:2px">&#9993;&#65039; Email me this report</div>' +
@@ -2766,7 +2778,7 @@ function renderReport(data) {
   window._moreBase = more;
   renderMoreBox(more.concat(window._moreExtra || []));
   var nextBox = document.getElementById('report-next');
-  if (nextBox) nextBox.innerHTML = (!isPreview && hasLayers && !scanFullyIncomplete()) ? whatsNextHTML(data, h) : '';
+  if (nextBox) nextBox.innerHTML = codeHealthTeaserHTML(data) + ((!isPreview && hasLayers && !scanFullyIncomplete()) ? whatsNextHTML(data, h) : '');
   document.getElementById('rpt').classList.add('vis');
 
   // Wire New analysis buttons after report is rendered
