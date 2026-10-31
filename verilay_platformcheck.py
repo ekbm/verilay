@@ -30,7 +30,7 @@ TABLES = ("ask_usage", "deepscan_jobs", "deepscan_prompts", "monitoring_interest
 # The main AI model (deep scans, the monitor of our own apps, the light-scan safety net). Railway setting
 # VERILAY_MAIN_MODEL picks it (25 Oct 2026, to move off Sonnet 4.5 before it retires); unset, or not one of the models
 # below, it stays DEFAULT_MAIN_MODEL, so a typo can never break every deep scan. app.py reads the same function.
-DEFAULT_MAIN_MODEL = "claude-sonnet-4-5"
+DEFAULT_MAIN_MODEL = "claude-sonnet-5-5"     # 4.5 retires 30 Nov 2026
 KNOWN_MAIN_MODELS = ("claude-sonnet-4-5", "claude-sonnet-5-5")
 
 
@@ -433,7 +433,8 @@ def _plan():
            ("GitHub App (private repos)", check_github_app),
            ("Vulnerability list (OSV)", check_osv),
            ("Sign-in service (Supabase)", check_supabase_auth),
-           ("Payments (Stripe)", check_stripe)]
+           ("Payments (Stripe)", check_stripe),
+           ("Deep scan engine (private)", check_pro_package)]
     if (os.getenv("BEEHIIV_API_KEY", "") or "").strip():
         out.append(("Newsletter (beehiiv)", check_beehiiv))
     if (os.getenv("VERILAY_FREE_MODEL", "") or "").strip() and os.getenv("VERILAY_FREE_MODEL", "").strip() != MODEL:
@@ -442,6 +443,20 @@ def _plan():
     out += [(f"Table: {t}", (lambda t=t: check_table(t))) for t in TABLES]
     out.append(("What we are running on", check_versions))
     return out
+
+
+def check_pro_package():
+    """The private deep-scan engine (verilay_pro): loaded when the app started? Without it deep scans are paused."""
+    try:
+        import verilay_pro_loader as pl
+        import verilay_deepscan as ds
+    except Exception as e:
+        return _res(FAIL, f"could not check: {type(e).__name__}")
+    if getattr(ds, "AVAILABLE", False):
+        return _res(OK, f"loaded ({pl.STATUS.get('how') or 'installed'}, {pl.STATUS.get('ref')})")
+    return _res(FAIL, "not loaded: deep scans are paused (nobody can buy one)",
+                f"{pl.STATUS.get('error') or 'unknown reason'}. Check VERILAY_PRO_TOKEN (a read-only key for the private "
+                "verilay-pro repository) on Railway, then redeploy.")
 
 
 def run_checks(budget=None):

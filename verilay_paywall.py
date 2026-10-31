@@ -569,8 +569,16 @@ def deep_scan_landing():
     return _page("Deep scan", body)
 
 
+def _deep_unavailable_page():
+    """Shown instead of taking payment when the private deep-scan engine is not installed (Nov 2026)."""
+    return _page("Deep scan", f'<h1>Deep scans are paused</h1><p>{_esc(deepscan.NOT_AVAILABLE_MESSAGE)}</p>'
+                 '<p><a class="btn btn-quiet" href="/">Back to Verilay</a></p>', robots="noindex"), 503
+
+
 @bp.route("/checkout", methods=["POST"])
 def checkout():
+    if not getattr(deepscan, "AVAILABLE", True):
+        return _deep_unavailable_page()
     repo = request.form.get("repo", "")
     email = (request.form.get("email", "") or "").strip().lower()
     user = accounts.current_user()
@@ -2071,6 +2079,8 @@ def deep_scan(owner, repo):
 
 @bp.route("/deep/<owner>/<repo>/start", methods=["POST"])
 def deep_scan_start(owner, repo):
+    if not getattr(deepscan, "AVAILABLE", True):
+        return _deep_unavailable_page()
     full = billing.normalise_repo(f"{owner}/{repo}")
     ent = entitlement_for_request(full) if full else None
     if not ent:
