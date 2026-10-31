@@ -1205,7 +1205,28 @@ def fetch_zip(zip_bytes, filename):
             if any(k in fname for k in KEYWORDS):
                 c = read_zip(rel)
                 if c: files[rel] = c
+        # Then the rest of the code, best first, until the reading limit (31 Oct 2026). Only files whose NAMES held a
+        # keyword used to be read: a 50-file Minecraft mod was graded on Config.java alone, and a 4-file website on
+        # index.html without the app.js that runs it. GitHub scans already fill every slot.
+        for rel in sorted((r for r in name_map if r not in files), key=zip_fill_rank):
+            if len(files) >= max_files_now(): break
+            c = read_zip(rel)
+            if c: files[rel] = c
     return files, list(name_map.keys()), project_name
+
+_ZIP_CODE_EXT = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java", ".kt", ".kts", ".rb", ".php", ".cs",
+                 ".rs", ".swift", ".dart", ".vue", ".svelte", ".sql", ".html", ".htm", ".c", ".cc", ".cpp", ".h", ".hpp",
+                 ".scala", ".ex", ".exs", ".sh", ".gradle", ".xml", ".yml", ".yaml", ".toml", ".ini", ".json")
+
+
+def zip_fill_rank(rel):
+    """Order for filling a ZIP scan's remaining slots: code before settings, settings before notes, tests last."""
+    name = rel.lower()
+    r = 0 if name.endswith(_ZIP_CODE_EXT[:30]) else (1 if name.endswith(_ZIP_CODE_EXT[30:]) else 2)
+    if any(d in name for d in (".test.", ".spec.", "/test/", "/tests/", "__tests__", "/fixtures/", "/mocks/")):
+        r += 3
+    return (r, name.count("/"), name)
+
 
 def fetch_url(live_url):
     from urllib.parse import urlparse
@@ -2515,6 +2536,23 @@ def _unanswered_layer(name):
         },
         "quiz": [],
     }
+
+
+def enough_read_for_a(files_read, files_total):
+    """An A needs enough of the code read: half the files, or 10 when there are more than 20 (31 Oct 2026: two ZIP
+    scans got an A from 1 file out of 50 and 1 out of 4). Unknown counts are not held against the scan."""
+    try:
+        read, total = int(files_read or 0), int(files_total or 0)
+    except (TypeError, ValueError):
+        return True
+    if read <= 0 or total <= 0:
+        return True
+    return read >= min(10, (total + 1) // 2)
+
+
+def grade_with_coverage(score, files_read, files_total):
+    """A when too little code was read is shown as B: "nothing found" in a small part of an app is not an A."""
+    return "B" if (score == "A" and not enough_read_for_a(files_read, files_total)) else score
 
 
 def grade_with_unchecked(score, not_checked):
@@ -4227,7 +4265,10 @@ def analyse_stream():
             partial["health"]["critical"] = _crit
             partial["health"]["warnings"] = _warn
             partial["health"]["passing"] = _pass
-            partial["health"]["score"] = grade_with_unchecked(grade_from_counts(_crit, _warn), _missing)
+            partial["health"]["score"] = grade_with_coverage(grade_with_unchecked(grade_from_counts(_crit, _warn), _missing),
+                                                             partial.get("files_read"), partial.get("files_total"))
+            if not enough_read_for_a(partial.get("files_read"), partial.get("files_total")):
+                partial["health"]["limited_coverage"] = True
             partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
             partial["crypto_scan"] = crypto_to_report_dict(crypto_findings, scan_files_count)
             partial["authz_scan"] = authz_to_teaser_dict(authz_findings)
@@ -7536,7 +7577,7 @@ def _flag(code):
 
 # A short "built with" label from the AI's sentence (28 Oct 2026: the cut-off sentence read badly); the full sentence
 # shows on hover.
-_BUILT_LABELS = (("lovable", "Lovable"), ("bolt", "Bolt"), ("replit", "Replit"), ("base44", "Base44"), ("v0", "v0"),
+_BUILT_LABELS = (("google ai studio", "Google AI Studio"), ("ai studio", "Google AI Studio"), ("lovable", "Lovable"), ("bolt", "Bolt"), ("replit", "Replit"), ("base44", "Base44"), ("v0", "v0"),
                  ("cursor", "Cursor"), ("windsurf", "Windsurf"), ("bubble", "Bubble"), ("framer", "Framer"),
                  ("webflow", "Webflow"), ("wix", "Wix"), ("claude", "Claude"), ("chatgpt", "ChatGPT"), ("copilot", "Copilot"))
 
@@ -8209,6 +8250,11 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                    + '. Nothing there should be read as a pass. The grade covers the other areas, and a scan with '
                    'an area not checked is never graded above B. Run the analysis again to check them.'
                    '</div></div>')
+    if not is_preview and not data.get("is_deep_scan") and not enough_read_for_a(data.get("files_read"), data.get("files_total")):
+        out.append('<div class="card" style="background:#FEF9C3;border-color:#EAB308"><div style="font-size:13px;color:#854D0E">'
+                   f'<strong>Only {data.get("files_read")} of {data.get("files_total")} files could be read.</strong> So this report '
+                   'can&rsquo;t give an A: nothing found here doesn&rsquo;t mean nothing is wrong in the files that weren&rsquo;t read.'
+                   '</div></div>')
 
     out = _B["more"]
     # Scan at a glance: what each check covered, in numbers (verilay_glance.py)
@@ -8270,8 +8316,12 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             'padding:3px 10px;border-radius:20px;margin-left:8px">DEEP SCAN</span>'
             if is_deep else ""
         )
+        _limited = "" if enough_read_for_a(files_read, files_total) else (
+            '<div style="font-size:13px;color:#854D0E;background:#FEF9C3;border-radius:6px;padding:6px 9px;margin-top:.4rem">'
+            'Only a small part of your code could be read, so this report can&rsquo;t give an A. Nothing found here doesn&rsquo;t '
+            'mean nothing is wrong in the files that weren&rsquo;t read.</div>')
         out.append(
-            f'<div class="card"><strong>Files reviewed: {files_read} of {files_total}</strong>{badge}'
+            f'<div class="card"><strong>Files reviewed: {files_read} of {files_total}</strong>{badge}{_limited}'
             f'<div style="font-size:13px;color:#666;margin-top:.35rem">'
             + ("A deep scan reads far more of your codebase than the free analysis, which "
                "covers the 25 files most likely to carry risk." if is_deep else

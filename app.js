@@ -1737,7 +1737,22 @@ function healthFromLayers(layers, data) {
   var authz = (data && data.authz_scan) || {};
   c = Math.max(c, scan.critical || 0, osv.critical || 0, Math.min(authz.critical || 0, 5));  // same cap as the server (GRADE_CAP)
   w = Math.max(w, scan.warnings || 0, osv.warnings || 0);
-  return { critical: c, warnings: w, passing: p, score: gradeFromCounts(c, w) };
+  var score = gradeFromCounts(c, w);
+  var limited = !enoughReadForA(data);
+  if (score === 'A' && limited) score = 'B';          // same rule as the server's grade_with_coverage (31 Oct 2026)
+  return { critical: c, warnings: w, passing: p, score: score, limited_coverage: limited };
+}
+function limitedCoverageHTML(data) {
+  return '<div style="background:#FEF9C3;border:0.5px solid #EAB308;border-radius:var(--r);padding:.7rem 1rem;margin-bottom:10px;font-size:13px;' +
+    'line-height:1.6;color:#854D0E"><strong>Only ' + esc(String(data.files_read)) + ' of ' + esc(String(data.files_total)) +
+    ' files could be read.</strong> So this report can&rsquo;t give an A: nothing found here doesn&rsquo;t mean nothing is wrong in the ' +
+    'files that weren&rsquo;t read.</div>';
+}
+// An A needs enough of the code read: half the files, or 10 when there are more than 20 (app.py enough_read_for_a).
+function enoughReadForA(data) {
+  var read = parseInt((data && data.files_read) || 0, 10), total = parseInt((data && data.files_total) || 0, 10);
+  if (!(read > 0) || !(total > 0)) return true;
+  return read >= Math.min(10, Math.floor((total + 1) / 2));
 }
 
 // "4 of 6": areas with a real result (not "Not checked"), out of the six.
@@ -1844,7 +1859,8 @@ function updateHealthDisplay() {
   var banner = document.getElementById('score-banner');
   if (banner) banner.innerHTML = inc.length ? '' : scoreBannerHTML(h.score, true, false, h.critical);
   var vb = document.getElementById('verdict-banner');
-  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc) : (notChecked.length ? notCheckedBannerHTML(notChecked) : '');
+  if (vb) vb.innerHTML = inc.length ? incompleteBannerHTML(inc) : (notChecked.length ? notCheckedBannerHTML(notChecked) :
+    (h.limited_coverage && currentReport ? limitedCoverageHTML(currentReport) : ''));
   refreshStartHere();
   refreshAskChips(h);
   var ls = document.getElementById('sec-layers-sum');
@@ -2363,7 +2379,9 @@ function whatsNextHTML(data, h) {
 var _VERDICT_SHORT = {A: 'Ready for real users', B: 'Safe to launch', C: 'Needs some work before real users',
                       D: 'Not ready for real users yet', F: 'Not ready: several serious problems'};
 var _GRADE_TONE = {A: ['#E1F5EE', '#085041'], B: ['#EFF6FF', '#1D4ED8'], C: ['#FAEEDA', '#633806'], D: ['#FCEBEB', '#A32D2D'], F: ['#FCEBEB', '#7F1D1D']};
-function _whyGrade(score, crit) {
+function _whyGrade(score, crit, h) {
+  if (score === 'B' && !crit && h && h.limited_coverage && !h.warnings)
+    return 'Nothing serious was found in the files Verilay could read, but that was only a small part of your code, so the grade stops at B.';
   if (score === 'A') return 'No critical or warning findings in what Verilay read. Keep your packages up to date as you add features, and scan again after big changes.';
   if (score === 'B') return 'No critical problems. B is the realistic target for apps built with AI tools: safe to put in front of real users. Reaching A needs a developer-level review.';
   if (score === 'C') return crit ? 'There is at least one serious problem. Fix the one below first: on its own it often lifts the grade to a B, the realistic goal for apps built with AI tools.'
@@ -2390,6 +2408,7 @@ function builderFromBuiltWith(text) {
   if (/\bbolt\b/.test(lead)) return 'Bolt';
   if (/\bv0(?:\.dev\b|(?![\w.]))/.test(lead)) return 'v0';     // "v0.dev" or "v0", not "v0.4 of a library"
   if (/\bcursor\b/.test(lead)) return 'Cursor';
+  if (/\b(google )?ai studio\b/.test(lead)) return 'Google AI Studio';
   return '';
 }
 function _fixPrompt(f, data) {
@@ -2428,7 +2447,7 @@ function startHereHTML(data, h, hasLayers, isPreview) {
     '<a href="#" onclick="var t=document.getElementById(\'start-why\');t.style.display=t.style.display===\'block\'?\'none\':\'block\';return false;" ' +
     'style="font-size:13px;color:var(--pu);font-weight:600">Why this grade?</a></div></div>' +
     '<div id="start-why" style="display:none;font-size:13px;color:var(--mut);background:var(--bg);border-radius:8px;padding:.6rem .75rem;margin-top:.4rem;line-height:1.55">' +
-    esc(_whyGrade(s, crit)) + ' <a href="#" onclick="openSection(\'sec-grade\');return false;" style="color:var(--pu)">More about your grade</a></div>';
+    esc(_whyGrade(s, crit, h)) + ' <a href="#" onclick="openSection(\'sec-grade\');return false;" style="color:var(--pu)">More about your grade</a></div>';
   var f = _firstFix(data);
   if (f) {
     var pr = _fixPrompt(f, data);
