@@ -7569,6 +7569,42 @@ def _scan_rows(limit=60):
         return []
 
 
+def scan_app_key(r):
+    """Which app a scan row is about, so a second scan of the same app can be spotted (31 Oct 2026). A repository by
+    its name; a live address by its host; a ZIP by the first word of its file name, because people rename uploads
+    ("Operatix_v17_fix_moneda_inventario", then "Operatix_fix_seguridad_v19"). Too short or unnamed: no key."""
+    name = str(r.get("repo") or "").strip().lower()
+    how = r.get("input_method") or ""
+    if not name or name == "untitled":
+        return ""
+    if how in ("github", "github_private"):
+        key = name
+    elif how == "url":
+        key = _re.sub(r"^https?://", "", name).split("/")[0]
+    else:
+        first = next((p for p in _re.split(r"[_\-\s.]+", name) if _re.search(r"[a-z]", p)), "")
+        key = "zip:" + first if len(first) >= 4 else ""
+    return key
+
+
+def mark_returning(rows):
+    """{row id: earlier grade or ""} for rows (newest first) whose app was scanned before in the same list. A row whose
+    country differs from the earlier scan's is not counted: different people often pick the same first word."""
+    out = {}
+    for i, r in enumerate(rows):
+        key = scan_app_key(r)
+        if not key:
+            continue
+        for older in rows[i + 1:]:
+            if scan_app_key(older) != key:
+                continue
+            if r.get("country") and older.get("country") and r.get("country") != older.get("country"):
+                continue
+            out[r.get("id")] = "" if older.get("input_method") == "url" else str(older.get("score") or "")
+            break
+    return out
+
+
 def _flag(code):
     """'AU' -> 'AU'; '' -> a dash. Just the code: Windows shows flag emojis as two letters, which doubled it (28 Oct 2026)."""
     c = str(code or "").upper()
@@ -7630,6 +7666,9 @@ def admin_scans():
     ups, downs = sum(1 for r in rows if _rating(r) == "up"), sum(1 for r in rows if _rating(r) == "down")
     countries += (f'<br><b>Ratings</b> (these scans): {ups} &#128077; &middot; {downs} &#128078;' if ups or downs else
                   '<br><b>Ratings</b> (these scans): none yet')
+    returning = mark_returning(rows)
+    countries += (f'<br><b>Came back</b> (these scans): {len(returning)} scan{"" if len(returning) == 1 else "s"} of an app scanned before'
+                  ' <span class="note">(&#8635; in Notes: a sign they tried the fixes)</span>' if returning else "")
     summary = (f'<div class="card"><b>Today (UTC):</b> {len(todays)} scan{"" if len(todays) == 1 else "s"}'
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(counts.items())) if counts else "")
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(how_counts.items())) if how_counts else "")
@@ -7653,6 +7692,9 @@ def admin_scans():
         built = (f'<span title="{esc(str(r.get("built") or "")[:300])}">{esc(built_label(r.get("built")))}</span>'
                  if r.get("built") else "")
         extras = []
+        if r.get("id") in returning:
+            was = returning[r.get("id")]
+            extras.append(f'<b style="color:#534AB7">&#8635; scanned again</b>' + (f' (was {esc(was)})' if was else ""))
         if r.get("user_id"):
             extras.append("signed in")
         if r.get("compared"):

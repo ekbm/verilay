@@ -3216,6 +3216,7 @@ function copySitePrompt(i) {
   var p = window._sitePrompts[i];
   if (!p || !navigator.clipboard) return;
   navigator.clipboard.writeText(p).then(function() {
+    try { if (typeof plausible === 'function') plausible('Fix Prompt Copy', {props: {place: 'site'}}); } catch (e) {}
     var b = document.getElementById("site-copy-" + i);
     if (b) { var t = b.textContent; b.textContent = "Copied"; setTimeout(function() { b.textContent = t; }, 2500); }
   });
@@ -3451,6 +3452,8 @@ function renderPart2(data) {
           );
           if (!confirmed) return;
           navigator.clipboard.writeText(prompt).then(function() {
+            // 31 Oct 2026: are people taking the prompts to try? Only the Start-here copy was counted before.
+            try { if (typeof plausible === 'function') plausible('Fix Prompt Copy', {props: {place: 'fixes'}}); } catch (e) {}
             btn.style.background = 'var(--gr)';
             if (copied) { copied.style.display = 'inline'; }
             setTimeout(showRatingNudge, 2500);          // the moment Verilay has just helped: ask once
