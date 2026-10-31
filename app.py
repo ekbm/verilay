@@ -2094,7 +2094,7 @@ def code_health_teaser_html(size):
             f'<b>Your app is large</b> (about {int(size.get("lines", 0)):,} lines'
             + (f', {int(size["huge"])} very large file{"s" if int(size["huge"]) != 1 else ""}' if size.get("huge") else "")
             + '). Big apps get slower and costlier for an AI builder to change. A '
-            '<a href="/deep-scan" style="color:#534AB7;font-weight:600">deep scan</a> includes a code health check: what is '
+            '<a href="/deep-scan" style="color:#534AB7;font-weight:600">deep scan</a> includes a code fitness check: what is '
             'making yours hard to change, and what to tidy first.</div>')
 
 
@@ -8545,7 +8545,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # VERILAY_CODE_HEALTH=1 (code_health_visible).
     if raw_data.get("is_deep_scan") and raw_data.get("code_health") and code_health_visible() and getattr(deepscan, "AVAILABLE", False):
         # A compact card here; the full view opens on its own page (31 Oct 2026, Moses: the report is long enough already).
-        _ch_html = deepscan.render_code_health_card(raw_data["code_health"], f"/report/{report_id}/code-health")
+        _ch_html = deepscan.render_code_health_card(raw_data["code_health"], f"/report/{report_id}/code-fitness")
         if _ch_html:
             _B["fix"].append(_ch_html)
 
@@ -8624,6 +8624,12 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 
 
 @app.route("/report/<report_id>/code-health")
+def code_health_old_address(report_id):
+    """The first address of the page (renamed "Code fitness" on 31 Oct 2026): sends people to the new one."""
+    return redirect(f"/report/{report_id}/code-fitness", code=301)
+
+
+@app.route("/report/<report_id>/code-fitness")
 def code_health_page(report_id):
     """A deep scan's Code health, on its own page (31 Oct 2026). Same rule as the card: the admin only until
     VERILAY_CODE_HEALTH=1. Drawn by the private package; nothing to show without it."""
@@ -8640,8 +8646,8 @@ def code_health_page(report_id):
             f'<p style="color:#6b6966;margin:0 0 .6rem">{esc(str(data.get("repo") or "Your app"))} &middot; from the deep scan of '
             f'{esc(_scan_time_label(report_id, data))}</p>' + inner + deepreport._COPY_SCRIPT)
     if _HAS_PAYWALL:
-        return paywall._page("Code health", body, robots="noindex,nofollow")
-    return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Code health - Verilay</title></head><body>" + body + "</body></html>"
+        return paywall._page("Code fitness", body, robots="noindex,nofollow")
+    return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Code fitness - Verilay</title></head><body>" + body + "</body></html>"
 
 
 @app.route("/report/<report_id>/it-review")
