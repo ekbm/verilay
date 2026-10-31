@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 
 PRO_REPO = "ekbm/verilay-pro"
-PRO_REF = (os.getenv("VERILAY_PRO_REF", "") or "v0.2.2").strip()    # the version to load: a tag in the private repo
+PRO_REF = (os.getenv("VERILAY_PRO_REF", "") or "v0.2.3").strip()    # the version to load: a tag in the private repo
 STATUS = {"loaded": False, "how": "", "ref": PRO_REF, "error": ""}
 _MEMBER = re.compile(r"^[^/]+/(verilay_pro/[A-Za-z0-9_]+\.py)$")      # only the package's own .py files are unpacked
 
