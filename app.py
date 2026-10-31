@@ -8544,11 +8544,10 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     # Code health (deep scans): drawn by the private package so its wording stays private. Admin only until
     # VERILAY_CODE_HEALTH=1 (code_health_visible).
     if raw_data.get("is_deep_scan") and raw_data.get("code_health") and code_health_visible() and getattr(deepscan, "AVAILABLE", False):
-        _ch_html = deepscan.render_code_health_html(raw_data["code_health"])
+        # A compact card here; the full view opens on its own page (31 Oct 2026, Moses: the report is long enough already).
+        _ch_html = deepscan.render_code_health_card(raw_data["code_health"], f"/report/{report_id}/code-health")
         if _ch_html:
             _B["fix"].append(_ch_html)
-            if deepreport._COPY_SCRIPT not in "".join(_B["fix"]):
-                _B["fix"].append(deepreport._COPY_SCRIPT)
 
     out = _B["ask"]
     # "Ask Verilay about your report": a visible card after the fixes, with suggested questions, answered from this
@@ -8622,6 +8621,27 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                   'font-weight:600;color:#3C3489">More details: scan stats, tech stack, how your app fits together, similar '
                   'projects, second opinions</summary><div style="margin-top:.75rem">' + _more + '</div></details>') if _more.strip() else ""
     return "".join(_B["head"] + _B["found"] + _B["checks"] + _B["fix"] + _B["ask"] + _B["offer"] + [_more_html] + _B["foot"])
+
+
+@app.route("/report/<report_id>/code-health")
+def code_health_page(report_id):
+    """A deep scan's Code health, on its own page (31 Oct 2026). Same rule as the card: the admin only until
+    VERILAY_CODE_HEALTH=1. Drawn by the private package; nothing to show without it."""
+    data = get_report_data(report_id)
+    ch = (data or {}).get("code_health")
+    if not data or not data.get("is_deep_scan") or not ch or not code_health_visible() or not getattr(deepscan, "AVAILABLE", False):
+        return "Not found", 404
+    esc = _htmlmod.escape
+    inner = deepscan.render_code_health_html(ch, as_page=True)
+    if not inner:
+        return "Not found", 404
+    body = (f'<p style="margin:0 0 .4rem"><a href="/report/{esc(report_id)}" style="color:#534AB7">&larr; Back to the report</a></p>'
+            f'<h1 style="margin:.2rem 0">Is your app getting hard to change?</h1>'
+            f'<p style="color:#6b6966;margin:0 0 .6rem">{esc(str(data.get("repo") or "Your app"))} &middot; from the deep scan of '
+            f'{esc(_scan_time_label(report_id, data))}</p>' + inner + deepreport._COPY_SCRIPT)
+    if _HAS_PAYWALL:
+        return paywall._page("Code health", body, robots="noindex,nofollow")
+    return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Code health - Verilay</title></head><body>" + body + "</body></html>"
 
 
 @app.route("/report/<report_id>/it-review")
