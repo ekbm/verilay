@@ -819,40 +819,53 @@ def badge_html():
     )
 
 
-# Illustrative only — deliberately NOT sourced from real scan data. The badge
-# above is the real, live proof; this exists purely to show the DEPTH of
-# what continuous monitoring checks for, without ever putting a real app's
-# actual findings on a public page. Numbers are made up on purpose.
+# A REAL example now (31 Oct 2026, Moses: the made-up table should show real data): the deep scan of OWASP Juice Shop,
+# a public app built to be insecure for practice, so showing its problems harms nobody. Never a customer's or one of
+# Moses's own apps. Numbers are a snapshot of that report; update them (and the link) if the example report changes.
+SAMPLE_REPORT_ID = "8d5074779b8a"
+SAMPLE_REPORT_DATE = "31 Oct 2026"
 _SAMPLE_LIBRARY_FINDINGS = [
-    ("Outdated / unpatched dependency", "critical", 4),
-    ("Known CVE in a third-party package", "critical", 2),
-    ("Prototype pollution", "warning", 1),
-    ("Regular expression DoS (ReDoS)", "warning", 1),
+    ("jsonwebtoken 0.4.0", "Sign-in check can be bypassed. Update to 4.2.2", "critical"),
+    ("sequelize 6.37.3", "Database injection. Update to 6.37.4", "critical"),
+    ("marsdb 0.6.11", "Command injection. No fix released yet", "critical"),
 ]
 
 
 def sample_table_html():
+    """A real example of what a deep scan finds (the Juice Shop practice app), shown under the monitoring line."""
+    tile = ('<div style="background:{bg};color:{fg};border-radius:10px;padding:.5rem .6rem;min-width:0">'
+            '<div style="font-size:20px;font-weight:800;line-height:1.1">{n}</div>'
+            '<div style="font-size:11px;font-weight:600;margin-top:2px;line-height:1.3">{label}</div></div>')
+    tiles = "".join(tile.format(**t) for t in (
+        {"n": "170", "label": "packages checked", "bg": "var(--pul)", "fg": "var(--put)"},
+        {"n": "48", "label": "known problems in them", "bg": "var(--rdl)", "fg": "var(--rdt)"},
+        {"n": "3", "label": "critical, named below", "bg": "var(--rdl)", "fg": "var(--rdt)"},
+        {"n": "36", "label": "copied code blocks (Code fitness)", "bg": "var(--orl)", "fg": "var(--ort)"},
+    ))
     rows = "".join(
         '<tr style="border-top:0.5px solid var(--bdr)">'
-        f'<td style="padding:6px 10px;font-size:12px;color:var(--txt);text-align:left">{name}</td>'
-        f'<td style="padding:6px 10px;font-size:12px;font-weight:700;text-align:center;'
-        f'color:{"var(--rdt)" if sev == "critical" else "var(--ort)"}">{count}</td>'
+        f'<td style="padding:6px 8px;font-size:12px;font-weight:700;color:var(--txt);text-align:left;white-space:nowrap">{pkg}</td>'
+        f'<td style="padding:6px 8px;font-size:12px;color:var(--txt);text-align:left">{what}</td>'
         '</tr>'
-        for name, sev, count in _SAMPLE_LIBRARY_FINDINGS
+        for pkg, what, _sev in _SAMPLE_LIBRARY_FINDINGS
     )
     return (
         '<div style="border:0.5px solid var(--bdr);border-radius:var(--r);padding:.75rem 1rem;'
-        'max-width:420px;margin:0 auto 1rem;text-align:left">'
+        'max-width:460px;margin:0 auto 1rem;text-align:left">'
         '<div style="font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;'
-        'letter-spacing:.05em;margin-bottom:6px">Example — the level of detail a deep scan digs up in your dependencies</div>'
+        'letter-spacing:.05em;margin-bottom:8px">Real example: what a deep scan found in a practice app</div>'
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:6px;margin-bottom:8px">'
+        f'{tiles}</div>'
         '<table style="width:100%;border-collapse:collapse">'
-        '<tr><th style="padding:4px 10px;font-size:11px;color:var(--mut);text-align:left">Vulnerability type</th>'
-        '<th style="padding:4px 10px;font-size:11px;color:var(--mut);text-align:center">Found</th></tr>'
+        '<tr><th style="padding:4px 8px;font-size:11px;color:var(--mut);text-align:left">Package and version</th>'
+        '<th style="padding:4px 8px;font-size:11px;color:var(--mut);text-align:left">The problem, and the fix</th></tr>'
         f'{rows}'
         '</table>'
-        '<div style="font-size:11px;color:var(--mut);margin-top:8px">'
-        'Illustrative example — not real data from a specific app. Your free report already tells you '
-        'how many vulnerabilities exist; the <a href="/deep-scan" target="_blank" rel="noopener" '
-        'style="color:var(--pu)">deep scan</a> tells you exactly which ones, and how to fix each.</div>'
+        '<div style="font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5">'
+        'From a deep scan of <a href="https://github.com/juice-shop/juice-shop" target="_blank" rel="noopener" style="color:var(--pu)">OWASP Juice Shop</a>, '
+        f'an app built to be insecure for practice ({SAMPLE_REPORT_DATE}). Your free report tells you how many problems '
+        'exist; a <a href="/deep-scan" target="_blank" rel="noopener" style="color:var(--pu)">deep scan</a> names each one, '
+        'the version to update to, and now checks how easy your app is to change. '
+        f'<a href="/report/{SAMPLE_REPORT_ID}" target="_blank" rel="noopener" style="color:var(--pu);font-weight:600">See the full report &rarr;</a></div>'
         '</div>'
     )

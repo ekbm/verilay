@@ -2511,8 +2511,8 @@ function codeHealthTeaserHTML(data) {
   var s = (data && data.code_size) || {};
   if (!data || !data.code_health_teaser || data.is_deep_scan || !(s.lines > 0)) return '';
   try { if (typeof plausible === 'function') plausible('Code Fitness Teaser Shown'); } catch (e) {}
-  return '<div id="code-health-teaser" style="margin:.85rem 0;padding:.8rem 1rem;background:var(--sur);border:0.5px solid var(--bdr);' +
-    'border-left:4px solid var(--pu);border-radius:var(--r);font-size:14px;line-height:1.55"><b>Your app is large</b> (about ' +
+  return '<div id="code-health-teaser" style="margin:.85rem 0;padding:.8rem 1rem;background:var(--pul);border:0.5px solid var(--pu);' +
+    'border-left:4px solid var(--pu);border-radius:var(--r);font-size:14px;line-height:1.55;color:var(--put)"><b>Your app is large</b> (about ' +
     Number(s.lines).toLocaleString('en-AU') + ' lines' + (s.huge ? ', ' + s.huge + ' very large file' + (s.huge === 1 ? '' : 's') : '') +
     '). Big apps get slower and costlier for an AI builder to change. A <a href="/deep-scan" style="color:var(--pu);font-weight:600">deep scan</a> ' +
     'includes a code fitness check: what is making yours hard to change, and what to tidy first.</div>';

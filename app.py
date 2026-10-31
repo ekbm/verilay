@@ -2068,16 +2068,26 @@ def code_health_visible():
     return code_health_public() or _request_is_admin()
 
 
-_SIZE_EXT = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".py", ".go", ".java", ".kt", ".rb", ".php", ".cs", ".rs", ".swift",
-             ".dart", ".vue", ".svelte")
-_SIZE_SKIP = _re.compile(r"(^|/)(node_modules|dist|build|\.next|vendor|migrations)/|\.min\.js$|\.d\.ts$|(^|/)components/ui/", _re.I)
+# The same file types and exclusions as the private Code fitness measure (verilay_pro.codehealth CODE_EXT / GENERATED /
+# VENDORED), so the free teaser's line count matches the deep scan's (31 Oct 2026: Juice Shop free 65,202 vs deep 78,238).
+_SIZE_EXT = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java", ".kt", ".rb", ".php", ".cs", ".rs",
+             ".swift", ".dart", ".vue", ".svelte", ".sql", ".html", ".css", ".scss")
+_SIZE_SKIP = _re.compile(r"(^|/)(node_modules|dist|build|\.next|out|coverage|vendor|migrations|__generated__)/|"
+                         r"(^|/)supabase/migrations/|(^|/)integrations/supabase/types\.ts$|\.d\.ts$|\.min\.(js|css)$|"
+                         r"(^|/)components/ui/|package-lock\.json$|pnpm-lock|yarn\.lock$|\.lock$|\.map$", _re.I)
+# Libraries copied into the project are not the app's own code (31 Oct 2026: Juice Shop's free teaser said "104,993 lines,
+# 1 very large file" because of a 38,000-line three.js in assets; the deep scan says 78,238 and none). Same rule as the
+# private Code fitness measure (verilay_pro.codehealth.VENDORED), so the free and deep numbers agree.
+_SIZE_VENDORED = _re.compile(r"(^|/)(assets|static|public|vendor|vendors|third[_-]party)/.*\.(m|c)?js$|"
+                             r"(^|/)(three|jquery|lodash|underscore|d3|chart|moment|bootstrap|pdf|pdf\.worker|react-dom|vue|angular|"
+                             r"tinymce|ckeditor|highlight|prism|socket\.io|leaflet|mapbox-gl|plotly|echarts)([.-][\w.-]*)?\.(m|c)?js$", _re.I)
 
 
 def code_size(all_text):
     """{'lines', 'huge'}: lines of app code, and files over 3,000 lines. Counting only, no AI."""
     lines, huge = 0, 0
     for p, t in (all_text or {}).items():
-        if isinstance(t, str) and p.lower().endswith(_SIZE_EXT) and not _SIZE_SKIP.search(p):
+        if isinstance(t, str) and p.lower().endswith(_SIZE_EXT) and not _SIZE_SKIP.search(p) and not _SIZE_VENDORED.search(p):
             n = t.count("\n") + 1
             lines += n
             huge += n >= 3000
@@ -2090,7 +2100,8 @@ def big_app(size):
 
 
 def code_health_teaser_html(size):
-    return ('<div class="card" id="code-health-teaser" style="border-left:4px solid #534AB7;font-size:14px">'
+    return ('<div class="card" id="code-health-teaser" style="background:#EEEDFE;border-color:#c9c5f2;border-left:4px solid #534AB7;'
+            'color:#26215C;font-size:14px">'
             f'<b>Your app is large</b> (about {int(size.get("lines", 0)):,} lines'
             + (f', {int(size["huge"])} very large file{"s" if int(size["huge"]) != 1 else ""}' if size.get("huge") else "")
             + '). Big apps get slower and costlier for an AI builder to change. A '
@@ -3856,6 +3867,22 @@ def _replay_cached(cx, client_type, method):
     snap, created = cx["hit"]["snapshot"], cx["hit"]["created_at"]
     yield json.dumps({"event": "status", "data": f"Reusing a recent analysis of this exact code (made {_ago_text(created)})..."}) + "\n"
     s1 = dict(snap["s1"])
+    # The app's size (for the "Your app is large" teaser) is counted again, not reused: the stored count may come from an
+    # older counting rule (31 Oct 2026: Juice Shop replayed "104,993 lines, 1 very large file" after the rule changed to
+    # leave out copied libraries). A free GitHub download, no AI. If it fails, no size and no teaser rather than a wrong one.
+    size = None
+    try:
+        if cx.get("owner") and cx.get("name"):
+            size = code_size(fetch_all_files_tarball(cx["owner"], cx["name"], GITHUB_TOKEN))
+    except Exception as _size_err:
+        print(f"[scancache] size recount skipped: {type(_size_err).__name__}", flush=True)
+    for d in (s1,):
+        d.pop("code_size", None)
+        d.pop("code_health_teaser", None)
+        if size:
+            d["code_size"] = size
+            if code_health_public() and big_app(size):
+                d["code_health_teaser"] = True
     count = get_analysis_count()
     s1["analysis_count"] = count
     yield json.dumps({"event": "step1", "data": s1}) + "\n"
@@ -3867,6 +3894,11 @@ def _replay_cached(cx, client_type, method):
     if (snap.get("s3") or {}).get("layers"):
         yield json.dumps({"event": "step3", "data": snap["s3"]}) + "\n"
     partial = _copy.deepcopy(snap["partial"])
+    partial.pop("code_size", None)
+    partial.pop("code_health_teaser", None)
+    for k in ("code_size", "code_health_teaser"):
+        if k in s1:
+            partial[k] = s1[k]
     partial["client_type"] = client_type
     partial["analysis_count"] = count
     partial["reused_from"] = {"created_at": created, "sha": cx.get("sha")}
