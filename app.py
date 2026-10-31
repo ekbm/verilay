@@ -6873,6 +6873,13 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 31, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Code fitness</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> the deep scan now checks your app&rsquo;s code fitness. Is your app getting harder to change? Find out why, and what to tidy first.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 24, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">A fuller dependency check, counted per package</div>
     <div><span class="tag fix">Fix</span><span class="tag improve">Improve</span></div>

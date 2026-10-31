@@ -2,6 +2,12 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## October 31, 2026: Code fitness
+
+`New`
+
+**New:** the deep scan now checks your app’s code fitness. Is your app getting harder to change? Find out why, and what to tidy first.
+
 ## October 24, 2026: A fuller dependency check, counted per package
 
 `Fix` · `Improve`
