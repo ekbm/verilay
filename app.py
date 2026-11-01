@@ -4738,25 +4738,10 @@ BLOG_POSTS = [
 <p><strong>AI can now work on much longer tasks.</strong> METR, a research group that tests AI systems, found that the length of tasks AI agents can complete has been doubling about every seven months. (<a href="https://metr.substack.com/p/2025-03-19-measuring-ai-ability-to-complete-long-tasks" target="_blank" rel="noopener">METR</a>)</p>
 <p><strong>The builders keep changing, fast.</strong> The agent I used was already able to work on its own &ldquo;for up to 200 minutes&rdquo;, and to test itself in a real browser. (<a href="https://docs.replit.com/updates/2025/09/12/changelog" target="_blank" rel="noopener">Replit, September 2025</a>) Running longer didn&rsquo;t stop it forgetting what we&rsquo;d agreed. Then, a few weeks after I finished, Replit launched Agent 4, built around planning first: a Plan mode to &ldquo;map out your build before any code is written&rdquo;, a Design Canvas to try designs before committing to code, and several tasks running at once. (<a href="https://docs.replit.com/updates/2026/03/13/changelog" target="_blank" rel="noopener">Replit, March 2026</a>) Plan first, then build is exactly what I was missing in January.</p>
 
-<h2>A small look of my own</h2>
-<p>I wanted to see whether the code itself looks different, not just the marketing. So I took 14 public apps built with Lovable, 7 created in early 2025 and 7 created this year, and ran them through the same counting tool Verilay uses. I left out portfolios and practice projects.</p>
-<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:15px;margin:.5rem 0 1rem">
-<tr><th style="padding:7px 10px;text-align:left">Middle value of 7 apps each</th><th style="padding:7px 10px">Early 2025</th><th style="padding:7px 10px">Mid 2026</th></tr>
-<tr><td style="padding:7px 10px;border-top:1px solid #e5e3dc">Copy-pasted blocks per 1,000 lines</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">14.4</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">2.4</td></tr>
-<tr><td style="padding:7px 10px;border-top:1px solid #e5e3dc">Code that may be unused</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">8.2%</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">1.5%</td></tr>
-<tr><td style="padding:7px 10px;border-top:1px solid #e5e3dc">Lines in the biggest file</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">603</td><td style="padding:7px 10px;border-top:1px solid #e5e3dc;font-weight:700;text-align:center">1,583</td></tr>
-</table></div>
-<p>The newer apps repeat themselves far less, and leave much less dead code behind. That matches what I&rsquo;ve felt building with today&rsquo;s tools.</p>
-<p>But look at the last row. <strong>The newer apps have bigger single files.</strong> Today&rsquo;s builders write tidier code, and still let files grow.</p>
-
-<h2>Here&rsquo;s the honest part</h2>
-<p>Fourteen apps is a small sample. Newer apps might be smaller simply because they do less, and plenty of early apps were tidy. So I&rsquo;m not claiming proof. What I&rsquo;m comfortable saying is this:</p>
-<ul>
-<li><strong>AI builders really have got better</strong> at not repeating themselves and not leaving old code behind.</li>
-<li><strong>Apps built in the early era still carry the mess.</strong> The tools improved; your code didn&rsquo;t improve with them. It&rsquo;s exactly as tangled as the day it was written.</li>
-<li><strong>Even today, files keep growing,</strong> and a giant file is where AI changes start to go wrong.</li>
-</ul>
-<p>So if your app started in 2024 or early 2025, or it&rsquo;s grown past 20,000 lines, it&rsquo;s worth knowing what&rsquo;s in there.</p>
+<h2>The tools got better. Your code didn&rsquo;t change.</h2>
+<p>AI app builders like Lovable, Replit, Bolt, v0 and Cursor have improved a lot in the past year: more planning before building, longer tasks, better checks. But those improvements apply to new work. They don&rsquo;t go back and tidy the code you already built. Nothing gets cleaned up on its own.</p>
+<p>And tidying up was already becoming rarer. GitClear, which makes code-analytics tools, studied 211 million lines of code changes and found that the share of changes spent moving and tidying code fell from 25% in 2021 to under 10% in 2024, while copy-pasted code grew. (<a href="https://www.gitclear.com/ai_assistant_code_quality_2025_research" target="_blank" rel="noopener">GitClear, 2025</a>) That research covers AI-assisted coding in general, not just app builders, but the pattern fits what many builders notice.</p>
+<p>So if your app was built in late 2025 or early 2026, or it has grown past 20,000 lines, the newer tools won&rsquo;t fix what&rsquo;s already there. It&rsquo;s worth knowing what&rsquo;s in your code before you ask the AI to keep building on top of it.</p>
 
 <h2>What a deep scan does now</h2>
 <p>This is why I&rsquo;ve added <strong>Code fitness</strong> to Verilay&rsquo;s deep scan.</p>
@@ -4768,7 +4753,7 @@ BLOG_POSTS = [
 <li><em>Did your AI builder say &ldquo;done&rdquo;, but nothing changed on screen?</em> Often there&rsquo;s an old version of a file still lying around.</li>
 <li><em>Do changes take longer, or break things you didn&rsquo;t touch?</em> Usually a file has grown too big for the AI to keep in mind.</li>
 </ul>
-<p>For each, it shows the number behind it, measured in your code, and the files involved. Then it gives you the <strong>three things to tidy first</strong>, each with a prompt for your AI builder that starts with <strong>&ldquo;report first, change nothing yet&rdquo;</strong>. One step at a time, so nothing breaks while you tidy.</p>
+<p>For each, it shows the number behind it, measured in your code, and the files involved. Your app works today, so it only suggests a tidy-up when a problem is worth the risk of changing working code, and it says so plainly when nothing needs changing. Each tidy-up comes with a prompt for your AI builder that starts with <strong>&ldquo;report first, change nothing yet&rdquo;</strong>. One step at a time, so nothing breaks while you tidy.</p>
 <p>When you&rsquo;ve made a change, scan again. The numbers tell you whether it worked, not the builder&rsquo;s word. (How to fix safely, step by step, is its own series: <a href="/blog/you-can-fix-it-with-ai">Fix it with AI</a>.)</p>
 
 <h2>Over to you</h2>
