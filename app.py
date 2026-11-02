@@ -9471,6 +9471,20 @@ def _google_verification_meta():
     return f'<meta name="google-site-verification" content="{code}">\n' if _re.fullmatch(r"[A-Za-z0-9_-]{10,100}", code) else ""
 
 
+_NO_CANONICAL = ("/login", "/checkout", "/apps/review", "/account")
+
+
+def _canonical_tag(path, body, public):
+    """Tell Google a public page's one true address (no ?q=, ?ref= or other extras), when the page doesn't say so itself.
+    Search Console listed /ask-verilay?q=... as a duplicate (2 Nov 2026). Not for pages kept out of Google (noindex)."""
+    if (not public or path.startswith(_NO_CANONICAL) or 'rel="canonical"' in body
+            or _re.search(r'<meta[^>]+name="robots"[^>]+noindex', body, _re.I)):
+        return ""
+    if not _re.fullmatch(r"/[A-Za-z0-9/_.-]*", path):
+        return ""
+    return f'<link rel="canonical" href="https://verilay.dev{path}">\n'
+
+
 def _plausible_on():
     return (os.getenv("VERILAY_PLAUSIBLE", "") or "").strip() == "1"
 
@@ -9499,7 +9513,7 @@ def _add_analytics(resp):
         body = resp.get_data(as_text=True)
         if "<!-- vl-head -->" in body or "</head>" not in body:
             return resp
-        resp.set_data(body.replace("</head>", _head_snippet(analytics_page) + "</head>", 1))
+        resp.set_data(body.replace("</head>", _head_snippet(analytics_page) + _canonical_tag(p, body, analytics_page) + "</head>", 1))
     except Exception:
         pass  # analytics must never be able to break a page
     return resp
