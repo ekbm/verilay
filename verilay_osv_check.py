@@ -93,6 +93,7 @@ class Vulnerability:
                                 # see extract_dependencies(). Unknown defaults to
                                 # False (counts toward risk) — never hide a real
                                 # finding behind an uncertain classification.
+    found_in: List[str] = field(default_factory=list)   # folders whose package list names it ("" = the top folder)
 
 
 # ── Manifest / lockfile parsing ─────────────────────────────────────────────
@@ -322,9 +323,71 @@ def _pnpm_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     return deps
 
 
+def _bun_key_names(key: str) -> List[str]:
+    """'@babel/core/semver' -> ['@babel/core', 'semver'] (Bun nests a package's own copy under its parent's key)."""
+    parts, out, i = key.split("/"), [], 0
+    while i < len(parts):
+        if parts[i].startswith("@") and i + 1 < len(parts):
+            out.append(parts[i] + "/" + parts[i + 1]); i += 2
+        else:
+            out.append(parts[i]); i += 1
+    return out
+
+
+def _bun_dev_keys(data: dict) -> set:
+    """Which "packages" keys only build/test tools need (2 Nov 2026). Bun's lockfile has no per-package dev flag, but it
+    lists each workspace's dependencies and devDependencies and each package's own dependencies, so this walks the tree:
+    a package reachable from any (non-dev) dependency ships with the app; one reachable ONLY from devDependencies is a
+    build/test tool. Anything that cannot be placed counts as shipping (never hide a real finding). Never raises."""
+    try:
+        pk, ws = data.get("packages") or {}, data.get("workspaces") or {}
+        if not isinstance(pk, dict) or not isinstance(ws, dict):
+            return set()
+
+        def resolve(parent_names, dep):
+            for i in range(len(parent_names), -1, -1):
+                k = "/".join(parent_names[:i] + [dep])
+                if k in pk:
+                    return k
+            return None
+
+        def children(key):
+            val = pk.get(key)
+            meta = val[2] if isinstance(val, list) and len(val) > 2 and isinstance(val[2], dict) else {}
+            names = _bun_key_names(key)
+            for field_ in ("dependencies", "optionalDependencies", "peerDependencies"):
+                for dep in (meta.get(field_) or {}):
+                    k = resolve(names, dep)
+                    if k:
+                        yield k
+
+        def walk(roots):
+            seen, stack = set(), [r for r in roots if r]
+            while stack:
+                k = stack.pop()
+                if k in seen:
+                    continue
+                seen.add(k)
+                stack.extend(children(k))
+            return seen
+
+        prod_roots, dev_roots = [], []
+        for w in ws.values():
+            if not isinstance(w, dict):
+                continue
+            for field_ in ("dependencies", "optionalDependencies", "peerDependencies"):
+                prod_roots += [resolve([], d) for d in (w.get(field_) or {})]
+            dev_roots += [resolve([], d) for d in (w.get("devDependencies") or {})]
+        if not dev_roots:
+            return set()
+        return walk(dev_roots) - walk(prod_roots)
+    except Exception:
+        return set()
+
+
 def _bun_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     """bun.lock (Bun's text lockfile): each entry in "packages" starts with "name@version". Workspace, git, file and alias entries are
-    left out. Dev status is not recorded per package, so every package counts."""
+    left out. Dev status comes from walking the dependency tree (_bun_dev_keys); a package that cannot be placed counts."""
     try:
         data = json.loads(re.sub(r",(\s*[}\]])", r"\1", content))     # the file allows trailing commas
     except (json.JSONDecodeError, TypeError):
@@ -333,11 +396,12 @@ def _bun_lock_deps(content: str) -> Dict[Tuple[str, str], bool]:
     pk = data.get("packages") if isinstance(data, dict) else None
     if not isinstance(pk, dict):
         return deps
+    dev_keys = _bun_dev_keys(data)
     for _key, val in pk.items():
         spec = val[0] if isinstance(val, list) and val and isinstance(val[0], str) else None
         m = re.match(r"^(@[^/@]+/[^@]+|[^@]+)@(.+)$", spec or "")
         if m and re.match(r"^\d", m.group(2)):
-            _set_dep(deps, m.group(1), m.group(2), False)
+            _set_dep(deps, m.group(1), m.group(2), _key in dev_keys)
     return deps
 
 
@@ -378,6 +442,32 @@ def extract_dependencies(files: Dict[str, str]) -> Dict[Tuple[str, str, str], bo
     merged = {k: d for k, d in from_manifest.items() if (k[0], k[1]) not in locked_names}
     merged.update(from_lockfile)
     return merged
+
+
+def dependency_folders(files: Dict[str, str]) -> Dict[Tuple[str, str, str], List[str]]:
+    """{(name, ecosystem, version): [folders]} for the same keys extract_dependencies() returns: the folders whose lock
+    file (or, for a package no lock file lists, whose package.json / requirements.txt) names it. "" is the top folder.
+    (2 Nov 2026: a BuildBook deep scan listed zod 4.3.6 from a separate remotion/ video-tool folder, not the app, and
+    nothing said so.) Never raises."""
+    try:
+        lock: Dict[Tuple[str, str, str], set] = {}
+        man: Dict[Tuple[str, str, str], set] = {}
+        for path, content in files.items():
+            if not isinstance(content, str):
+                continue
+            folder, _, fname = path.rpartition("/")
+            for suffix, parser, ecosystem, is_lockfile in _MANIFEST_PARSERS:
+                if fname != suffix:
+                    continue
+                target = lock if is_lockfile else man
+                for (name, version) in parser(content):
+                    target.setdefault((name, ecosystem, version), set()).add(folder)
+        locked_names = {(n, e) for (n, e, _v) in lock}
+        out = {k: sorted(v) for k, v in man.items() if (k[0], k[1]) not in locked_names}
+        out.update({k: sorted(v) for k, v in lock.items()})
+        return out
+    except Exception:
+        return {}
 
 
 
@@ -783,7 +873,9 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
         cov["details_missing"] = len(unloaded)
 
     findings: List[Vulnerability] = []
+    folders = dependency_folders(files)
     for (name, ecosystem, version), is_dev in deps.items():
+        found_in = folders.get((name, ecosystem, version), [])
         package_ids = _dedupe_advisory_ids(matches.get((name, ecosystem, version), []), details)
         for vid in package_ids:
             vuln = details.get(vid)
@@ -794,7 +886,8 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
                     summary="Details for this advisory could not be loaded just now.", fixed_version=None,
                     plain=(f"Your app uses {name} version {version}, which has a known, publicly documented security issue ({vid}). "
                            "The database did not return the details this time, so how serious it is, and the fix, are not shown."),
-                    action=f"Look up {vid} for what it is and which version of {name} fixes it.", is_dev=is_dev))
+                    action=f"Look up {vid} for what it is and which version of {name} fixes it.", is_dev=is_dev,
+                    found_in=found_in))
                 continue
             severity = _severity_of(vuln)
             fixed = _fixed_version(vuln, ecosystem, version)
@@ -826,6 +919,7 @@ def check_dependencies(files: Dict[str, str]) -> Tuple[List[Vulnerability], int]
                 ),
                 action=action,
                 is_dev=is_dev,
+                found_in=found_in,
             ))
 
     findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity, 4), f.package))
@@ -1015,6 +1109,7 @@ def to_report_dict(vulns: List[Vulnerability], packages_checked: int) -> dict:
                 "severity": v.severity, "summary": v.summary,
                 "fixed_version": v.fixed_version, "plain": v.plain, "action": v.action,
                 "is_dev": v.is_dev,
+                "found_in": list(getattr(v, "found_in", None) or []),
             }
             for v in vulns
         ],

@@ -8565,6 +8565,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             _fix_data = dict(raw_data)
             _fix_data["dependency_fixes"] = deepreport.build_dependency_fixes(_vd)
             _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(raw_data.get("top_fixes"), _vd)
+    if raw_data.get("is_deep_scan"):
+        out.append(deepreport.render_plan_html(_fix_data))     # "Your plan": what to do now, later, or leave (2 Nov 2026)
     out.append(deepreport.render_fixes_html(_fix_data))
     if raw_data.get("scan_tier") == "lite":
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'

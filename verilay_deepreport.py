@@ -144,6 +144,25 @@ def _all_prompt(runtime, dev):
     return "\n".join(out)
 
 
+# Folders that hold tools next to an app, not the app itself (a video maker, docs, examples, test suites). A package found
+# ONLY in such folders never reaches the app's users. A folder not on this list (frontend/, backend/, apps/web...) may be
+# the real app, so it is never assumed to be a side folder.
+SIDE_FOLDERS = {"remotion", "video", "videos", "docs", "doc", "documentation", "examples", "example", "demo", "demos",
+                "scripts", "tools", "e2e", "tests", "test", "__tests__", "cypress", "playwright", "benchmark", "benchmarks",
+                "storybook", ".storybook", "playground", "fixtures", ".github", "website-docs"}
+
+
+def side_folder(found_in):
+    """The side folder (e.g. "remotion") when EVERY place the package was found is inside one, else ""."""
+    tops = set()
+    for f in found_in or []:
+        top = str(f or "").strip("/").split("/")[0].lower()
+        if not top or top not in SIDE_FOLDERS:
+            return ""
+        tops.add(top)
+    return sorted(tops)[0] if tops else ""
+
+
 def build_dependency_fixes(vulns):
     """vulns: the dicts in report["osv_scan"]["vulnerabilities"]. One entry per
     (package, installed version), runtime packages first, worst first."""
@@ -168,6 +187,7 @@ def build_dependency_fixes(vulns):
         worst = min((x.get("severity") or "unknown" for x in items), key=lambda s: _SEV_RANK.get(s, 9))
         is_dev = all(bool(x.get("is_dev")) for x in items)
         major_jump = bool(target and found_key and _major(target) != _major(ver))
+        found_in = sorted({f for x in items for f in (x.get("found_in") or [])})
         ids = []
         for x in items:
             if x.get("id") and x["id"] not in ids:
@@ -177,7 +197,7 @@ def build_dependency_fixes(vulns):
         g = {
             "package": pkg, "ecosystem": eco, "version_found": ver, "target": target,
             "count": n, "ids": ids, "severity": worst, "is_dev": is_dev, "major_jump": major_jump,
-            "unfixed": len(usable) < n,
+            "unfixed": len(usable) < n, "found_in": found_in, "side_folder": side_folder(found_in),
         }
         g["title"] = (f"Update {pkg} {ver} → {target}" if target
                       else f"{pkg} {ver}: no fixed version listed")
@@ -453,7 +473,9 @@ def _dep_group_html(g, idx):
     if g["major_jump"]:
         tags += _pill("major version jump", "warning")
     pill = _pill("dev tool" if g["is_dev"] else g["severity"], "low" if g["is_dev"] else g["severity"])
-    return (f'<details class="fix"><summary style="cursor:pointer;font-weight:600">{_esc(g["title"])}{pill}{tags}</summary>'
+    if g.get("side_folder"):
+        tags += _pill(f'side folder {g["side_folder"]}/', "low")
+    return (f'<details class="fix" id="dpg{idx}"><summary style="cursor:pointer;font-weight:600">{_esc(g["title"])}{pill}{tags}</summary>'
             f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{_esc(g["why"])}</div>'
             f'<div style="font-size:12px;color:#888">Effort: {_esc(g["effort"])} &nbsp;&middot;&nbsp; Advisories: {_esc(", ".join(g["ids"][:8]))}</div>'
             f'{_prompt_block(f"dp{idx}", g["prompt"])}</details>')
@@ -461,6 +483,137 @@ def _dep_group_html(g, idx):
 
 def _plural(n, one, many):
     return f"{n} {one if n == 1 else many}"
+
+
+# ---------------------------------------------------------------- 4. "Your plan" (2 Nov 2026)
+# Moses: a deep report with 2 criticals, 26 warnings and 55 package issues left him asking "which first? do I need all of
+# them?", and most users won't ask. "Your plan" sorts everything into three groups, at the top of the deep report. It
+# follows his Code fitness rule: only suggest changing working code when it is worth the risk. The grade is unchanged.
+#   Do now           critical code fixes; at most PLAN_NOW_PACKAGES serious package updates that are a small step and
+#                    may reach users
+#   Worth doing later  other code fixes; serious packages needing a big version jump (can break things); moderate ones
+#                    that may reach users; serious ones beyond the Do-now limit
+#   Can wait         packages CONFIRMED as build/test tools, packages found only in a side folder, and low-risk ones
+# Not sure whether a package reaches users? It never goes in "Can wait" unless it is low risk.
+PLAN_NOW_PACKAGES = 3
+
+
+def build_plan(data):
+    """{"now": [...], "later": [...], "wait": [...], "wait_groups": {...}} or None when there is nothing to sort. Each item:
+    {"title", "kind": "fix"|"package", "note", "href"}."""
+    fixes = [f for f in (data.get("top_fixes") or []) if isinstance(f, dict) and f.get("title")]
+    dep = data.get("dependency_fixes") or {}
+    groups = [g for g in (dep.get("groups") or []) if isinstance(g, dict)]
+    if not fixes and not groups:
+        return None
+    now, later, wait = [], [], []
+    wait_groups = {"tools": 0, "side": {}, "low": 0}
+    for i, f in enumerate(fixes):
+        item = {"title": str(f.get("title")), "kind": "fix", "note": "", "href": "#" + _fix_anchor(f, i)}
+        (now if (f.get("severity") or "").lower() == "critical" else later).append(item)
+    serious_small = []
+    for idx, g in enumerate(_ordered_groups(groups)):
+        item = {"title": g.get("title") or f'Update {g.get("package")}', "kind": "package", "note": "", "href": f"#dpg{idx}"}
+        sev = g.get("severity") or "unknown"
+        if g.get("side_folder"):
+            item["note"] = f'side folder {g["side_folder"]}/, not part of your app'
+            wait.append(item)
+            wait_groups["side"][g["side_folder"]] = wait_groups["side"].get(g["side_folder"], 0) + 1
+        elif g.get("is_dev"):
+            item["note"] = "build or test tool, never reaches your users"
+            wait.append(item)
+            wait_groups["tools"] += 1
+        elif sev in ("critical", "high") and not g.get("major_jump") and g.get("target"):
+            item["note"] = "small safe step, may reach your users"
+            serious_small.append(item)
+        elif sev in ("critical", "high"):
+            item["note"] = "big version jump: can break things" if g.get("major_jump") else "no fixed version yet"
+            later.append(item)
+        elif sev in ("moderate", "unknown"):
+            item["note"] = "big version jump: can break things" if g.get("major_jump") else "may reach your users"
+            later.append(item)
+        else:
+            item["note"] = "low risk"
+            wait.append(item)
+            wait_groups["low"] += 1
+    now.extend(serious_small[:PLAN_NOW_PACKAGES])
+    later[:0] = [dict(x, note="serious, after the Do-now ones") for x in serious_small[PLAN_NOW_PACKAGES:]]
+    # code fixes first within each group, then packages
+    later.sort(key=lambda x: 0 if x["kind"] == "fix" else 1)
+    return {"now": now, "later": later, "wait": wait, "wait_groups": wait_groups}
+
+
+def _ordered_groups(groups):
+    """The package groups in the order render_fixes_html shows them (runtime first, then build tools), so the plan's
+    links (#dpgN) point at the right entry."""
+    return [g for g in groups if not g.get("is_dev")] + [g for g in groups if g.get("is_dev")]
+
+
+def render_plan_html(data):
+    """The "Your plan" card for the top of a deep report. '' when there is nothing to sort."""
+    plan = build_plan(data)
+    if not plan:
+        return ""
+    fixes = [f for f in (data.get("top_fixes") or []) if isinstance(f, dict)]
+    n_crit = sum(1 for f in fixes if (f.get("severity") or "").lower() == "critical")
+    n_warn = len(fixes) - n_crit
+    n_pkg = len((data.get("dependency_fixes") or {}).get("groups") or [])
+    head_bits = [b for b in (_plural(n_crit, "critical", "critical") if n_crit else "",
+                             _plural(n_warn, "warning", "warnings") if n_warn else "",
+                             _plural(n_pkg, "package update", "package updates") if n_pkg else "") if b]
+
+    def row(x, color):
+        note = (f'<span style="display:block;font-size:11px;color:{color};margin-top:1px">{_esc(x["note"])}</span>'
+                if x.get("note") else "")
+        return (f'<a href="{_esc(x["href"])}" style="display:block;background:#fff;border-radius:8px;padding:7px 10px;'
+                f'font-size:13px;text-decoration:none;color:inherit">{_esc(x["title"])}{note}</a>')
+
+    def box(key, title, sub, border, bg, fg, sub_fg, items, limit):
+        if not items:
+            return ""
+        shown = items[:limit]
+        rest = len(items) - len(shown)
+        more = (f'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:{sub_fg}">'
+                f'Show {rest} more</summary><div style="display:grid;gap:5px;margin-top:6px">'
+                + "".join(row(x, sub_fg) for x in items[limit:]) + '</div></details>') if rest > 0 else ""
+        return (f'<div id="plan-{key}" style="border:{border};background:{bg};border-radius:12px;padding:11px 13px;margin-bottom:9px;color:{fg}">'
+                f'<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:7px"><span style="font-weight:700">{title}</span>'
+                f'<span style="font-size:12px;color:{sub_fg}">{len(items)} &middot; {sub}</span></div>'
+                f'<div style="display:grid;gap:5px">' + "".join(row(x, sub_fg) for x in shown) + f'</div>{more}</div>')
+
+    wg = plan["wait_groups"]
+    chips = []
+    if wg["tools"]:
+        chips.append(f'Build and test tools &middot; {wg["tools"]}')
+    for folder, n in sorted(wg["side"].items()):
+        chips.append(f'Side folder <code style="font-size:11px">{_esc(folder)}/</code> (not your app) &middot; {n}')
+    if wg["low"]:
+        chips.append(f'Low risk &middot; {wg["low"]}')
+    wait_html = ""
+    if plan["wait"]:
+        wait_html = ('<div id="plan-wait" style="border:.5px solid #e5e3dc;background:#F6F5F2;border-radius:12px;padding:11px 13px;margin-bottom:9px;color:#2C2C2A">'
+                     f'<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:5px"><span style="font-weight:700">Can wait</span>'
+                     f'<span style="font-size:12px;color:#5F5E5A">{len(plan["wait"])} &middot; housekeeping, not risk</span></div>'
+                     '<div style="font-size:13px;color:#5F5E5A;line-height:1.55;margin-bottom:7px">Packages that never reach your users. '
+                     'Leave these unless you&rsquo;re already updating.</div>'
+                     '<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12px">'
+                     + "".join(f'<span style="background:#fff;border:.5px solid #e5e3dc;border-radius:20px;padding:3px 10px">{c}</span>' for c in chips)
+                     + '</div><details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#5F5E5A">Show all</summary>'
+                     '<div style="display:grid;gap:5px;margin-top:6px">' + "".join(row(x, "#5F5E5A") for x in plan["wait"]) + '</div></details></div>')
+
+    return ('<div class="st">Your plan</div><div class="card" id="your-plan">'
+            f'<div style="font-size:12px;color:#6b6966;margin-bottom:3px">{_esc(" · ".join(head_bits))}, sorted for you</div>'
+            '<div style="font-size:13px;color:#444;margin-bottom:11px">Start at the top. One fix at a time, then re-scan. '
+            + ('Most of this list can safely wait.' if len(plan["wait"]) > len(plan["now"]) + len(plan["later"]) else
+               'Fix prompts for each one are further down.') + '</div>'
+            + box("now", "Do now", "start here", "2px solid #A32D2D", "#FCEBEB", "#501313", "#A32D2D", plan["now"], 6)
+            + box("later", "Worth doing later", "one at a time, when you have time", ".5px solid #EF9F27", "#FAEEDA",
+                  "#412402", "#854F0B", plan["later"], 5)
+            + wait_html
+            + '<div style="font-size:12px;color:#6b6966;line-height:1.55;border-top:.5px solid #e5e3dc;padding-top:9px;margin-top:4px">'
+            'Every fix prompt asks your AI builder what the change could break first. Not sure whether a package reaches '
+            'your users? Verilay keeps it out of &ldquo;Can wait&rdquo;. Your grade doesn&rsquo;t change: this only sorts the list.</div>'
+            '</div>')
 
 
 def render_authz_html(authz):
