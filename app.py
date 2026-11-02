@@ -2105,8 +2105,8 @@ def code_health_teaser_html(size):
             f'<b>Your app is large</b> (about {int(size.get("lines", 0)):,} lines'
             + (f', {int(size["huge"])} very large file{"s" if int(size["huge"]) != 1 else ""}' if size.get("huge") else "")
             + '). Big apps get slower and costlier for an AI builder to change. A '
-            '<a href="/deep-scan" style="color:#534AB7;font-weight:600">deep scan</a> includes a code fitness check: what is '
-            'making yours hard to change, and what to tidy first.</div>')
+            '<a href="/deep-scan" style="color:#534AB7;font-weight:600">deep scan</a> includes a code fitness check: whether '
+            'yours needs tidying at all, and why.</div>')
 
 
 def report_email_headline(data):
@@ -4753,7 +4753,7 @@ BLOG_POSTS = [
 <li><em>Did your AI builder say &ldquo;done&rdquo;, but nothing changed on screen?</em> Often there&rsquo;s an old version of a file still lying around.</li>
 <li><em>Do changes take longer, or break things you didn&rsquo;t touch?</em> Usually a file has grown too big for the AI to keep in mind.</li>
 </ul>
-<p>For each, it shows the number behind it, measured in your code, and the files involved. Your app works today, so it only suggests a tidy-up when a problem is worth the risk of changing working code, and it says so plainly when nothing needs changing. Each tidy-up comes with a prompt for your AI builder that starts with <strong>&ldquo;report first, change nothing yet&rdquo;</strong>. One step at a time, so nothing breaks while you tidy.</p>
+<p>For each, it shows the number behind it, measured in your code, and the files involved. Your app works today, so it only suggests a tidy-up when a problem is worth the risk of changing working code, and it says so plainly when nothing needs changing. Each tidy-up comes with a prompt for your AI builder that starts with <strong>&ldquo;report first, change nothing yet&rdquo;</strong>. For bigger changes, ask a developer to check the plan before you go ahead.</p>
 <p>When you&rsquo;ve made a change, scan again. The numbers tell you whether it worked, not the builder&rsquo;s word. (How to fix safely, step by step, is its own series: <a href="/blog/you-can-fix-it-with-ai">Fix it with AI</a>.)</p>
 
 <h2>Over to you</h2>

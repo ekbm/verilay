@@ -2515,7 +2515,7 @@ function codeHealthTeaserHTML(data) {
     'border-left:4px solid var(--pu);border-radius:var(--r);font-size:14px;line-height:1.55;color:var(--put)"><b>Your app is large</b> (about ' +
     Number(s.lines).toLocaleString('en-AU') + ' lines' + (s.huge ? ', ' + s.huge + ' very large file' + (s.huge === 1 ? '' : 's') : '') +
     '). Big apps get slower and costlier for an AI builder to change. A <a href="/deep-scan" style="color:var(--pu);font-weight:600">deep scan</a> ' +
-    'includes a code fitness check: what is making yours hard to change, and what to tidy first.</div>';
+    'includes a code fitness check: whether yours needs tidying at all, and why.</div>';
 }
 
 function emailReportHTML() {

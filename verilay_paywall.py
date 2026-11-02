@@ -301,9 +301,9 @@ _FITNESS_ROW_2 = ('<tr style="border-bottom:0.5px solid #f0efec">'
                   '<td style="padding:8px 8px 8px 0;font-size:13px;color:#1a1917">Code fitness (is your app getting hard to change?)</td>'
                   '<td style="padding:8px 8px;font-size:13px;color:#4a4846">Your app&rsquo;s size, for big GitHub apps</td>'
                   '<td style="padding:8px 0;font-size:13px;color:#4a4846">Copy-paste, giant files, settings typed in many places, '
-                  'leftover screens, plus the 3 things to tidy first</td></tr>')
+                  'leftover screens, and whether it needs tidying at all</td></tr>')
 _FITNESS_ROW_3 = _row("Code fitness (is your app getting hard to change?)", "Your app&rsquo;s size, for big GitHub apps", "&ndash;",
-                      "<strong>The full check</strong>, plus the 3 things to tidy first")
+                      "<strong>The full check</strong>, and whether it needs tidying at all")
 
 
 def _with_fitness(html, row):
@@ -330,7 +330,7 @@ _FITNESS_CARD = """
       <p>Counted from every file in your app, not just a sample. It starts with things you&rsquo;ve probably noticed
       (&ldquo;fixed a bug and it came back?&rdquo;, &ldquo;the AI said done but nothing changed?&rdquo;) and shows the
       reason in your code: copy-pasted code, giant files, a price or limit typed in many places, leftover test screens.
-      Then the 3 things to tidy first, each with a &ldquo;report first, change nothing yet&rdquo; prompt for your AI builder.</p>
+      Then whether it needs tidying at all. Verilay checks your code; it doesn&rsquo;t change it.</p>
     </div>"""
 
 
