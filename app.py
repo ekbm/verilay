@@ -4156,6 +4156,8 @@ def analyse_stream():
                 # Step 1 can write fix prompts too: keep only the most serious one (criticals first).
                 _tf = sorted(s1.get("top_fixes") or [], key=lambda f: 0 if (f or {}).get("severity") == "critical" else 1)
                 s1["top_fixes"] = _tf[:1]
+            if s1.get("top_fixes"):
+                s1["top_fixes"] = deepreport.fixes_with_safety_step(s1["top_fixes"])   # "what could this break?"
             if getattr(_MODEL_LOCAL, "tier", None) == "pro":
                 s1["scan_tier"] = "pro"      # Verilay Pro, free during the launch
             s1["files_read"] = len(files)
@@ -4528,9 +4530,10 @@ def run_step4():
 
 
 def _fixes_with_checks(fixes):
-    """Copies of the fixes with their static "Check it yourself" steps attached (verilay_selfcheck.py). Not stored anywhere."""
+    """Copies of the fixes with their static "Check it yourself" steps attached (verilay_selfcheck.py). Not stored anywhere.
+    Every prompt also ends with the "what could this break?" step (verilay_deepreport.SAFETY_STEP)."""
     out = []
-    for f in fixes or []:
+    for f in deepreport.fixes_with_safety_step(fixes):
         if isinstance(f, dict):
             f = dict(f)
             try:

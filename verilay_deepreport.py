@@ -28,6 +28,39 @@ def _esc(s):
     return _html.escape(str(s if s is not None else ""))
 
 
+# ---------------------------------------------------------------- "what could this break?" (2 Nov 2026)
+# Moses fixed a real app's critical problem with a Verilay prompt: closing the gap alone would have silently stopped
+# its monthly scheduled email, which only got through BECAUSE of the gap. The AI builder noticed only because the
+# prompt asked how the code was triggered. Every fix prompt now ends with this step, so the AI checks what works
+# today before changing it, and says how to test it afterwards. Added once (old saved prompts get it when shown).
+SAFETY_STEP = ("First, before making any change: list what works today that this change could stop working, such as "
+               "scheduled jobs, webhooks, emails, payments, sign-in or admin buttons. Keep all of those working. After "
+               "the change, tell me exactly how to check that each one still works.")
+_SAFETY_MARK = "list what works today that this change could stop working"
+FIX_PROMPT_KEYS = ("general_prompt", "lovable_prompt", "replit_prompt", "fix_prompt")
+
+
+def with_safety_step(prompt):
+    """The prompt with SAFETY_STEP added at the end, once. Empty stays empty."""
+    p = str(prompt or "").rstrip()
+    if not p or _SAFETY_MARK in p:
+        return p
+    return p + "\n\n" + SAFETY_STEP
+
+
+def fixes_with_safety_step(fixes):
+    """Copies of the fixes with SAFETY_STEP on every prompt they carry."""
+    out = []
+    for f in fixes or []:
+        if isinstance(f, dict):
+            f = dict(f)
+            for k in FIX_PROMPT_KEYS:
+                if f.get(k):
+                    f[k] = with_safety_step(f[k])
+        out.append(f)
+    return out
+
+
 def _vkey(v):
     core = (v or "").split("-")[0].split("+")[0]
     return tuple(int(x) for x in re.findall(r"\d+", core)[:4])
@@ -407,6 +440,7 @@ def _pill(text, sev):
 
 
 def _prompt_block(pid, prompt):
+    prompt = with_safety_step(prompt)
     return (f'<div style="font-size:12px;color:#888;margin-top:.5rem">Prompt for your AI builder:</div>'
             f'<div class="pb" id="{pid}">{_esc(prompt)}</div>'
             f'<button type="button" class="cp" data-target="{pid}" style="margin-top:.4rem;font-size:12px;'
