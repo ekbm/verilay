@@ -24,6 +24,32 @@ PRIVATE_OR_MISSING = "Repo not found or private. Make it public or use ZIP uploa
 UNKNOWN = "Could not check this repository right now. Please try again in a minute."
 DEEP_SCAN_PUBLIC_ONLY = ("A deep scan can only read public GitHub repositories. Make this repository public, "
                          "or run the free analysis with a ZIP upload instead.")
+NOT_READABLE = ("Verilay couldn't read this repository on GitHub. It may be private, renamed or deleted. "
+                "Upload a ZIP of your project instead, or check the repository name.")
+
+# The admin's own private apps (2 Nov 2026). Verilay's GITHUB_TOKEN is public-only since the 24 Oct key rotation, so a
+# deep scan of BuildBook (private) failed with GitHub's raw "404 Not Found". When the ADMIN starts a deep scan (checked
+# in the real request, verilay_paywall.deep_scan_start), the repo is marked here for a short while; the scan's first
+# GitHub read may then use the monitoring key (VERILAY_MONITOR_GITHUB_TOKEN, read-only, only the admin's own repos).
+# A mark is used once. Nobody else's scan ever sets one, and non-admins are refused private repos before any start.
+OWNER_MARK_SECONDS = 2 * 3600
+_owner_marks = {}
+
+
+def mark_owner_private(repo, now=None):
+    import time
+    now = time.time() if now is None else now
+    for k in [k for k, exp in _owner_marks.items() if exp <= now]:
+        _owner_marks.pop(k, None)
+    _owner_marks[str(repo or "").strip().lower()] = now + OWNER_MARK_SECONDS
+
+
+def take_owner_private(repo, now=None):
+    """True (once) when the admin started a deep scan of this repo in the last OWNER_MARK_SECONDS."""
+    import time
+    now = time.time() if now is None else now
+    exp = _owner_marks.pop(str(repo or "").strip().lower(), 0)
+    return exp > now
 
 
 _NAME = re.compile(r"[A-Za-z0-9._-]{1,100}")

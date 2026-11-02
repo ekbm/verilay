@@ -49,6 +49,7 @@ from verilay_crypto_hygiene import (
 )
 from verilay_client_type import classify as classify_client
 from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
+import verilay_repo_access as repoaccess
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_selfcheck as selfcheck
@@ -10940,6 +10941,44 @@ def validate_startup():
             else:
                 print("   Stripe key is test mode.")
 
+# ── The deep scan's GitHub reads (2 Nov 2026) ─────────────────────────────────
+# GITHUB_TOKEN is public-only, so a private repo gave the buyer GitHub's raw "404 Client Error: Not Found for url ...".
+# Now: a plain message instead, and for the ADMIN's own private apps (marked in the start request, see
+# verilay_repo_access.mark_owner_private) one retry with the monitoring key. The rest of that scan's GitHub calls on the
+# same thread (latest commit, similar projects) use the same key; each job has its own thread and the flag is reset at
+# the start of every fetch.
+_deep_key = threading.local()
+
+
+def deep_fetch_all_files(owner, name, token):
+    _deep_key.own = False
+    try:
+        return fetch_all_files_tarball(owner, name, token)
+    except ValueError:
+        raise                                       # already a plain message (e.g. archive too large)
+    except Exception as e:
+        if "404" not in str(e) and "Not Found" not in str(e):
+            raise
+    own = (os.getenv("VERILAY_MONITOR_GITHUB_TOKEN", "") or "").strip()
+    if own and own != token and repoaccess.take_owner_private(f"{owner}/{name}"):
+        try:
+            files = fetch_all_files_tarball(owner, name, own)
+            _deep_key.own = True
+            print(f"[deep] {owner}/{name}: read with the monitoring key (admin's own private repo)", flush=True)
+            return files
+        except ValueError:
+            raise
+        except Exception as e:
+            print(f"[deep] {owner}/{name}: monitoring key could not read it either: {type(e).__name__}", flush=True)
+    raise ValueError(repoaccess.NOT_READABLE)
+
+
+def deep_github_token():
+    if getattr(_deep_key, "own", False):
+        return (os.getenv("VERILAY_MONITOR_GITHUB_TOKEN", "") or "").strip() or GITHUB_TOKEN
+    return GITHUB_TOKEN
+
+
 # ── Wire the deep-scan engine ────────────────────────────────────────────────
 # Dependency-injected rather than imported directly by verilay_deepscan, since
 # that module cannot import app.py back without a circular import. Placed here,
@@ -10947,10 +10986,10 @@ def validate_startup():
 # etc.) that are only defined by this point in the file.
 if _HAS_PAYWALL:
     deepscan.configure(
-        fetch_all_files_tarball=fetch_all_files_tarball,
+        fetch_all_files_tarball=deep_fetch_all_files,
         smart_file_selection=smart_file_selection,
         max_file_chars=MAX_FILE_CHARS,
-        github_token=lambda: GITHUB_TOKEN,
+        github_token=deep_github_token,
         analyse_step1=analyse_step1,
         analyse_step2=analyse_step2,
         analyse_step3=analyse_step3,

@@ -2167,6 +2167,9 @@ def deep_scan_start(owner, repo):
             return _page("Deep scan", f'<h1>Busy right now</h1><p>{_esc(DEEP_BUSY_MESSAGE)}</p>'
                          f'<p><a class="btn" href="/deep/{_esc(owner)}/{_esc(repo)}">Try again</a></p>', robots="noindex"), 503
 
+    if _is_admin_user(accounts.current_user()):
+        from verilay_repo_access import mark_owner_private
+        mark_owner_private(full)           # the admin's own private apps may be read with the monitoring key, once
     job_id = deepscan.create_job(full, purchase_id, user_id)
     deepscan.start_job(job_id, user_id)
     return redirect(f"/deep-job/{job_id}")
