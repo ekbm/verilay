@@ -427,6 +427,50 @@ def visitor_country():
         return ""
 
 
+_CAME_FROM = (("gemini.google", "Gemini"), ("google.", "Google"), ("bing.com", "Bing"), ("duckduckgo.com", "DuckDuckGo"), ("yahoo.", "Yahoo"),
+              ("chatgpt.com", "ChatGPT"), ("openai.com", "ChatGPT"), ("perplexity.ai", "Perplexity"), ("claude.ai", "Claude"),
+              ("copilot.microsoft", "Copilot"), ("linkedin.com", "LinkedIn"), ("lnkd.in", "LinkedIn"),
+              ("facebook.com", "Facebook"), ("fb.com", "Facebook"), ("instagram.com", "Instagram"), ("reddit.com", "Reddit"),
+              ("t.co", "X"), ("x.com", "X"), ("twitter.com", "X"), ("youtube.com", "YouTube"), ("github.com", "GitHub"),
+              ("producthunt.com", "Product Hunt"), ("news.ycombinator.com", "Hacker News"))
+
+
+def came_from_label(raw):
+    """Which website sent a visitor, as a short label ("Google", "ChatGPT", "direct", or a plain site name), from what the
+    browser noted when the visitor arrived (X-Came-From). Only the site name, never the full address. "" if unusable.
+    (2 Nov 2026, Moses: where do users from different countries find Verilay? Plausible was never set up.)"""
+    s = str(raw or "").strip().lower()[:100]
+    if not s:
+        return ""
+    if s == "direct":
+        return "direct"
+    if s.startswith("utm:"):
+        tag = _re.sub(r"[^a-z0-9 ._-]", "", s[4:])[:30].strip()
+        return f"tag: {tag}" if tag else ""
+    host = s.split("//")[-1].split("/")[0].split(":")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    if not _re.fullmatch(r"[a-z0-9.-]{3,80}", host) or "." not in host:
+        return ""
+    if host == "verilay.dev" or host.endswith(".verilay.dev"):
+        return ""
+    if host == "android-app" or host.startswith("com.google.android"):
+        return "Google"
+    for part, label in _CAME_FROM:
+        if host == part.rstrip(".") or host.startswith(part) or ("." + part) in ("." + host) or host.endswith("." + part.rstrip(".")):
+            return label
+    return host
+
+
+def visitor_came_from():
+    """The came-from label for this request ("" outside a request or when the browser sent nothing)."""
+    try:
+        from flask import has_request_context
+        return came_from_label(request.headers.get("X-Came-From")) if has_request_context() else ""
+    except Exception:
+        return ""
+
+
 def _save_report_row(data, user_id=None):
     """`user_id`: explicit override for callers with no Flask session of
     their own — the deep-scan engine calls this from a background thread,
@@ -439,6 +483,10 @@ def _save_report_row(data, user_id=None):
         data["country"] = _cc
     elif not isinstance(data.get("country"), str) or not _re.fullmatch(r"[A-Z]{2}", data.get("country") or ""):
         data.pop("country", None)
+    _cf = visitor_came_from()              # which site sent the visitor, for the admin only; never shown on reports.
+    data.pop("came_from", None)            # never from the report body
+    if _cf:
+        data["came_from"] = _cf
     if _HAS_SUPABASE:
         try:
             # Check for previous analysis of same repo
@@ -6360,6 +6408,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li>If you buy a deep scan or sign in — your email address, so we can identify your purchase and let you sign back in</li>
     <li>If you subscribe to the monthly newsletter — your email address, used only to send the newsletter. Every issue has an unsubscribe link</li>
     <li>For each scan, the country it came from (a 2-letter code worked out by our network provider, Cloudflare). We don&rsquo;t keep your IP address or city, and the country is never shown on a report</li>
+    <li>For each scan, the name of the website that sent you to Verilay, if your browser says (for example &ldquo;Google&rdquo; or &ldquo;LinkedIn&rdquo;). Only the site&rsquo;s name, never the page you were on, and it is never shown on a report</li>
     <li>If you scan a private repository — your email address (you sign in with it) and the report, which is kept private to your account and removed after the private-report period; never your code</li>
     <li>If you list an app in the app directory — what you write about it, your name (shown on the listing) and your email (never shown; messages from visitors are sent to it)</li>
     <li>If you contact an app&rsquo;s builder through the directory — your email and message, which we email to the builder and keep</li>
@@ -6368,7 +6417,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   <h2>What we do not collect</h2>
   <ul>
     <li>The free analysis of public code or a ZIP needs no account — we don't know who you are unless you buy a deep scan, scan a private repository, or sign in</li>
-    <li>No cookies or tracking beyond Plausible Analytics (privacy-friendly, no personal data)</li>
+    <li>No advertising or analytics trackers</li>
     <li>If you register interest in monitoring, we store your email and your answers and use them only to tell you about monitoring</li>
     <li>If you register interest in private repository support, we store your email and your answers and use them only to tell you about that</li>
     <li>No payment card details — Stripe handles payment directly and Verilay never sees or stores your card number</li>
@@ -6386,7 +6435,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <li><strong>AI analysis.</strong> To analyse your code, parts of it are sent to Claude, an AI service made by Anthropic. Under Anthropic's business terms, content sent this way is not used to train its models.</li>
     <li><strong>Storage.</strong> Reports are stored in Supabase (hosted in the EU).</li>
     <li><strong>Hosting and network.</strong> The site runs on Railway and is served through Cloudflare, which see your IP address in the normal way. When you scan a live address, the domain you typed is also looked up through Cloudflare&rsquo;s public DNS service.</li>
-    <li><strong>Analytics and payments.</strong> Plausible Analytics (no personal data) and, for the deep scan, Stripe.</li>
+    <li><strong>Payments.</strong> For the deep scan, Stripe.</li>
     <li><strong>GitHub.</strong> If you use the private-repository beta, GitHub lets Verilay read the one repository you choose, with your permission and read-only access. Verilay never uses its own GitHub access to read private code.</li>
   </ul>
   <h2>Accounts and the deep scan</h2>
@@ -7266,6 +7315,10 @@ def save_report_route():
                 return jsonify({"error": "A private report can't be replaced by a shareable copy."}), 403
             if stored and stored.get("comparison") and "comparison" not in data:
                 data["comparison"] = stored["comparison"]   # a later re-save from the page must not wipe it
+            for _k in ("country", "came_from"):              # set by the server on the first save, never by the page
+                data.pop(_k, None)
+                if stored and stored.get(_k):
+                    data[_k] = stored[_k]
             if _HAS_SUPABASE:
                 try:
                     _sb.table("reports").update({"data": data}).eq("id", existing_id).execute()
@@ -7688,12 +7741,13 @@ def _scan_rows(limit=60):
                  "built": (v.get("data") or {}).get("built_with"), "user_id": None, "compared": (v.get("data") or {}).get("comparison"),
                  "survey": (v.get("data") or {}).get("pro_survey"), "deleted": str(bool((v.get("data") or {}).get("deleted"))).lower(),
                  "incomplete": (v.get("data") or {}).get("analysis_incomplete"), "country": (v.get("data") or {}).get("country"),
+                 "came_from": (v.get("data") or {}).get("came_from"),
                  "rating": (v.get("data") or {}).get("feedback_helpful")}
                 for k, v in list(_reports.items())[-limit:]][::-1]
     cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
             "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
             "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
-            "rating:data->>feedback_helpful")
+            "rating:data->>feedback_helpful,came_from:data->>came_from")
     try:
         return _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
     except Exception as e:
@@ -7796,6 +7850,14 @@ def admin_scans():
     countries = ('<br><b>Where from</b> (these scans): ' + " &middot; ".join(f"{_flag(k)}: {n}" for k, n in top)
                  + (f' &middot; <span class="note">{sum(1 for r in rows if not r.get("country"))} without a country (older scans, or deep scans)</span>'
                     if any(not r.get("country") for r in rows) else "")) if top else ""
+    by_source = {}
+    for r in rows:
+        if r.get("came_from"):
+            by_source[r["came_from"]] = by_source.get(r["came_from"], 0) + 1
+    if by_source:
+        countries += ('<br><b>Came from</b> (these scans): '
+                      + " &middot; ".join(f"{_htmlmod.escape(k)}: {n}" for k, n in sorted(by_source.items(), key=lambda kv: -kv[1])[:10])
+                      + f' &middot; <span class="note">{sum(1 for r in rows if not r.get("came_from"))} not known (scans before 2 Nov 2026, or the browser didn&rsquo;t say)</span>')
     def _rating(r):
         v = str(r.get("rating")).strip().lower()
         return "up" if v in ("true", "1") else ("down" if v in ("false", "0") else "")
@@ -7839,7 +7901,7 @@ def admin_scans():
             extras.append("Pro survey")
         lines += (f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td>'
                   f'<td><a href="/report/{esc(str(r.get("id") or ""))}" target="_blank" rel="noopener">{esc(str(r.get("repo") or "Untitled")[:60])}</a>'
-                  f'{" &#128274;" if priv else ""}</td><td>{_flag(r.get("country"))}</td><td>{how}</td>'
+                  f'{" &#128274;" if priv else ""}</td><td>{_flag(r.get("country"))}</td><td>{_htmlmod.escape(r.get("came_from") or "")}</td><td>{how}</td>'
                   f'<td><span class="pill" style="background:{bg};color:{fg}">{k}</span></td><td><b>{grade}</b></td><td>{areas}</td>'
                   f'<td>{esc(str(r.get("files") or "–"))}</td><td>{built}</td>'
                   f'<td>{"&#128077;" if _rating(r) == "up" else ("&#128078;" if _rating(r) == "down" else "")}</td>'
@@ -7852,7 +7914,7 @@ def admin_scans():
             f'text-align:left;vertical-align:top}}th{{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b6966}}'
             f'.pill{{font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px}}a{{color:#534AB7}}</style></head><body>'
             f'<div class="w"><a href="/admin">&larr; Admin</a><h1>Latest scans</h1>{summary}<div style="overflow-x:auto"><table>'
-            f'<tr><th>When (UTC)</th><th>App</th><th>Country</th><th>How</th><th>Kind</th><th>Grade</th><th>Areas checked</th><th>Files</th>'
+            f'<tr><th>When (UTC)</th><th>App</th><th>Country</th><th>From</th><th>How</th><th>Kind</th><th>Grade</th><th>Areas checked</th><th>Files</th>'
             f'<th>Built with</th><th>Rating</th><th>Notes</th></tr>{lines}</table></div>'
             f'<p class="note">&#128274; = private repository (only you, as admin, and its owner can open it).</p></div></body></html>')
     resp = Response(body, mimetype="text/html")
@@ -9391,12 +9453,37 @@ _FAVICON_BYTES = None
 # pages in one place. Deliberately NOT added to /report/<id>, /account, /deep/*
 # or /deep-job/* -- their URLs contain report or job ids, which act as the key
 # to private content and should not be sent to a third-party analytics service.
-_PLAUSIBLE_SNIPPET = (
-    '<!-- Privacy-friendly analytics by Plausible -->\n'
-    '<script defer data-domain="verilay.dev" '
-    'src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>\n'
-    '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
-)
+# 2 Nov 2026: Plausible was never set up (it is a paid service), so the script sent visits nowhere. It now loads only
+# when VERILAY_PLAUSIBLE=1. Every page keeps a do-nothing plausible() so the click counters in the pages can't error,
+# and notes which site sent the visitor (sessionStorage, this tab only; sent only with a scan, see came_from_label).
+_CAME_FROM_JS = ("<script>try{if(!sessionStorage.getItem('vl_from')){var q=new URLSearchParams(location.search),"
+                 "t=q.get('utm_source')||q.get('ref'),h='';try{h=new URL(document.referrer).hostname}catch(e){}"
+                 "if(t)sessionStorage.setItem('vl_from','utm:'+t.slice(0,30));"
+                 "else if(h&&h!==location.hostname)sessionStorage.setItem('vl_from',h);"
+                 "else if(!h)sessionStorage.setItem('vl_from','direct')}}catch(e){}</script>\n")
+_PLAUSIBLE_STUB = '<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>\n'
+
+
+def _google_verification_meta():
+    """Google Search Console's ownership tag, from Railway's VERILAY_GOOGLE_SITE_VERIFICATION (the code Google shows in
+    its "HTML tag" option; public, not a secret). Homepage only. (2 Nov 2026)"""
+    code = (os.getenv("VERILAY_GOOGLE_SITE_VERIFICATION", "") or "").strip()
+    return f'<meta name="google-site-verification" content="{code}">\n' if _re.fullmatch(r"[A-Za-z0-9_-]{10,100}", code) else ""
+
+
+def _plausible_on():
+    return (os.getenv("VERILAY_PLAUSIBLE", "") or "").strip() == "1"
+
+
+def _head_snippet(analytics_page):
+    """The do-nothing plausible() and the came-from note go on every page (nothing leaves the browser). The real
+    Plausible script only on the analytics pages, and only when switched on: never on /report, /account or /deep pages,
+    whose addresses hold private ids."""
+    real = ('<script defer data-domain="verilay.dev" '
+            'src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>\n'
+            if analytics_page and _plausible_on() else "")
+    home = (request.path.rstrip("/") or "/") == "/"
+    return "<!-- vl-head -->\n" + (_google_verification_meta() if home else "") + real + _PLAUSIBLE_STUB + _CAME_FROM_JS
 _ANALYTICS_PATHS = ("/blog", "/about", "/changelog", "/privacy", "/terms", "/ai-disclaimer", "/checklist",
                     "/ask-verilay", "/deep-scan", "/login", "/checkout/success", "/monitoring", "/apps", "/private-repos", "/pricing", "/newsletter")
 
@@ -9408,12 +9495,11 @@ def _add_analytics(resp):
                 or resp.mimetype != "text/html" or resp.direct_passthrough):
             return resp
         p = request.path.rstrip("/") or "/"
-        if not any(p == a or p.startswith(a + "/") for a in _ANALYTICS_PATHS) or p.startswith("/apps/review"):
-            return resp
+        analytics_page = (p == "/" or any(p == a or p.startswith(a + "/") for a in _ANALYTICS_PATHS)) and not p.startswith("/apps/review")
         body = resp.get_data(as_text=True)
-        if "plausible.io/js" in body or "</head>" not in body:
+        if "<!-- vl-head -->" in body or "</head>" not in body:
             return resp
-        resp.set_data(body.replace("</head>", _PLAUSIBLE_SNIPPET + "</head>", 1))
+        resp.set_data(body.replace("</head>", _head_snippet(analytics_page) + "</head>", 1))
     except Exception:
         pass  # analytics must never be able to break a page
     return resp
@@ -9597,9 +9683,6 @@ HTML = """<!DOCTYPE html>
 <meta name="twitter:title" content="Verilay — is your AI-built app safe to launch?">
 <meta name="twitter:description" content="Free security check for AI-built apps (Lovable, Replit, Bolt, v0, Cursor). No sign-up, no login. Paste a public GitHub link for a plain-English graded report.">
 <meta name="twitter:image" content="https://verilay.dev/og-image.png?v=1">
-<!-- Privacy-friendly analytics by Plausible -->
-<script defer data-domain="verilay.dev" src="https://plausible.io/js/script.outbound-links.file-downloads.tagged-events.js"></script>
-<script>window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)}</script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css" integrity="sha384-IcAOG/1tqv9Qnam+j3mZYPAFcNQMnQpMcafc8Nsvd44AUeTCzhUzdQiJkrROmqW6" crossorigin="anonymous">
 <style>
 :root{

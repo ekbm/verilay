@@ -7,6 +7,11 @@
 
 
 console.log("[Verilay] app.js loading...");
+// Which site sent this visitor (noted by the page head script, this tab only); sent only with a saved scan (2 Nov 2026).
+function cameFromHeaders(h) {
+  try { var f = sessionStorage.getItem('vl_from'); if (f) h['X-Came-From'] = f.slice(0, 100); } catch (e) {}
+  return h;
+}
 var currentMethod = 'github';
 var currentReport = null;
 var currentFilesSample = '';
@@ -48,7 +53,7 @@ async function autoSaveReport(data) {
     }
     var resp = await fetch('/save-report', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: cameFromHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify(reportData)
     });
     var result = await resp.json();
@@ -99,7 +104,7 @@ async function saveReport() {
 
     var resp = await fetch('/save-report', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: cameFromHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify(reportData)
     });
     var data = await resp.json();
