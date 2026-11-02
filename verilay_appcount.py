@@ -82,3 +82,71 @@ def apps_analysed(sb, now=None):
 def reset_cache():
     with _lock:
         _cache.update(value=None, at=0.0, failed_at=0.0)
+        _improved.update(value=None, at=0.0, failed_at=0.0)
+
+
+# ── "N apps re-checked with a better grade" (2 Nov 2026) ─────────────────────────────────────────────────────────────
+# Moses: show new visitors that Verilay helps, since few people say so openly. Each app counts ONCE, and only when a
+# later scan of it graded better than the scan before (the saved report keeps the earlier grade as prev_score). The
+# owner's own apps and test repos are left out, the same list as above. Shown on the homepage only once it reaches
+# IMPROVED_MIN (a small number looks weaker than none); the admin always sees it.
+GRADES = "ABCDF"
+IMPROVED_MIN = 20
+_improved = {"value": None, "at": 0.0, "failed_at": 0.0}
+
+
+def _excluded(repo, patterns):
+    import fnmatch
+    r = (repo or "").strip().lower()
+    return any(fnmatch.fnmatchcase(r, p.replace("%", "*")) for p in patterns)
+
+
+def grade_went_up(before, after):
+    """True when `after` is a better letter grade than `before` (A best, F worst)."""
+    b, a = str(before or "").strip().upper()[:1], str(after or "").strip().upper()[:1]
+    return bool(b and a and b in GRADES and a in GRADES and GRADES.index(a) < GRADES.index(b))
+
+
+def count_improved(rows, patterns=None):
+    """Different apps (by saved name, any case) with at least one re-scan that graded better than the one before."""
+    patterns = exclude_patterns() if patterns is None else patterns
+    apps = set()
+    for r in rows or []:
+        repo = str((r or {}).get("repo") or "").strip().lower()
+        if repo and not _excluded(repo, patterns) and grade_went_up(r.get("prev"), r.get("score")):
+            apps.add(repo)
+    return len(apps)
+
+
+def apps_improved(sb, now=None):
+    """The number of apps re-checked with a better grade, or None when it cannot be worked out. Never raises."""
+    if sb is None:
+        return None
+    now = now if now is not None else time.time()
+    with _lock:
+        if _improved["value"] is not None and now - _improved["at"] < CACHE_SECONDS:
+            return _improved["value"]
+        if _improved["failed_at"] and now - _improved["failed_at"] < FAIL_RETRY_SECONDS:
+            return None
+    try:
+        rows = (sb.table("reports").select("repo,score,prev:data->>prev_score").not_.is_("data->>prev_score", "null")
+                .order("created_at", desc=True).limit(5000).execute().data or [])
+        val = count_improved(rows)
+    except Exception as e:
+        print(f"[appcount] apps improved not worked out: {type(e).__name__}", flush=True)
+        with _lock:
+            _improved["failed_at"] = now
+        return None
+    with _lock:
+        _improved.update(value=val, at=now, failed_at=0.0)
+    return val
+
+
+def improved_for_homepage(sb):
+    """The figure to show on the homepage, or "" while it is below the minimum (or unknown)."""
+    n = apps_improved(sb)
+    try:
+        floor = int(os.getenv("VERILAY_IMPROVED_MIN", "") or IMPROVED_MIN)
+    except ValueError:
+        floor = IMPROVED_MIN
+    return n if isinstance(n, int) and n >= max(1, floor) else ""

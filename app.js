@@ -378,6 +378,123 @@ async function showCompareOffer() {
     runCompare(cands[pick ? (parseInt(pick.value, 10) || 0) : 0]);
   };
 }
+// ── "Your grade went from C to B. Did Verilay's advice help?" (2 Nov 2026) ──────────────────────────────────────
+// Only when this browser scanned the same app before (it holds that scan's token) and the grade went up. Never blocks
+// the report: one tap is enough, the rest is optional. The server checks both scans and the grades again.
+var _GRADES = 'ABCDF';
+function _gradeUp(before, after) {
+  var b = _GRADES.indexOf(String(before || '').charAt(0).toUpperCase()), a = _GRADES.indexOf(String(after || '').charAt(0).toUpperCase());
+  return b !== -1 && a !== -1 && a < b;
+}
+// Shown at the TOP of the report (Moses, 2 Nov 2026: "prominent and not easily dismissable until completed"): no close
+// button, and a bar at the bottom of the screen asks the same question while they scroll, until they tap a thumb. The
+// report itself is never blocked. After the tap: optional chips (how it helped / what got in the way) and a line.
+var RESCAN_HOW = {
+  yes: [['found', 'Found a problem I didn\'t know about'], ['prompt', 'The fix prompt worked in my AI builder'],
+        ['plain', 'Explained it in plain English'], ['first', 'Showed me what to fix first'], ['confidence', 'Gave me confidence to launch']],
+  no: [['prompt_failed', 'The fix prompt didn\'t work'], ['technical', 'Too technical for me'],
+       ['other_way', 'I fixed it another way'], ['not_real', 'The problems weren\'t real']]
+};
+function showRescanFeedback() {
+  var anchor = document.getElementById('verdict-banner');
+  if (!savedReportId || !anchor || !anchor.parentNode || document.getElementById('rescan-card')) return;
+  if (scanFullyIncomplete() || !currentReport || currentReport.preview_only || currentReport.private) return;
+  var now = (currentReport.health || {}).score;
+  var prev = (window._compareCandidates || []).filter(function(h) { return h._same; })[0];
+  if (!prev || !_gradeUp(prev.score, now)) return;
+  var gb = esc(String(prev.score).charAt(0)), ga = esc(String(now).charAt(0));
+  var pill = 'border:0.5px solid #534AB7;background:white;color:#3C3489;border-radius:20px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer';
+  var big = 'border-radius:20px;padding:9px 20px;font-size:15px;font-family:inherit;cursor:pointer';
+  var st0 = document.createElement('style');
+  st0.textContent = '@media print{#rescan-card,#rescan-bar{display:none!important}}#rescan-card .rescan-c.on{background:#534AB7;color:white}';
+  document.head.appendChild(st0);
+  var card = document.createElement('div');
+  card.id = 'rescan-card';
+  card.style.cssText = 'border:2px solid #534AB7;background:#EEEDFE;border-radius:12px;padding:16px 18px;margin-bottom:14px;color:#26215C';
+  card.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="background:#534AB7;color:white;font-size:12px;' +
+      'padding:3px 10px;border-radius:20px">One quick question</span><span style="font-size:13px;color:#3C3489">' + gb + ' &rarr; ' + ga + '</span></div>' +
+    '<div style="font-size:18px;font-weight:700;margin-bottom:4px">Your grade went from ' + gb + ' to ' + ga + '. Did Verilay&rsquo;s advice help?</div>' +
+    '<div style="font-size:13px;color:#3C3489;margin-bottom:12px">One tap. Your answer helps other builders trust what Verilay finds.</div>' +
+    '<div id="rescan-q" style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<button type="button" class="rescan-h" data-v="yes" style="' + big + ';border:0;background:#534AB7;color:white">&#128077; Yes, it helped</button>' +
+      '<button type="button" class="rescan-h" data-v="no" style="' + big + ';border:0.5px solid #534AB7;background:white;color:#3C3489">&#128078; Not really</button></div>' +
+    '<div id="rescan-more" style="display:none;margin-top:14px">' +
+      '<div id="rescan-how-q" style="font-size:13px;font-weight:600;margin-bottom:6px"></div>' +
+      '<div id="rescan-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>' +
+      '<label for="rescan-text" style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Anything else? <span style="font-weight:400">(optional)</span></label>' +
+      '<input id="rescan-text" maxlength="500" placeholder="Locked down the customer data files" style="width:100%;box-sizing:border-box;border:0.5px solid #c9c5f2;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit;background:white">' +
+      '<label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;color:#3C3489;margin-top:8px"><input type="checkbox" id="rescan-quote"> ' +
+        'Verilay may quote this on its website, without my name or my app&rsquo;s name</label>' +
+      '<input id="rescan-website" type="text" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">' +
+      '<div style="display:flex;gap:14px;align-items:center;margin-top:10px"><button type="button" id="rescan-send" style="' + pill + ';background:#534AB7;color:white;border:0">Send</button>' +
+      '<a href="#" id="rescan-done" style="font-size:12px;color:#3C3489">I&rsquo;m done</a></div></div>' +
+    '<div id="rescan-status" style="font-size:12px;color:#3C3489;margin-top:.5rem"></div>';
+  anchor.parentNode.insertBefore(card, anchor);
+  var bar = document.createElement('div');
+  bar.id = 'rescan-bar';
+  bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:900;background:#534AB7;color:white;padding:10px 16px;font-size:14px;' +
+    'display:none;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap';
+  bar.innerHTML = '<span>' + gb + ' &rarr; ' + ga + '. Did Verilay&rsquo;s advice help?</span><span style="display:flex;gap:6px">' +
+    '<button type="button" class="rescan-h" data-v="yes" style="border:0;background:white;color:#3C3489;border-radius:20px;padding:5px 14px;font-size:13px;font-family:inherit;cursor:pointer">&#128077; Yes</button>' +
+    '<button type="button" class="rescan-h" data-v="no" style="border:0.5px solid white;background:transparent;color:white;border-radius:20px;padding:5px 14px;font-size:13px;font-family:inherit;cursor:pointer">&#128078; No</button></span>';
+  document.body.appendChild(bar);
+  var answered = false;
+  function barVisible() {                      // the bar only while the card is off screen, and until a thumb is tapped
+    if (answered) { bar.style.display = 'none'; return; }
+    var r = card.getBoundingClientRect();
+    bar.style.display = (r.bottom < 0 || r.top > window.innerHeight) ? 'flex' : 'none';
+  }
+  window.addEventListener('scroll', barVisible, {passive: true});
+  window.addEventListener('resize', barVisible);
+  barVisible();
+  var st = document.getElementById('rescan-status');
+  function send(payload) {
+    var h = reportHeaders(savedReportId, {'Content-Type': 'application/json', 'X-Previous-Token': reportToken(prev.id)});
+    payload.report_id = savedReportId; payload.previous_id = prev.id;
+    payload.website = (document.getElementById('rescan-website') || {}).value || '';
+    return fetch('/rescan-feedback', {method: 'POST', headers: h, body: JSON.stringify(payload)}).then(function(r) { return r.json(); });
+  }
+  function thanks() {
+    answered = true; barVisible();
+    card.innerHTML = '<div style="font-weight:700">Thank you</div><div style="font-size:13px;color:#3C3489">That helps other builders trust what Verilay finds.</div>';
+  }
+  async function tap(v) {
+    if (answered) return;
+    answered = true; barVisible();
+    card.querySelectorAll('#rescan-q .rescan-h').forEach(function(o) { o.disabled = true; o.style.opacity = o.getAttribute('data-v') === v ? '1' : '.45'; });
+    document.getElementById('rescan-how-q').textContent = v === 'yes' ? 'How did it help? (pick any)' : 'What got in the way? (pick any)';
+    document.getElementById('rescan-chips').innerHTML = RESCAN_HOW[v].map(function(c) {
+      return '<button type="button" class="rescan-c" data-k="' + c[0] + '" aria-pressed="false" style="' + pill + '">' + esc(c[1]) + '</button>';
+    }).join('');
+    card.querySelectorAll('.rescan-c').forEach(function(b) {
+      b.onclick = function() { var on = !b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); };
+    });
+    document.getElementById('rescan-more').style.display = 'block';
+    if (card.getBoundingClientRect().top < 0) card.scrollIntoView({behavior: 'smooth', block: 'start'});
+    try { if (typeof plausible === 'function') plausible('Rescan Feedback', {props: {helped: v}}); } catch (e) {}
+    try {
+      var r = await send({helped: v});
+      st.textContent = r.ok ? 'Thank you. Anything more is optional.' : (r.error || 'It could not be sent. Try again.');
+    } catch (e) { st.textContent = 'It could not be sent. Try again.'; }
+  }
+  document.querySelectorAll('#rescan-card .rescan-h, #rescan-bar .rescan-h').forEach(function(b) {
+    b.onclick = function() { tap(b.getAttribute('data-v')); };
+  });
+  document.getElementById('rescan-done').onclick = function(ev) { ev.preventDefault(); thanks(); };
+  document.getElementById('rescan-send').onclick = async function() {
+    var t = (document.getElementById('rescan-text').value || '').trim();
+    var how = Array.prototype.map.call(card.querySelectorAll('.rescan-c.on'), function(b) { return b.getAttribute('data-k'); });
+    if (!t && !how.length) { thanks(); return; }
+    this.disabled = true;
+    try {
+      var r = await send({how: how, text: t, quote_ok: document.getElementById('rescan-quote').checked});
+      if (r.ok) { thanks(); return; }
+      st.textContent = r.error || 'It could not be sent. Try again.';
+    } catch (e) { st.textContent = 'It could not be sent. Try again.'; }
+    this.disabled = false;
+  };
+}
 async function runCompare(prev) {
   var out = document.getElementById('compare-result');
   var btn = document.getElementById('compare-go');
@@ -1522,6 +1639,7 @@ function handleStreamEvent(evt) {
         }
       }
       showCompareOffer();
+      showRescanFeedback();
       setTimeout(showMonitoringOffer, 1500);
       break;
     case 'error':

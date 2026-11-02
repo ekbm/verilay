@@ -4549,7 +4549,7 @@ def report_data(report_id):
     # Internal and private fields never leave the server: the token hash, and the
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
-                                                       "improvement_story", "pro_survey", "compare_feedback", "country",
+                                                       "improvement_story", "pro_survey", "compare_feedback", "country", "rescan_feedback",
                                                        "save_for_email")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
@@ -7679,6 +7679,89 @@ def improvement_story_route():
     return jsonify({"ok": True})
 
 
+RESCAN_HOW = {
+    "yes": {"found": "Found a problem I didn't know about", "prompt": "The fix prompt worked in my AI builder",
+            "plain": "Explained it in plain English", "first": "Showed me what to fix first",
+            "confidence": "Gave me confidence to launch"},
+    "no": {"prompt_failed": "The fix prompt didn't work", "technical": "Too technical for me",
+           "other_way": "I fixed it another way", "not_real": "The problems weren't real"},
+}
+
+
+def _app_key(name):
+    """The same app under small renames ("Spendial", "2 spendial", "owner/spendial"): the JS _compareName twin."""
+    s = str(name or "").lower()
+    return _re.sub(r"[^a-z]", "", s.split("/")[-1])
+
+
+@app.route("/rescan-feedback", methods=["POST"])
+def rescan_feedback_route():
+    """'Your grade went from C to B. Did Verilay's advice help?' (2 Nov 2026, Moses: few people say openly that it
+    helped). Shown on the results page when this browser scanned the same app before and the grade went up. One tap is
+    enough; what they fixed and a tick to let Verilay quote it (never with a name) are optional. Both scans must be this
+    browser's (or account's), the same app, and the grade must really have gone up: the server works that out itself,
+    never from the page. Kept on the new report (never shown on it, never in /report-data) and emailed to Moses."""
+    body = request.get_json(silent=True) or {}
+    if body.get("website"):                      # hidden field only a bot fills in
+        return jsonify({"ok": True})
+    rid, old_id = str(body.get("report_id") or "")[:40], str(body.get("previous_id") or "")[:40]
+    helped = body.get("helped")
+    helped = helped if helped in ("yes", "no") else ""
+    text = str(body.get("text") or "").strip()[:500]
+    how_in = body.get("how") if isinstance(body.get("how"), list) else []
+    if not (helped or text or how_in):
+        return jsonify({"error": "Choose an answer, or write a line."}), 400
+    if not rid or not old_id or rid == old_id:
+        return jsonify({"error": "There is no earlier scan to compare with."}), 400
+    if not _can_write_report(rid) or not _can_write_report(old_id, header="X-Previous-Token"):
+        return jsonify({"error": _NOT_ALLOWED}), 403
+    data, _o1 = _report_auth_info(rid)
+    old, _o2 = _report_auth_info(old_id)
+    if not data or not old or data.get("private") or old.get("private"):
+        return jsonify({"error": "One of these reports has expired or was deleted."}), 404
+    gb, ga = (old.get("health") or {}).get("score"), (data.get("health") or {}).get("score")
+    if (_app_key(old.get("repo")) != _app_key(data.get("repo")) or not _app_key(data.get("repo"))
+            or old.get("analysis_incomplete") or data.get("analysis_incomplete") or not appcount.grade_went_up(gb, ga)):
+        return jsonify({"error": "This question is only for a re-scan of the same app with a better grade."}), 400
+    if text and any(f.severity in ("critical", "warning") for f in scan_file("message.txt", text)):
+        return jsonify({"error": "Your message looks like it contains a key or password. Please take it out and send again."}), 400
+    if not _story_rate_ok(get_ip()):
+        return jsonify({"error": "Too many messages from this connection. Please try again later."}), 429
+    fb = dict(data.get("rescan_feedback") or {}) if isinstance(data.get("rescan_feedback"), dict) else {}
+    first = not fb
+    if helped:
+        fb["helped"] = helped
+    choices = RESCAN_HOW.get(fb.get("helped") or "", {})
+    how = [k for k in dict.fromkeys(str(x) for x in how_in[:10]) if k in choices]
+    if how_in and not how and not text and not helped:
+        return jsonify({"error": "Choose an answer, or write a line."}), 400
+    if how:
+        fb["how"] = how
+    if text:
+        fb["text"] = text
+        fb["quote_ok"] = bool(body.get("quote_ok"))
+    fb.update(grade_before=gb, grade_after=ga, at=_dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"))
+    data["rescan_feedback"] = fb
+    if helped:
+        data["feedback_helpful"] = helped == "yes"   # so it shows in the admin's Rating column too
+    try:
+        if _HAS_SUPABASE:
+            _sb.table("reports").update({"data": data}).eq("id", rid).execute()
+        elif rid in _reports:
+            _reports[rid]["data"] = data
+    except Exception as e:
+        print(f"[rescan-feedback] not stored on {rid}: {e}", flush=True)
+        return jsonify({"error": "Your answer could not be saved. Please try again."}), 500
+    note = f"Re-scan, grade {gb} -> {ga}."
+    if how:
+        note += (" How it helped: " if fb.get("helped") == "yes" else " What got in the way: ") + "; ".join(choices[k] for k in how) + "."
+    if text:
+        note += f" Anything else: {text} May quote it (no name): " + ("yes" if fb.get("quote_ok") else "no")
+    if first or text or how:
+        _feedback_alert(rid, data, {"yes": True, "no": False}.get(fb.get("helped")), note, "")
+    return jsonify({"ok": True})
+
+
 @app.route("/admin/pro-survey")
 def admin_pro_survey():
     """The launch survey answers with simple totals (admin only)."""
@@ -7864,6 +7947,12 @@ def admin_scans():
     ups, downs = sum(1 for r in rows if _rating(r) == "up"), sum(1 for r in rows if _rating(r) == "down")
     countries += (f'<br><b>Ratings</b> (these scans): {ups} &#128077; &middot; {downs} &#128078;' if ups or downs else
                   '<br><b>Ratings</b> (these scans): none yet')
+    _imp = appcount.apps_improved(_sb) if _HAS_SUPABASE else None
+    if _imp is not None:
+        _floor = appcount.IMPROVED_MIN
+        countries += (f'<br><b>Apps improved</b> (all time): {_imp} re-checked with a better grade '
+                      f'<span class="note">({"on the homepage" if _imp >= _floor else f"shows on the homepage at {_floor}"};'
+                      ' each app once; your own apps left out)</span>')
     returning = mark_returning(rows)
     countries += (f'<br><b>Came back</b> (these scans): {len(returning)} scan{"" if len(returning) == 1 else "s"} of an app scanned before'
                   ' <span class="note">(&#8635; in Notes: a sign they tried the fixes)</span>' if returning else "")
@@ -9656,7 +9745,8 @@ def index():
                 .replace("__SELFMONITOR_TABLE__", selfmon_table)
                 .replace("__SAMPLE_BUTTON__", _sample_button_html())
                 .replace("__SAMPLE_PREVIEW__", _sample_preview()))
-    return render_template_string(html, analysis_count=count if count > 0 else "")
+    improved = appcount.improved_for_homepage(_sb) if _HAS_SUPABASE else ""
+    return render_template_string(html, analysis_count=count if count > 0 else "", improved_count=improved)
 
 
 @app.route("/static/app.js")
@@ -9984,6 +10074,9 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <div class="hx-stats">
       {% if analysis_count %}
       <div class="hx-st"><b>{{ analysis_count }}</b><span>apps analysed so far</span></div>
+      {% endif %}
+      {% if improved_count %}
+      <div class="hx-st"><b>{{ improved_count }}</b><span>apps re-checked with a better grade after the fixes</span></div>
       {% endif %}
       <div class="hx-st"><b>6 layers</b><span>explained: login, database, API, frontend, settings, libraries</span></div>
       <div class="hx-st"><b>Every file</b><span>scanned for exposed keys and passwords</span></div>
