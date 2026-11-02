@@ -445,14 +445,26 @@ def _finding(rule, level, title, plain, file, line, subject, prompt) -> Finding:
 
 # ── The scan ───────────────────────────────────────────────────────────────────
 
+def _natural(name: str):
+    """Numbers compared as numbers, so v2 comes before v10 and v19."""
+    return [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", name.lower())]
+
+
 def _sql_order(path: str):
     """The order SQL files are replayed in. Files under a supabase/ folder come first, by name (their names start
     with a timestamp, so name order is date order). Other migration folders, such as the drizzle/migrations folder
     Lovable writes later changes to, come after. Reading everything alphabetically put drizzle/ before supabase/,
     so a later lock-down (REVOKE) was read before the function existed and did nothing, and Verilay kept reporting a
-    function as open after it had been locked (BuildBook, 2026-10-14)."""
+    function as open after it had been locked (BuildBook, 2026-10-14).
+    Loose SQL files outside those folders come last (2 Nov 2026): first the ones with no number in their name (the
+    main setup, e.g. schema.sql), then the numbered patches in number order (patch_v2 ... patch_v19)."""
     low = path.lower()
-    return (0 if (low.startswith("supabase/") or "/supabase/" in low) else 1, path)
+    if low.startswith("supabase/") or "/supabase/" in low:
+        return (0, 0, [path])
+    if "migrations/" in low:
+        return (1, 0, [path])
+    name = low.rsplit("/", 1)[-1]
+    return (2, 1 if re.search(r"\d", name) else 0, _natural(name))
 
 
 def _is_sql_path(low: str) -> bool:
@@ -460,6 +472,19 @@ def _is_sql_path(low: str) -> bool:
 
 
 _SUPABASE_SQL = re.compile(r"auth\.uid\s*\(|auth\.jwt\s*\(|\bto\s+(?:anon|authenticated)\b|\bservice_role\b|supabase", re.I)
+# Database rules a loose .sql file must contain before it is read (a seed or export file has none of these).
+_SUPABASE_RULES = re.compile(r"auth\.uid\s*\(|auth\.jwt\s*\(|\b(?:to|from)\s+(?:public\s*,\s*)?(?:anon|authenticated)\b|create\s+policy|"
+                             r"enable\s+row\s+level\s+security|security\s+definer", re.I)
+_NOT_APP_SQL = re.compile(r"(^|/)(node_modules|vendor|dist|build|\.git)/", re.I)
+
+
+def _is_loose_supabase_sql(path: str, text: str) -> bool:
+    """A .sql file outside supabase/ and migrations/ folders that holds Supabase database rules. Google AI Studio and
+    hand-made projects keep patches like these loose (e.g. patch_v19.sql); before 2 Nov 2026 they were skipped, and
+    the report said "no Supabase database files found" while the AI review discussed them."""
+    low = path.lower()
+    return (low.endswith(".sql") and not _is_sql_path(low) and not _NOT_APP_SQL.search(low)
+            and bool(_SUPABASE_RULES.search(text[:MAX_FILE_BYTES])))
 
 
 def _looks_like_supabase(files: Dict[str, str]) -> bool:
@@ -500,8 +525,8 @@ def _scan(files: Dict[str, str], result: FindingList) -> None:
     policies: Dict[Tuple[str, str], _Policy] = {}
     policy_text = []
     dynamic_rls = False
-    sql_paths = sorted((p for p in files if isinstance(files.get(p), str) and _is_sql_path(p.lower())
-                        and len(files[p]) <= MAX_FILE_BYTES), key=_sql_order)
+    sql_paths = sorted((p for p in files if isinstance(files.get(p), str) and len(files[p]) <= MAX_FILE_BYTES
+                        and (_is_sql_path(p.lower()) or _is_loose_supabase_sql(p, files[p]))), key=_sql_order)
     for path in sql_paths:
         result.sql_files += 1
         for stmt, line in _split_statements(files[path]):
