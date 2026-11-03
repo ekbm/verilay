@@ -6911,6 +6911,13 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
   </div>
 
   <div class="entry">
+    <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">November 3, 2026</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Your plan</div>
+    <div><span class="tag new">New</span></div>
+    <p style="font-size:13px;color:#4a4846;margin-top:.5rem"><strong>New:</strong> deep reports now start with Your plan: what to fix now, and what can wait.</p>
+  </div>
+
+  <div class="entry">
     <div style="font-size:12px;color:#6b6966;margin-bottom:.35rem">October 31, 2026</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:.5rem">Code fitness</div>
     <div><span class="tag new">New</span></div>

@@ -2,6 +2,12 @@
 
 Every improvement, fix and new feature of Verilay, in plain English, newest first. The same list is on the site: https://verilay.dev/changelog
 
+## November 3, 2026: Your plan
+
+`New`
+
+**New:** deep reports now start with Your plan: what to fix now, and what can wait.
+
 ## October 31, 2026: Code fitness
 
 `New`
