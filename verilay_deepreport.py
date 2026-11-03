@@ -558,8 +558,9 @@ def render_plan_html(data):
     n_crit = sum(1 for f in fixes if (f.get("severity") or "").lower() == "critical")
     n_warn = len(fixes) - n_crit
     n_pkg = len((data.get("dependency_fixes") or {}).get("groups") or [])
-    head_bits = [b for b in (_plural(n_crit, "critical", "critical") if n_crit else "",
-                             _plural(n_warn, "warning", "warnings") if n_warn else "",
+    # Counts the FIX PROMPTS, so it never says "warnings" (the score box counts every warning in the six areas; 3 Nov 2026)
+    head_bits = [b for b in (_plural(n_crit, "critical fix", "critical fixes") if n_crit else "",
+                             _plural(n_warn, "other fix", "other fixes") if n_warn else "",
                              _plural(n_pkg, "package update", "package updates") if n_pkg else "") if b]
 
     def row(x, color):
