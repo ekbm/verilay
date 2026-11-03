@@ -50,6 +50,7 @@ from verilay_crypto_hygiene import (
 from verilay_client_type import classify as classify_client
 from verilay_repo_access import repo_visibility, refusal as repo_refusal, head_info as repo_head_info, valid_names as repo_valid_names
 import verilay_repo_access as repoaccess
+import verilay_blog_series as blogseries
 from verilay_capacity import FREE_SCANS, BUSY_MESSAGE
 import verilay_scancache as scancache
 import verilay_selfcheck as selfcheck
@@ -4764,6 +4765,7 @@ BLOG_POSTS = [
     {
         "slug": "building-ai-apps-like-an-engineer-start-here",
         "title": "Building AI Apps Like an Engineer: Start Here",
+        "seo_title": "Frontend vs Backend vs Database, Explained Simply",
         "date": "November 4, 2026",
         "category": "Guide",
         "excerpt": "New to apps and AI builders? What an app is made of, the steps engineers follow to build one, and three questions to ask your AI builder.",
@@ -6035,7 +6037,7 @@ def blog():
     <h1 style="font-size:28px;font-weight:700;margin-bottom:.5rem">Verilay Blog</h1>
     <p style="color:#6b6966;font-size:15px">Security insights, case studies and building lessons for non-developers who build real things.</p>
   </div>
-  """ + featured_html + """
+  """ + blogseries.cards_html(BLOG_POSTS) + featured_html + """
   <div style="font-size:12px;font-weight:600;color:#6b6966;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.75rem;margin-top:1.5rem">More posts</div>
   <div class="grid">""" + grid_html + """</div>
   """ + (paywall.newsletter_box_html("blog") if _HAS_PAYWALL else "") + """
@@ -6337,10 +6339,10 @@ def render_post(post):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>""" + post["title"] + """ - Verilay</title>
+<title>""" + post.get("seo_title", post["title"]) + """ - Verilay</title>
 <meta name="description" content=\"""" + post.get("excerpt", "").replace('"', "&quot;") + """\">
 <link rel="canonical" href="https://verilay.dev/blog/""" + post["slug"] + """">
-<meta property="og:title" content=\"""" + post["title"] + """\">
+<meta property="og:title" content=\"""" + post.get("seo_title", post["title"]) + """\">
 <meta property="og:description" content=\"""" + post.get("excerpt", "").replace('"', "&quot;") + """\">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://verilay.dev/blog/""" + post["slug"] + """">
@@ -6367,9 +6369,11 @@ def render_post(post):
     <h1 style="font-size:29px;font-weight:700;line-height:1.25;margin-bottom:1rem">""" + post["title"] + """</h1>
     <p style="font-size:17px;color:#6b6966;line-height:1.6">""" + post.get("excerpt", "") + """</p>
     """ + _share_bar(post) + """
+    """ + blogseries.box_html(post["slug"], BLOG_POSTS) + """
   </div>
   <hr>
 """ + _externalise_links(post.get("body", "")) + """
+  """ + blogseries.nav_html(post["slug"], BLOG_POSTS) + """
   """ + _share_bar(post, "Found this useful? Share it") + """
   """ + (paywall.newsletter_box_html("post") if _HAS_PAYWALL else "") + """
   <div class="cta">
