@@ -29,6 +29,8 @@ import verilay_deepscan as deepscan
 import verilay_notify as notify
 import verilay_beehiiv as beehiiv
 
+DEEP_SCAN_COUNTRY = {}   # account id -> the 2-letter country it started a deep scan from (country only, never an IP)
+
 bp = Blueprint("paywall", __name__)
 
 # Filled in by init() so this module never imports app.py — that would be a
@@ -2170,6 +2172,11 @@ def deep_scan_start(owner, repo):
     if _is_admin_user(accounts.current_user()):
         from verilay_repo_access import mark_owner_private
         mark_owner_private(full)           # the admin's own private apps may be read with the monitoring key, once
+    # The country, for the admin's "Latest scans" (3 Nov 2026): the scan saves its report from a background thread with
+    # no request, so it is noted here, by account, and picked up when the report is saved (app.py save_report_data).
+    _cc = (request.headers.get("CF-IPCountry") or "").strip().upper()
+    if user_id and re.fullmatch(r"[A-Z]{2}", _cc) and _cc != "XX":
+        DEEP_SCAN_COUNTRY[str(user_id)] = _cc
     job_id = deepscan.create_job(full, purchase_id, user_id)
     deepscan.start_job(job_id, user_id)
     return redirect(f"/deep-job/{job_id}")

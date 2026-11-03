@@ -317,6 +317,10 @@ def save_report_with_token(data, user_id=None):
 def save_report_data(data, user_id=None):
     """Same as before: returns just the report id (the deep-scan engine calls this and
     expects a string). Its owner is the signed-in account, so the token is not needed."""
+    if paywall is not None and user_id and not visitor_country():   # a deep scan: no request here, so use the country
+        _cc = paywall.DEEP_SCAN_COUNTRY.get(str(user_id))            # noted when it started (3 Nov 2026)
+        if _cc:
+            data["country"] = _cc
     return save_report_with_token(data, user_id)[0]
 
 
