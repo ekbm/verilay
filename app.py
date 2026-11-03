@@ -4762,6 +4762,79 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "building-ai-apps-like-an-engineer-start-here",
+        "title": "Building AI Apps Like an Engineer: Start Here",
+        "date": "November 5, 2026",
+        "category": "Guide",
+        "excerpt": "New to apps and AI builders? What an app is made of, the steps engineers follow to build one, and three questions to ask your AI builder.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p>When I started looking into how apps get built, every conversation seemed to be in a language I hadn&rsquo;t learned. Frontend. Backend. Deploy. Row-level security. People nodded along, and I nodded too.</p>
+<p>So before this series goes any further, I want to go back to the start. This is the post I wish I&rsquo;d read first: what an app is actually made of, the steps engineers follow to build one, and where AI builders fit in.</p>
+<p>If you already know all this, skip ahead. If you don&rsquo;t, you&rsquo;re exactly who it&rsquo;s for.</p>
+
+<h2>What an app is made of</h2>
+<p>The easiest way I&rsquo;ve found to picture an app is one you&rsquo;ve almost certainly used: a food delivery app.</p>
+<ul>
+<li><strong>What you see on your phone is the <em>frontend</em>.</strong> The menus, the photos, the basket, the &ldquo;Place order&rdquo; button. It runs on <em>your</em> device, in your phone or web browser. That matters, because anything on your device, you (or anyone clever enough) can look inside and change.</li>
+<li><strong>The company&rsquo;s own computers are the <em>backend</em>.</strong> When you tap &ldquo;Place order&rdquo;, your phone sends a message to a <em>server</em>, a computer the company controls. That&rsquo;s where the real decisions get made: is this person signed in, is the price right, has the payment gone through, which restaurant and which driver get the order. You never see this part.</li>
+<li><strong>The records are the <em>database</em>.</strong> Your account, your saved addresses, your past orders, the restaurants&rsquo; menus. It&rsquo;s everything the app remembers. Only the backend should be able to read or change it.</li>
+<li><strong>Signing in is the <em>login</em>.</strong> It&rsquo;s how the app knows the order is really from you. Engineers call this <em>authentication</em>.</li>
+<li><strong>Where it all runs is the <em>hosting</em>.</strong> It&rsquo;s the service that keeps the whole thing switched on and reachable on the internet.</li>
+</ul>
+<p>Here&rsquo;s the lesson that took me longest to understand. <strong>The real checks have to happen on the company&rsquo;s computers, not on your phone.</strong> Imagine the app worked out your total on your phone and simply told the server &ldquo;this person owes $2&rdquo;. Anyone who changed that number on their own phone would eat for almost nothing. A well-built app re-checks the price, the discount and the payment on the server, where customers can&rsquo;t reach.</p>
+<p>The same goes for who can see what. Hiding a button on the screen is like a &ldquo;staff only&rdquo; sign on a door with no lock. It stops polite people, and only polite people. The real check, &ldquo;is this person allowed to do this?&rdquo;, has to happen on the server.</p>
+<p>Most of the data leaks I&rsquo;ve read about this year seem to come back to this one idea. The records were left open, or the only check was on the screen.</p>
+
+<h2>The steps engineers follow</h2>
+<p>Engineers don&rsquo;t just write code. Building a good app takes a whole routine around the coding, and that routine has a name: the <em>software development life cycle</em>. Here it is as I understand it so far, using the delivery app as the example:</p>
+<ol>
+<li><strong>Rules.</strong> Agree how the work is done before anyone starts: how changes are made, who checks them, what never happens. <em>Example: no change goes live until someone else has looked at it.</em></li>
+<li><strong>Requirements.</strong> Decide what you&rsquo;re building. <em>Example: customers, restaurants and drivers each see different things. The app stores addresses and payment details, so leaks would really hurt. Group orders can wait until later.</em></li>
+<li><strong>Architecture.</strong> Plan which part does what. <em>Example: the phone shows the menu, but the server works out the price and checks every order. Card details go to a payment company, never into your own records.</em></li>
+<li><strong>Build.</strong> Write the code. <em>Example: keep secret keys on the server, never inside the phone app, and change one thing at a time.</em></li>
+<li><strong>Test.</strong> Prove it works, including when things go wrong. <em>Example: what happens if the payment fails halfway, or if a customer tries to open someone else&rsquo;s order?</em></li>
+<li><strong>Release.</strong> Go live in a way you can undo. <em>Example: switch the new checkout on for a few customers first, with a way to switch it straight back off.</em></li>
+<li><strong>Operate.</strong> Know when something breaks before your users tell you. <em>Example: an alert fires if orders suddenly stop coming in at dinner time.</em></li>
+<li><strong>Maintain.</strong> Keep it healthy over time. <em>Example: update the building blocks the app is made from when problems are found in them, because an app that&rsquo;s safe in January can be unsafe in June without you changing a thing.</em></li>
+</ol>
+<p>At every one of those steps, engineers ask three questions:</p>
+<ul>
+<li><strong>What could go wrong?</strong></li>
+<li><strong>How would I know if it did?</strong></li>
+<li><strong>How do I undo it?</strong></li>
+</ul>
+
+<h2>This isn&rsquo;t just one person&rsquo;s opinion</h2>
+<p>I wanted to know whether this routine is a real standard or just good habits people talk about. It turns out governments write it down.</p>
+<p>In February 2022, the US National Institute of Standards and Technology (NIST) published its <em>Secure Software Development Framework</em>. It&rsquo;s a guide to building software safely. It groups the work into four areas: preparing the team, protecting the software, producing well-secured software, and responding when problems are found. (<a href="https://csrc.nist.gov/pubs/sp/800/218/final" target="_blank" rel="noopener">NIST SP 800-218</a>)</p>
+<p>What caught my eye was the reason NIST gives for writing it: few software development processes cover security in detail, so these practices usually need to be <em>added</em>. (<a href="https://csrc.nist.gov/pubs/sp/800/218/final" target="_blank" rel="noopener">NIST</a>)</p>
+<p>In other words, even for professional teams, security doesn&rsquo;t come built in. Someone has to add it on purpose. That&rsquo;s worth remembering when we get to AI builders.</p>
+
+<h2>Where AI builders fit in</h2>
+<p>An AI app builder, like Lovable, Replit, Bolt or Cursor, squeezes most of that routine into a single conversation. You describe the app you want, and a few minutes later you can tap through it. It made the plan, wrote the code and put it online for you.</p>
+<p>That speed is genuinely amazing, and it&rsquo;s why so many people who&rsquo;d never have built software are building it now. I&rsquo;m one of them.</p>
+<p>The question this series asks is simpler than it sounds: <strong>when the builder does all of that in one go, which steps does it actually do, and which does it skip unless someone asks?</strong> I have a hunch, but I&rsquo;m going to check rather than assume. Each post takes one step, learns what engineers do, watches what the AI does, and tests a guardrail that makes it do the step properly.</p>
+
+<h2>Try this yourself (no code needed)</h2>
+<p>You can start checking your own app today. Ask your AI builder these three questions, in plain words:</p>
+<ol>
+<li><strong>&ldquo;In plain English, what parts does my app have? What runs in the browser, what runs on a server, and where is my data kept?&rdquo;</strong></li>
+<li><strong>&ldquo;Where does my app check that a person is allowed to see or change something? Is that check on the server?&rdquo;</strong></li>
+<li><strong>&ldquo;If a change you made broke something, how would we undo it?&rdquo;</strong></li>
+</ol>
+<p>You don&rsquo;t need to understand every word of the answer. Look for one thing: <strong>does it name specific places, or does it stay vague?</strong> &ldquo;Every request to the orders table is checked on the server against the signed-in user&rdquo; is a real answer. &ldquo;Your app is secure and follows best practices&rdquo; isn&rsquo;t one.</p>
+<p>If the answers worry you, that&rsquo;s useful, not scary. It tells you which step to look at first, and that&rsquo;s what the rest of this series is for.</p>
+
+<h2>What&rsquo;s next</h2>
+<p>Next in this series: <strong>a plain-English glossary</strong>. All the words from this post and more, kept as a page you can come back to and growing with every post.</p>
+<p>If there&rsquo;s a word you keep hearing and never quite understood, tell me and I&rsquo;ll add it. Email me at <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>.</p>
+<p>And if this felt like a lot: it felt like a lot to me too. That&rsquo;s why I&rsquo;m writing it down one step at a time.</p>
+""",
+    },
+    {
         "slug": "why-ai-app-builders-burn-credits-as-your-app-grows",
         "title": "Why AI App Builders Burn Credits as Your App Grows (and How to Fix It)",
         "date": "October 31, 2026",
@@ -4952,7 +5025,7 @@ BLOG_POSTS = [
 <h2>What&rsquo;s coming</h2>
 <p>Roughly in this order, though your questions may change it:</p>
 <ul>
-<li><strong>Start here:</strong> how software gets built, explained from the beginning</li>
+<li><strong><a href="/blog/building-ai-apps-like-an-engineer-start-here">Start here</a>:</strong> how software gets built, explained from the beginning</li>
 <li><strong>A plain-English glossary</strong>, growing with each post</li>
 <li><strong>The rules file:</strong> can one setting make an AI builder follow the engineer&rsquo;s path?</li>
 <li><strong>The open database:</strong> why it keeps happening, and what catches it</li>
