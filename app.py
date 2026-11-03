@@ -8017,7 +8017,7 @@ def admin_scans():
     for r in rows:
         if r.get("country"):
             by_country[r["country"]] = by_country.get(r["country"], 0) + 1
-    top = sorted(by_country.items(), key=lambda kv: -kv[1])[:8]
+    top = sorted(by_country.items(), key=lambda kv: -kv[1])   # every country, not just the top 8 (Moses, 3 Nov 2026: FR and PE were missing)
     countries = ('<br><b>Where from</b> (these scans): ' + " &middot; ".join(f"{_flag(k)}: {n}" for k, n in top)
                  + (f' &middot; <span class="note">{sum(1 for r in rows if not r.get("country"))} without a country (older scans, or deep scans)</span>'
                     if any(not r.get("country") for r in rows) else "")) if top else ""
@@ -8450,6 +8450,21 @@ def report_packages_page(report_id):
     return view_report(report_id, view="packages")
 
 
+def _critical_only_in_packages(d):
+    """True when every critical in the header comes from the package check (a critical advisory in a library the app
+    uses) and no finding card is critical. HermodMail, 3 Nov 2026: the header said "1 critical" and "address the critical
+    findings below", but every card below said warning, so the reader had nothing to find."""
+    _int = lambda v: int(v) if str(v).isdigit() else 0
+    n = _int((d.get("health") or {}).get("critical"))
+    if not n or _int((d.get("osv_scan") or {}).get("critical")) < n:
+        return False
+    if _int((d.get("secret_scan") or {}).get("critical")) or _int((d.get("authz_scan") or {}).get("critical")):
+        return False
+    if any(isinstance(l, dict) and l.get("status") == "critical" for l in d.get("layers") or []):
+        return False
+    return not any(isinstance(f, dict) and str(f.get("severity") or "").lower() == "critical" for f in d.get("top_fixes") or [])
+
+
 @app.route("/report/<report_id>")
 def view_report(report_id, view=None):
     """`view` (deep reports only): None = the summary with three cards; "fixes" / "packages" = one part on its own page;
@@ -8503,6 +8518,10 @@ Run a new analysis &rarr;</a>
         # "address the critical findings" would be wrong; the grade comes from warnings.
         if not h.get("critical") and h.get("score") in ("C", "D"):
             verdict_reason = verdict_reason.replace("the critical findings below", "the warnings below")
+        _pkg_crit_only = _critical_only_in_packages(raw_data)
+        if _pkg_crit_only and h.get("score") in ("C", "D", "F"):
+            verdict_reason = ("The critical alert is in a package your app uses (see Libraries below), not in your own code. "
+                              "Update the packages one at a time, then re-run to update the score.")
         score_color = {"A":"#1D9E75","B":"#4A90D9","C":"#EF9F27","D":"#E24B4A","F":"#A32D2D"}.get(h.get("score","?"),"#999")
         score_display = h.get("score","?")
     incomplete_names = [str(x) for x in (data.get("analysis_incomplete") or [])]  # data is already escaped
@@ -8629,6 +8648,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 
     # Score grid
     _crit, _warn, _pass = (("&ndash;",) * 3) if is_preview else (h.get('critical',0), h.get('warnings',0), h.get('passing',0))
+    _crit_label = "Critical" + ('<br><span style="font-size:11px;text-transform:none;letter-spacing:0">in packages</span>'
+                                if not is_preview and _critical_only_in_packages(raw_data) else "")
     # The fourth box says how much of the app was actually checked ("6 of 6"), which a reader can act on; the old
     # "No issues seen" count of passing findings was easy to misread next to the grade (Moses, 25 Oct 2026).
     _areas_total = len(layers) or 6
@@ -8636,7 +8657,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _areas = "&ndash;" if is_preview else f"{_areas_ok} of {_areas_total}"
     out.append(f"""<div class="sg">
   <div class="sb"><div class="sn" style="color:{score_color}">{score_display}</div><div class="sl">{"Score, not graded" if is_preview else "Score"}</div></div>
-  <div class="sb"><div class="sn" style="color:#E24B4A">{_crit}</div><div class="sl">Critical</div></div>
+  <div class="sb"><div class="sn" style="color:#E24B4A">{_crit}</div><div class="sl">{_crit_label}</div></div>
   <div class="sb"><div class="sn" style="color:#EF9F27">{_warn}</div><div class="sl">Warnings</div></div>
   <div class="sb"><div class="sn" style="color:{'#1D9E75' if is_preview or _areas_ok == _areas_total else '#5F5E5A'}">{_areas}</div><div class="sl">Areas checked</div></div>
 </div>""")
