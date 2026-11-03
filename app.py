@@ -4764,7 +4764,7 @@ BLOG_POSTS = [
     {
         "slug": "building-ai-apps-like-an-engineer-start-here",
         "title": "Building AI Apps Like an Engineer: Start Here",
-        "date": "November 5, 2026",
+        "date": "November 4, 2026",
         "category": "Guide",
         "excerpt": "New to apps and AI builders? What an app is made of, the steps engineers follow to build one, and three questions to ask your AI builder.",
         "medium_url": None,
