@@ -498,9 +498,10 @@ def _plural(n, one, many):
 PLAN_NOW_PACKAGES = 3
 
 
-def build_plan(data):
+def build_plan(data, fixes_url="", packages_url=""):
     """{"now": [...], "later": [...], "wait": [...], "wait_groups": {...}} or None when there is nothing to sort. Each item:
-    {"title", "kind": "fix"|"package", "note", "href"}."""
+    {"title", "kind": "fix"|"package", "note", "href"}. `fixes_url` / `packages_url` put the links on the deep report's
+    own pages (the anchors are the same there)."""
     fixes = [f for f in (data.get("top_fixes") or []) if isinstance(f, dict) and f.get("title")]
     dep = data.get("dependency_fixes") or {}
     groups = [g for g in (dep.get("groups") or []) if isinstance(g, dict)]
@@ -509,11 +510,12 @@ def build_plan(data):
     now, later, wait = [], [], []
     wait_groups = {"tools": 0, "side": {}, "low": 0}
     for i, f in enumerate(fixes):
-        item = {"title": str(f.get("title")), "kind": "fix", "note": "", "href": "#" + _fix_anchor(f, i)}
+        item = {"title": str(f.get("title")), "kind": "fix", "note": "", "href": fixes_url + "#" + _fix_anchor(f, i)}
         (now if (f.get("severity") or "").lower() == "critical" else later).append(item)
     serious_small = []
     for idx, g in enumerate(_ordered_groups(groups)):
-        item = {"title": g.get("title") or f'Update {g.get("package")}', "kind": "package", "note": "", "href": f"#dpg{idx}"}
+        item = {"title": g.get("title") or f'Update {g.get("package")}', "kind": "package", "note": "",
+                "href": f"{packages_url}#dpg{idx}"}
         sev = g.get("severity") or "unknown"
         if g.get("side_folder"):
             item["note"] = f'side folder {g["side_folder"]}/, not part of your app'
@@ -543,15 +545,60 @@ def build_plan(data):
     return {"now": now, "later": later, "wait": wait, "wait_groups": wait_groups}
 
 
+def render_deep_cards_html(data, fixes_url, packages_url, fitness_url="", fitness_verdict=None):
+    """The deep report's three cards (3 Nov 2026, Moses: a summary of each, with the details on a page of its own):
+    Security fixes, Packages and Code fitness. Red, amber and grey; no violet. '' for a report with nothing to show."""
+    fixes = [f for f in (data.get("top_fixes") or []) if isinstance(f, dict) and f.get("title")]
+    n_crit = sum(1 for f in fixes if (f.get("severity") or "").lower() == "critical")
+    n_other = len(fixes) - n_crit
+    plan = build_plan(data, fixes_url, packages_url) or {"now": [], "later": [], "wait": []}
+    pk = lambda key: sum(1 for x in plan.get(key, []) if x["kind"] == "package")
+    groups = (data.get("dependency_fixes") or {}).get("groups") or []
+    osv = data.get("osv_scan") or {}
+
+    def card(href, icon, title, big, big_fg, line, link_text):
+        return (f'<a href="{_esc(href)}" class="dcard" style="display:flex;flex-direction:column;gap:6px;background:#fff;'
+                'border:.5px solid #e5e5f0;border-radius:12px;padding:12px 14px;text-decoration:none;color:#1a1917">'
+                f'<div style="display:flex;align-items:center;gap:8px;font-weight:700"><span aria-hidden="true">{icon}</span>{_esc(title)}</div>'
+                f'<div style="font-size:21px;font-weight:800;color:{big_fg};line-height:1.2">{_esc(big)}</div>'
+                f'<div style="font-size:13px;color:#5F5E5A;line-height:1.5">{_esc(line)}</div>'
+                f'<div style="font-size:13px;font-weight:600;margin-top:auto">{_esc(link_text)} &rarr;</div></a>')
+
+    if n_crit:
+        sec_big, sec_fg = (f"{n_crit} critical" + (f" · {n_other} more" if n_other else "")), "#791F1F"
+    elif n_other:
+        sec_big, sec_fg = f"{_plural(n_other, 'fix', 'fixes')} to look at", "#633806"
+    else:
+        sec_big, sec_fg = "Nothing to fix", "#27500A"
+    cards = [card(fixes_url, "&#128737;", "Security fixes", sec_big, sec_fg,
+                  "What we found in each area of your app, with a fix prompt for each.", "See fixes")]
+    if groups:
+        now_n, later_n, wait_n = pk("now"), pk("later"), pk("wait")
+        cards.append(card(packages_url, "&#128230;", "Packages", f"{len(groups)} to update",
+                          "#791F1F" if now_n else "#633806",
+                          f"{now_n} urgent · {later_n} worth doing later · {wait_n} can wait, sorted high to low.", "See packages"))
+    elif osv.get("packages_checked"):
+        cards.append(card(packages_url, "&#128230;", "Packages", "None vulnerable", "#27500A",
+                          "Every package Verilay could read was checked against a public database of known problems.",
+                          "See packages"))
+    if fitness_url and fitness_verdict:
+        fg = {"ok": "#27500A", "warn": "#633806", "bad": "#791F1F"}.get(fitness_verdict.get("tone"), "#444441")
+        cards.append(card(fitness_url, "&#128208;", "Code fitness", fitness_verdict.get("label", ""), fg,
+                          fitness_verdict.get("why", ""), "See code fitness"))
+    return ('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:1rem" '
+            'id="deep-cards">' + "".join(cards) + '</div>')
+
+
 def _ordered_groups(groups):
     """The package groups in the order render_fixes_html shows them (runtime first, then build tools), so the plan's
     links (#dpgN) point at the right entry."""
     return [g for g in groups if not g.get("is_dev")] + [g for g in groups if g.get("is_dev")]
 
 
-def render_plan_html(data):
-    """The "Your plan" card for the top of a deep report. '' when there is nothing to sort."""
-    plan = build_plan(data)
+def render_plan_html(data, fixes_url="", packages_url="", folded=False):
+    """The "Your plan" card for the top of a deep report. '' when there is nothing to sort. `folded`: the deep report's
+    summary page shows the counts and the first thing to do, with the whole plan in a fold (3 Nov 2026)."""
+    plan = build_plan(data, fixes_url, packages_url)
     if not plan:
         return ""
     fixes = [f for f in (data.get("top_fixes") or []) if isinstance(f, dict)]
@@ -602,6 +649,26 @@ def render_plan_html(data):
                      + '</div><details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#5F5E5A">Show all</summary>'
                      '<div style="display:grid;gap:5px;margin-top:6px">' + "".join(row(x, "#5F5E5A") for x in plan["wait"]) + '</div></details></div>')
 
+    boxes = (box("now", "Do now", "start here", "2px solid #A32D2D", "#FCEBEB", "#501313", "#A32D2D", plan["now"], 6)
+             + box("later", "Worth doing later", "one at a time, when you have time", ".5px solid #EF9F27", "#FAEEDA",
+                   "#412402", "#854F0B", plan["later"], 5)
+             + wait_html)
+    note = ('<div style="font-size:12px;color:#6b6966;line-height:1.55;border-top:.5px solid #e5e3dc;padding-top:9px;margin-top:4px">'
+            'Every fix prompt asks your AI builder what the change could break first. Not sure whether a package reaches '
+            'your users? Verilay keeps it out of &ldquo;Can wait&rdquo;. Your grade doesn&rsquo;t change: this only sorts the list.</div>')
+    if folded:
+        pill = lambda bg, fg, border, label, n: (f'<span style="background:{bg};color:{fg};border:{border};border-radius:20px;'
+                                                 f'padding:4px 12px;font-size:13px;font-weight:600">{label} &middot; {n}</span>')
+        first = plan["now"][0] if plan["now"] else (plan["later"][0] if plan["later"] else None)
+        start = (f'<a href="{_esc(first["href"])}" style="display:block;margin-top:9px;font-size:14px;color:#1a1917;text-decoration:none">'
+                 f'<span style="color:#A32D2D;font-weight:700">&rarr; Start here:</span> {_esc(first["title"])}</a>') if first else ""
+        return ('<div class="card" id="your-plan"><div style="font-weight:700;font-size:16px;margin-bottom:8px">Your plan</div>'
+                '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+                + pill("#FCEBEB", "#791F1F", "1px solid #A32D2D", "Do now", len(plan["now"]))
+                + pill("#FAEEDA", "#633806", "0", "Later", len(plan["later"]))
+                + pill("#F6F5F2", "#5F5E5A", "0", "Can wait", len(plan["wait"])) + '</div>' + start
+                + '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;color:#5F5E5A">See the whole plan</summary>'
+                  '<div style="margin-top:9px">' + boxes + note + '</div></details></div>')
     return ('<div class="st">Your plan</div><div class="card" id="your-plan">'
             f'<div style="font-size:12px;color:#6b6966;margin-bottom:3px">{_esc(" · ".join(head_bits))}, sorted for you</div>'
             '<div style="font-size:13px;color:#444;margin-bottom:11px">Start at the top. One fix at a time, then re-scan. '
@@ -665,15 +732,18 @@ def render_authz_html(authz):
     return "".join(parts)
 
 
-def render_fixes_html(data):
-    """The saved report's 'Fix these first' section. Returns '' when there is nothing to fix."""
-    fixes = data.get("top_fixes") or []
+def render_fixes_html(data, part="all"):
+    """The saved report's 'Fix these first' section. Returns '' when there is nothing to fix. `part`: "all", "code"
+    (the fix prompts for findings in the app's own code) or "packages" (the package updates): the deep report's own
+    pages show one each (3 Nov 2026)."""
+    fixes = data.get("top_fixes") or [] if part in ("all", "code") else []
     dep = data.get("dependency_fixes") or {}
-    groups = dep.get("groups") or []
+    groups = (dep.get("groups") or []) if part in ("all", "packages") else []
     if not fixes and not groups:
         return ""
 
-    parts = ['<div class="st">Fix these first</div><div class="card">',
+    title = {"code": "Fix prompts", "packages": "Packages to update"}.get(part, "Fix these first")
+    parts = [f'<div class="st">{title}</div><div class="card">',
              '<div style="font-size:13px;color:#555;margin-bottom:.5rem">Copy a prompt, paste it into your AI '
              'builder (Lovable, Replit, Bolt, Cursor&hellip;), then re-run Verilay to check it worked. '
              'Treat each one as something to verify, not an order: your AI builder knows your code.</div>']

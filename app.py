@@ -8361,8 +8361,22 @@ def _collapsible(items_html, count):
 _STATUS_WORDS = {"passing": "no issues seen"}
 
 
+@app.route("/report/<report_id>/fixes")
+def report_fixes_page(report_id):
+    """A deep report's security findings and fix prompts, on a page of their own (3 Nov 2026)."""
+    return view_report(report_id, view="fixes")
+
+
+@app.route("/report/<report_id>/packages")
+def report_packages_page(report_id):
+    """A deep report's package updates, sorted, on a page of their own (3 Nov 2026)."""
+    return view_report(report_id, view="packages")
+
+
 @app.route("/report/<report_id>")
-def view_report(report_id):
+def view_report(report_id, view=None):
+    """`view` (deep reports only): None = the summary with three cards; "fixes" / "packages" = one part on its own page;
+    "full" (?view=full, "Print everything") = everything on one page, as before 3 Nov 2026. Other reports: always full."""
     data = get_report_data(report_id)
     if not data:
         return """<!DOCTYPE html>
@@ -8383,6 +8397,14 @@ Run a new analysis &rarr;</a>
     raw_data = data
     data = _escape_tree(raw_data)
     scan_when = _htmlmod.escape(_scan_time_label(report_id, raw_data))
+    if view is None and request.args.get("view") == "full":
+        view = "full"
+    if not raw_data.get("is_deep_scan"):
+        if view in ("fixes", "packages"):
+            return redirect(f"/report/{report_id}")
+        view = "full"
+    elif view is None:
+        view = "summary"
 
     h = data.get("health", {})
     pr = data.get("prod_ready", {})
@@ -8423,7 +8445,7 @@ Run a new analysis &rarr;</a>
     # Report tidy-up (25 Oct 2026): sections go into groups and are written in this order: the summary and numbers,
     # what was found, the automatic checks, how to fix it, one offer (the comparison), then everything else in one
     # collapsed "More details" box. Nothing is removed; only the order and the grouping change.
-    _B = {"head": out, "found": [], "checks": [], "fix": [], "ask": [], "offer": [], "more": [], "foot": []}
+    _B = {"head": out, "found": [], "checks": [], "deps": [], "fix": [], "ask": [], "offer": [], "more": [], "foot": []}
     out.append(f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8572,9 +8594,23 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             _fix_data = dict(raw_data)
             _fix_data["dependency_fixes"] = deepreport.build_dependency_fixes(_vd)
             _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(raw_data.get("top_fixes"), _vd)
-    if raw_data.get("is_deep_scan"):
-        out.append(deepreport.render_plan_html(_fix_data))     # "Your plan": what to do now, later, or leave (2 Nov 2026)
-    out.append(deepreport.render_fixes_html(_fix_data))
+    _fixes_url, _packages_url = f"/report/{report_id}/fixes", f"/report/{report_id}/packages"
+    if view == "full":
+        if raw_data.get("is_deep_scan"):
+            out.append(deepreport.render_plan_html(_fix_data))     # "Your plan": what to do now, later, or leave (2 Nov 2026)
+        out.append(deepreport.render_fixes_html(_fix_data))
+    elif view == "summary":
+        out.append(deepreport.render_plan_html(_fix_data, _fixes_url, _packages_url, folded=True))
+        _cv = None
+        if raw_data.get("code_health") and code_health_visible() and getattr(deepscan, "AVAILABLE", False):
+            _verdict_fn = getattr(deepscan, "code_health_verdict", None)
+            _cv = _verdict_fn(raw_data["code_health"]) if _verdict_fn else None
+        out.append(deepreport.render_deep_cards_html(_fix_data, _fixes_url, _packages_url,
+                                                     f"/report/{report_id}/code-fitness" if _cv else "", _cv))
+    else:
+        out.append(f'<a href="/report/{_htmlmod.escape(report_id)}" style="display:inline-block;font-size:13px;color:#534AB7;'
+                   'font-weight:600;margin:0 0 .6rem;text-decoration:none">&larr; Back to the summary</a>')
+        out.append(deepreport.render_fixes_html(_fix_data, part="code" if view == "fixes" else "packages"))
     if raw_data.get("scan_tier") == "lite":
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
@@ -8739,6 +8775,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         if deepreport._COPY_SCRIPT not in "".join(out):
             out.append(deepreport._COPY_SCRIPT)
 
+    out = _B["deps"]
     # Dependency check (OSV.dev). Full package/CVE detail only appears here
     # when it was saved — the free scan's teaser shape (count only) never
     # carries a "vulnerabilities" list, so this naturally shows less for a
@@ -8799,7 +8836,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
 
     # Code health (deep scans): drawn by the private package so its wording stays private. Admin only until
     # VERILAY_CODE_HEALTH=1 (code_health_visible).
-    if raw_data.get("is_deep_scan") and raw_data.get("code_health") and code_health_visible() and getattr(deepscan, "AVAILABLE", False):
+    if view == "full" and raw_data.get("is_deep_scan") and raw_data.get("code_health") and code_health_visible() and getattr(deepscan, "AVAILABLE", False):
         # A compact card here; the full view opens on its own page (31 Oct 2026, Moses: the report is long enough already).
         _ch_html = deepscan.render_code_health_card(raw_data["code_health"], f"/report/{report_id}/code-fitness")
         if _ch_html:
@@ -8876,7 +8913,16 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _more_html = ('<details class="card" id="more-details" style="margin-top:1rem"><summary style="cursor:pointer;font-size:14px;'
                   'font-weight:600;color:#3C3489">More details: scan stats, tech stack, how your app fits together, similar '
                   'projects, second opinions</summary><div style="margin-top:.75rem">' + _more + '</div></details>') if _more.strip() else ""
-    return "".join(_B["head"] + _B["found"] + _B["checks"] + _B["fix"] + _B["ask"] + _B["offer"] + [_more_html] + _B["foot"])
+    if view == "summary":
+        _print = (f'<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13px;margin:.2rem 0 1rem">'
+                  f'<a href="/report/{_htmlmod.escape(report_id)}?view=full" style="color:#534AB7;font-weight:600">Print everything &rarr;</a>'
+                  '<span style="color:#888">The whole report on one page, for printing or sending to a developer.</span></div>')
+        return "".join(_B["head"] + _B["fix"] + [_print] + _B["ask"] + _B["offer"] + [_more_html] + _B["foot"])
+    if view == "fixes":
+        return "".join(_B["head"] + _B["fix"] + _B["found"] + _B["checks"] + _B["foot"])
+    if view == "packages":
+        return "".join(_B["head"] + _B["fix"] + _B["deps"] + _B["foot"])
+    return "".join(_B["head"] + _B["found"] + _B["checks"] + _B["deps"] + _B["fix"] + _B["ask"] + _B["offer"] + [_more_html] + _B["foot"])
 
 
 @app.route("/report/<report_id>/code-health")
