@@ -34,7 +34,8 @@ _NAME_WORDS = {
                "tsconfig", "railway", "vercel", "netlify", "wrangler"],
     "Database": ["supabase", "database", "db", "schema", "prisma", "migration", "model", "drizzle", "orm", "sql",
                  "store", "repository"],
-    "API": ["route", "api", "server", "main.py", "app.py", "endpoint", "handler", "controller", "webhook", "view"],
+    "API": ["route", "api", "server", "main.py", "app.py", "endpoint", "handler", "controller", "webhook", "view",
+            "functions/"],   # Firebase / Supabase server functions (5 Nov 2026)
     "Frontend": [],
 }
 _NAME_EXTS = {
@@ -61,7 +62,9 @@ _SIGNALS = {
         r"(?:@app\.route|@router\.|@bp\.|app\.(?:get|post|put|delete|patch|use)\(|router\.(?:get|post|put|delete)|"
         r"fastapi|flask|express\(|jsonify|request\.(?:json|form|args|headers)|req\.(?:body|params|query)|"
         r"nextresponse|export\s+async\s+function\s+(?:get|post|put|delete)|handler\(|status\s*=\s*\d{3}|"
-        r"serve\(|\.listen\()", _I),
+        r"serve\(|\.listen\(|"
+        # Firebase Cloud Functions (5 Nov 2026: a Firebase app's API area read only its login page and said "no backend")
+        r"oncall\(|onrequest\(|functions\.https|firebase-functions|ondocument\w*\(|onschedule\()", _I),
     "Frontend": re.compile(
         r"(?:document\.|window\.|queryselector|addeventlistener|innerhtml|usestate|useeffect|react|classname=|"
         r"<div|<button|<form|<input|\.style\.|fetch\(|localstorage|getelementbyid|render\()", _I),
