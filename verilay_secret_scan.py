@@ -21,6 +21,9 @@ Design rules, all deliberate:
     references, not secrets.
   * Never flag placeholders (your_key_here, xxx, changeme, <...>).
   * .env.example is downgraded to info — it is meant to hold fake values.
+  * A Firebase web API key (AIza... next to Firebase settings) is a warning, not critical. Firebase says it is
+    meant to sit in website code: it only names the project, and security rules protect the data. A Google key
+    named for Gemini, Maps or another paid service stays critical. (5 Nov 2026: a Firebase app got a C for this.)
   * Only ever return the first 6 characters of a matched secret.
 """
 
@@ -290,7 +293,8 @@ def scan_file(path: str, content: str) -> List[Finding]:
     findings: List[Finding] = []
     seen = set()
 
-    for lineno, line in enumerate(content.splitlines(), start=1):
+    all_lines = content.splitlines()
+    for lineno, line in enumerate(all_lines, start=1):
         if len(line) > MAX_LINE_LEN:
             continue
         if ENV_REF.search(line):
@@ -366,6 +370,25 @@ def scan_file(path: str, content: str) -> List[Finding]:
                 # safe in the browser by design, so the generic "looks like a password" rule skips both.
                 if rule.rule_id == "GEN001" and value.startswith(("sb_secret_", "sb_publishable_")):
                     continue
+                # A Google key is already reported by GCP001/GCP002, so the generic rule skips it (5 Nov 2026).
+                if rule.rule_id == "GEN001" and value.startswith("AIza"):
+                    continue
+
+                if rule.rule_id == "GCP001" and not is_example and _is_firebase_web_key(all_lines, lineno - 1):
+                    key = ("GCP002", path, lineno)
+                    if key not in seen:
+                        seen.add(key)
+                        findings.append(Finding(
+                            rule_id="GCP002", name="Firebase web API key", severity="warning",
+                            file=path, line=lineno, preview=_redact(value),
+                            plain=("A Firebase website key is in your code. Firebase says this key is meant to be in website "
+                                   "code: it only tells Firebase which project to use, and your security rules protect your "
+                                   "data. It only needs checking that it is limited to Firebase."),
+                            action=("In the Google Cloud console (APIs & Services, then Credentials), check this key is limited "
+                                    "to the Firebase services you use. Never allow Gemini or other paid AI services on it: use a "
+                                    "separate key, kept on your server, for those. Make sure your Firebase security rules are on."),
+                        ))
+                    continue
 
                 key = (rule.rule_id, path, lineno)
                 if key in seen:
@@ -383,6 +406,22 @@ def scan_file(path: str, content: str) -> List[Finding]:
                 ))
 
     return findings
+
+
+# Signs a Google key is the Firebase website key (its own line or the few lines around it, e.g. a firebaseConfig block),
+# and signs it is a key for a paid Google service instead (its own line only: the variable it is assigned to).
+_FIREBASE_HINT = re.compile(r"firebase|authdomain|messagingsenderid|storagebucket", re.I)
+_PAID_GOOGLE_HINT = re.compile(r"gemini|genai|generative|google_?ai|vertex|maps|places|youtube|translate|vision|speech|"
+                               r"geocod|directions|openai|anthropic", re.I)
+
+
+def _is_firebase_web_key(lines: List[str], i: int) -> bool:
+    """True when the AIza key on lines[i] is a Firebase website key: Firebase is named on that line or within 6 lines
+    of it, and the line itself doesn't name Gemini, Maps or another paid Google service."""
+    if _PAID_GOOGLE_HINT.search(lines[i]):
+        return False
+    near = "\n".join(lines[max(0, i - 6):i + 7])
+    return bool(_FIREBASE_HINT.search(near))
 
 
 def scan_repo(files: Dict[str, str]) -> List[Finding]:
