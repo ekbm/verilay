@@ -960,6 +960,41 @@ def categorise_files(paths):
 # non-developer, so EVERY live-address scan returns an honest, ungraded preview (it used to be only the ones
 # with 3 files or fewer). Changed 2026-10-18 after a tester pointed out a frontend scan cannot judge a backend.
 
+# One problem, one count (6 Nov 2026). A private report counted one default session secret three times, under Auth,
+# Config and API, and the API area's own problem was pushed out. The AI is told each problem has one home; this is the
+# safety net: a finding that repeats one already reported in another area (same quoted value, or same file and the same
+# named setting such as SESSION_SECRET) is marked repeat_of and not counted again.
+_REPEAT_NAME = _re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b")
+_REPEAT_QUOTED = _re.compile("[\"'`“‘]([^\"'`”’\n]{8,80})[\"'`”’]")
+_REPEAT_FILE = _re.compile(r"[\w.\-/]+\.\w+")
+
+
+def mark_repeated_findings(layers):
+    seen = []
+    for layer in layers or []:
+        if not isinstance(layer, dict):
+            continue
+        name = layer.get("name", "")
+        for f in (layer.get("expert") or {}).get("findings") or []:
+            if not isinstance(f, dict):
+                continue
+            f.pop("repeat_of", None)
+            if f.get("severity") not in ("critical", "warning"):
+                continue
+            text = f"{f.get('title', '')} {f.get('detail', '')}"
+            names = set(_REPEAT_NAME.findall(text))
+            quoted = {q.strip().lower() for q in _REPEAT_QUOTED.findall(text)}
+            m = _REPEAT_FILE.search(str(f.get("file") or ""))
+            fname = m.group(0).lower().split("/")[-1] if m else ""
+            for other, ofile, onames, oquoted in seen:
+                if other != name and ((quoted & oquoted) or (fname and fname == ofile and names & onames)):
+                    f["repeat_of"] = other
+                    break
+            else:
+                seen.append((name, fname, names, quoted))
+    return layers
+
+
 def grade_from_counts(critical, warnings):
     """Derive the letter grade from actual finding counts.
     Rubric: A=0 critical+0 warnings, B=0 critical+1-3 warnings,
@@ -3306,6 +3341,8 @@ def analyse_step2(files, repo_name, scan_block=""):
         # Restored 25 Oct 2026: an upload on 10 Jun 2026 dropped these lines (the "respond only with key:value"
         # instruction, AUTH_STATUS, AUTH_SUMMARY, AUTH_F1_SEV). Without them the model often answered this whole
         # group in prose that cannot be read, so Auth/Config/Database came back empty.
+        "- ONE HOME PER PROBLEM: report each problem once, in the one area it belongs to most. Secrets, session secrets, "
+        "environment variables and default settings belong under CONFIG only: never repeat them under AUTH or DATABASE.\n"
         "- Only flag something as critical or warning if it is GENUINELY absent or misconfigured in the actual code\n\n"
         "Respond ONLY with key:value pairs, one per line, using EXACTLY the keys below (AUTH_*, CONFIG_*, DATABASE_*). "
         "No headings, no markdown, no prose before or after. Be specific to THIS app, not generic.\n\n"
@@ -3444,6 +3481,9 @@ def analyse_step3(files, repo_name, osv_block=""):
         "- AI-POWERED TOOLS: if Anthropic/OpenAI/Gemini API present — AI IS the analysis engine, NEVER flag missing Prism/CodeMirror/AST parsers.\\n"
         "- MINIFIED CODE: truncated or minified CSS/JS in HTML is normal — NEVER flag as incomplete or broken. Minification/bundling is the sign of a CORRECT production build, NOT a problem: NEVER flag it as a security finding, an auth-verification blocker, or a reason the app 'cannot be reviewed'. Do not say minified code 'prevents security review'. At most mention once as informational, and NEVER let minification lower the grade or appear as a warning/critical.\\n\\n"
         "- Only flag something as critical or warning if GENUINELY absent or misconfigured in the actual code\n\n"
+        "- ONE HOME PER PROBLEM: session secrets, environment variables and default settings are reported under Config by "
+        "another check. Never report them under API or FRONTEND. Use API findings for API problems such as routes, input "
+        "checks and who may do what.\n"
         "- You see only SOME of the app's files. If none of the FILES above contain server or API code, do NOT say the app "
         "has no backend or no API: say that no server code was among the files read here. Other parts of the report may "
         "have read the app's server functions.\n\n"
@@ -4382,8 +4422,11 @@ def analyse_stream():
             # step 1's separate guess, so the header can never contradict the layers
             # and the grade is a deterministic result of counting, not a re-rolled judgment.
             _crit = _warn = _pass = 0
+            mark_repeated_findings(partial["layers"])
             for _layer in partial["layers"]:
                 for _f in _layer.get("expert", {}).get("findings", []):
+                    if _f.get("repeat_of"):          # already counted under another area
+                        continue
                     _sev = (_f.get("severity") or "").lower()
                     if _sev == "critical":
                         _crit += 1
@@ -8982,7 +9025,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             findings_html = ""
             for f2 in ex.get("findings",[]):
                 sev = f2.get("severity","passing")
-                findings_html += f'<div class="finding" style="background:{sev_bg.get(sev,"#EAF3DE")};color:{sev_tc.get(sev,"#27500A")}"><strong>{f2.get("title","")}</strong> — {f2.get("detail","")}</div>'
+                findings_html += f'<div class="finding" style="background:{sev_bg.get(sev,"#EAF3DE")};color:{sev_tc.get(sev,"#27500A")}"><strong>{f2.get("title","")}</strong> — {f2.get("detail","")}' + (f'<div style="font-size:12px;opacity:.8;margin-top:3px">Same problem as under {f2["repeat_of"]}, counted once.</div>' if f2.get("repeat_of") else '') + '</div>'
             analogy = f'<div style="background:#EEEDFE;border-radius:8px;padding:.6rem .8rem;font-size:13px;color:#3C3489;margin-bottom:.5rem;font-style:italic">&#128161; {lrn["analogy"]}</div>' if lrn.get("analogy") else ""
             concept = f'<div style="background:#534AB7;color:#fff;border-radius:8px;padding:.6rem .8rem;font-size:13px;margin-top:.5rem">&#128161; Key concept: {lrn["key_concept"]}</div>' if lrn.get("key_concept") else ""
             out.append(

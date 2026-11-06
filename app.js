@@ -1838,10 +1838,42 @@ function gradeFromCounts(critical, warnings) {
   return 'A';
 }
 
+// One problem, one count (6 Nov 2026): same rule as app.py mark_repeated_findings, so the live header and the saved
+// report agree. A finding that repeats one from another area (same quoted value, or same file and the same named
+// setting such as SESSION_SECRET) is marked repeat_of and not counted again.
+function markRepeatedFindings(layers) {
+  var seen = [];
+  var nameRx = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b/g, quoteRx = /["'`“‘]([^"'`”’\n]{8,80})["'`”’]/g;
+  (layers || []).forEach(function(l) {
+    (((l || {}).expert || {}).findings || []).forEach(function(f) {
+      if (!f) return;
+      delete f.repeat_of;
+      if (f.severity !== 'critical' && f.severity !== 'warning') return;
+      var text = (f.title || '') + ' ' + (f.detail || '');
+      var names = text.match(nameRx) || [], quoted = [], m;
+      quoteRx.lastIndex = 0;
+      while ((m = quoteRx.exec(text))) quoted.push(m[1].trim().toLowerCase());
+      var fm = String(f.file || '').match(/[\w.\-\/]+\.\w+/);
+      var fname = fm ? fm[0].toLowerCase().split('/').pop() : '';
+      for (var i = 0; i < seen.length; i++) {
+        var o = seen[i];
+        if (o.name === l.name) continue;
+        var q = quoted.some(function(x) { return o.quoted.indexOf(x) > -1; });
+        var n = fname && fname === o.file && names.some(function(x) { return o.names.indexOf(x) > -1; });
+        if (q || n) { f.repeat_of = o.name; return; }
+      }
+      seen.push({name: l.name, file: fname, names: names, quoted: quoted});
+    });
+  });
+  return layers;
+}
+
 function healthFromLayers(layers, data) {
   var c = 0, w = 0, p = 0;
+  markRepeatedFindings(layers);
   (layers || []).forEach(function(l) {
     (((l.expert || {}).findings) || []).forEach(function(f) {
+      if (f.repeat_of) return;   // already counted under another area
       if (f.severity === 'critical') c++;
       else if (f.severity === 'warning') w++;
       else if (f.severity === 'passing') p++;
@@ -2987,6 +3019,7 @@ function renderLayer() {
       html += '<i class="ti ' + sevIcon(f.severity) + '" style="font-size:16px;flex-shrink:0;margin-top:1px"></i>';
       html += '<div><div style="font-weight:500;margin-bottom:2px">' + esc(f.title||'') + '</div>';
       html += '<div>' + esc(f.detail||'') + (f.file ? ' <code style="font-size:12px;opacity:.7">' + esc(f.file) + '</code>' : '') + '</div>';
+      if (f.repeat_of) html += '<div style="font-size:12px;opacity:.8;margin-top:3px">Same problem as under ' + esc(f.repeat_of) + ', counted once.</div>';
       if (f.why_it_matters) html += '<div style="font-size:12px;margin-top:4px;opacity:.85"><strong>Why it matters:</strong> ' + esc(f.why_it_matters) + '</div>';
       // Add manual verification note for verify_jwt findings
       if (f.title && f.title.toLowerCase().indexOf('jwt') > -1) {
