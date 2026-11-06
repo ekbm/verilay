@@ -62,6 +62,22 @@ def current_source():
     return getattr(_local, "source", None)
 
 
+def new_tally():
+    """A fresh token tally for one scan (the accuracy check reads it at the end, app.py request_is_eval)."""
+    return {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cache_read": 0, "cache_write": 0}
+
+
+def current_tally():
+    return getattr(_local, "tally", None)
+
+
+def set_tally(tally):
+    """Set this thread's tally (None clears it) and return the previous one, like set_source."""
+    prev = getattr(_local, "tally", None)
+    _local.tally = tally
+    return prev
+
+
 def set_source(source):
     """Set this thread's source (None clears it) and return the previous one, for code that cannot use attribute()
     (a streaming generator, a worker thread)."""
@@ -111,6 +127,14 @@ def record(input_tokens=None, output_tokens=None, kind="scan", now=None, model=N
     """One AI call. Token counts may be unknown (None); the call is still counted. Never raises.
     cache_read / cache_write: prompt tokens served from / saved to Anthropic's prompt cache (not part of input_tokens)."""
     try:
+        t = getattr(_local, "tally", None)
+        if isinstance(t, dict):
+            with _lock:
+                t["calls"] += 1
+                t["input_tokens"] += input_tokens if isinstance(input_tokens, int) else 0
+                t["output_tokens"] += output_tokens if isinstance(output_tokens, int) else 0
+                t["cache_read"] += _count(cache_read)
+                t["cache_write"] += _count(cache_write)
         if kind not in KINDS:
             return
         if kind == "scan" and current_source() in SCAN_SOURCES:

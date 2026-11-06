@@ -32,6 +32,9 @@ DEFAULT_EXCLUDE = (
     "jobhiro.com.au", "www.jobhiro.com.au", "jobhiro.com", "www.jobhiro.com",
     "diychatbots.com", "www.diychatbots.com",
     "octocat/hello-world", "tj/commander.js",
+    # Verilay's accuracy check (7 Nov 2026): its own test apps (uploaded as verilay-eval-*.zip) and the public practice
+    # apps it scans on every run.
+    "verilay-eval-%", "juice-shop/juice-shop", "owasp/nodegoat", "digininja/dvwa",
     "google.com", "www.google.com", "apple.com", "www.apple.com", "github.com", "www.github.com",
 )
 

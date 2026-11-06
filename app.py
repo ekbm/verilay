@@ -157,7 +157,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-10-25.1"
+ANALYSIS_VERSION = "2026-11-07.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -500,11 +500,12 @@ def _save_report_row(data, user_id=None):
             prev_score = None
             prev_critical = None
             prev_row = None
-            if repo and not data.get("private"):      # a private report never borrows from, or lends to, another report of the same name
+            if repo and not data.get("private") and not data.get("eval"):      # a private report never borrows from, or lends to, another report of the same name; a test scan neither
                 try:
-                    prev = _sb.table("reports").select("score,data").eq("repo", repo).order("created_at", desc=True).limit(1).execute()
-                    if prev.data:
-                        prev_row = prev.data[0]
+                    prev = _sb.table("reports").select("score,data").eq("repo", repo).order("created_at", desc=True).limit(5).execute()
+                    prev_rows = [r for r in (prev.data or []) if not (r.get("data") or {}).get("eval")]
+                    if prev_rows:
+                        prev_row = prev_rows[0]
                         prev_score = prev_row.get("score", "")
                         prev_data = prev_row.get("data", {})
                         prev_critical = prev_data.get("health", {}).get("critical", None)
@@ -1421,18 +1422,32 @@ def model_for_call():
 
 def with_model(model, fn):
     """fn wrapped so that, in whatever thread runs it, AI calls use `model` (thread pools do not carry this over). The
-    caller's scan tier and usage source travel with it, so a Pro scan's worker threads are counted as Pro."""
-    tier, source = getattr(_MODEL_LOCAL, "tier", None), usage.current_source()
+    caller's scan tier and usage source travel with it, so a Pro scan's worker threads are counted as Pro. So does an
+    accuracy-check scan's token tally (usage.start_tally), so its cost is measured across every thread."""
+    tier, source, tally = getattr(_MODEL_LOCAL, "tier", None), usage.current_source(), usage.current_tally()
     def run(*a, **k):
         prev = (getattr(_MODEL_LOCAL, "model", None), getattr(_MODEL_LOCAL, "tier", None))
         _MODEL_LOCAL.model, _MODEL_LOCAL.tier = model, tier
         prev_source = usage.set_source(source)
+        prev_tally = usage.set_tally(tally)
         try:
             return fn(*a, **k)
         finally:
             _MODEL_LOCAL.model, _MODEL_LOCAL.tier = prev
             usage.set_source(prev_source)
+            usage.set_tally(prev_tally)
     return run
+
+
+# Accuracy check (7 Nov 2026, Moses: "is there an eval that's checking this is getting better?"). Verilay's own test
+# scans (Moses_ClaudeWorkspace/verilay/eval/run_eval.py) send X-Verilay-Eval with the secret in Railway VERILAY_EVAL_KEY.
+# They skip the visitor limits and the 24-hour reuse of results (every run must be a fresh analysis), are saved with
+# data["eval"] = True so the admin list, the public count and "apps improved" leave them out, and end with one extra
+# event giving the scan's model and token use, so a run's cost is measured, not guessed. No key set: nothing changes.
+def request_is_eval():
+    key = os.getenv("VERILAY_EVAL_KEY", "")
+    given = request.headers.get("X-Verilay-Eval", "")
+    return len(key) >= 24 and isinstance(given, str) and _secrets.compare_digest(key, given)
 
 
 def lite_mode():
@@ -4023,7 +4038,8 @@ def analyse_stream():
     # What kind of client is asking (browser / script / AI agent ...). Only this label is kept: never the
     # browser string or the address. It lets the owner see whether scripts or AI tools already use the scan.
     client_type = classify_client(request.headers)
-    allowed, reset_in = check_rate_limit(ip)
+    _is_eval = request_is_eval()     # Verilay's own accuracy check: no visitor limits, no reused results
+    allowed, reset_in = (True, 0) if _is_eval else check_rate_limit(ip)
     if not allowed:
         print(f"[scan-blocked] client={client_type}", flush=True)
         def blocked():
@@ -4059,6 +4075,7 @@ def analyse_stream():
         _prev_model = (getattr(_MODEL_LOCAL, "model", None), getattr(_MODEL_LOCAL, "tier", None))
         _MODEL_LOCAL.model, _MODEL_LOCAL.tier = _scan_model, ("pro" if _pro else None)
         _prev_source = usage.set_source("pro" if _pro else None)
+        _prev_tally = usage.set_tally(usage.new_tally() if _is_eval else None)
         try:
             # ── Fetch files ────────────────────────────────────────────
             yield json.dumps({"event":"status","data":"Reading your project files..."}) + "\n"
@@ -4073,7 +4090,7 @@ def analyse_stream():
                 if len(url) > 500:
                     yield json.dumps({"event":"error","data":"URL is too long"}) + "\n"; return
                 # A fresh analysis of exactly this public code already exists? Replay it: no AI calls.
-                _cx = _cache_prepare(url, _scan_model, use_cache=not _pro)
+                _cx = _cache_prepare(url, _scan_model, use_cache=not _pro and not _is_eval)
                 if _cx.get("hit"):
                     yield from _replay_cached(_cx, client_type, method)
                     return
@@ -4194,7 +4211,7 @@ def analyse_stream():
 
             # Daily limits, checked here: everything above is free (reading files, the key/package/access checks, a
             # reused result), and step 1 is the first AI call. See free_ai_gate.
-            _gate_msg = pro_gate() if _pro else free_ai_gate(ip, method, _is_admin)
+            _gate_msg = pro_gate() if _pro else free_ai_gate(ip, method, _is_admin or _is_eval)
             if _gate_msg:
                 _refund_rate_limit(ip)      # no AI was used, so the hourly allowance is given back
                 yield json.dumps({"event":"error","data":_gate_msg}) + "\n"
@@ -4462,9 +4479,12 @@ def analyse_stream():
                 scancache.put(_sb if _HAS_SUPABASE else None, _cx["key"], f'{_cx["owner"]}/{_cx["name"]}', _cx["sha"], ANALYSIS_VERSION, {
                     "s1": _s1_event or _copy.deepcopy(s1), "s2": _copy.deepcopy(s2), "s3": _copy.deepcopy(s3), "disc": _copy.deepcopy(disc["result"]),
                     "partial": _copy.deepcopy({k: v for k, v in partial.items() if k != "client_type"})})
+            if _is_eval:
+                partial["eval"] = True
             report_id, manage_token = save_report_with_token(partial, user_id=_uid_at_start if private_scan is not None else None)
             try:
-                increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
+                if not _is_eval:      # a test scan is not a visitor's app: not in the public count
+                    increment_analysis_count(score=partial.get("health", {}).get("score"), method=method)
                 usage.scan_done("pro" if _pro else "full")
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
@@ -4472,12 +4492,15 @@ def analyse_stream():
 
             # ── Done with layers ────────────────────────────────────────
             yield json.dumps({"event":"layers_complete","data":{}}) + "\n"
+            if _is_eval and usage.current_tally() is not None:
+                yield json.dumps({"event":"eval_usage","data":dict(usage.current_tally(), model=_scan_model)}) + "\n"
 
         except Exception as e:
             yield json.dumps({"event":"error","data":str(e)}) + "\n"
         finally:
             _MODEL_LOCAL.model, _MODEL_LOCAL.tier = _prev_model
             usage.set_source(_prev_source)
+            usage.set_tally(_prev_tally)
 
     # Too many scans running at once on this server? Say so kindly instead of slowing everyone down, and give the
     # visitor back the hourly-allowance hit this request used. The slot is returned when the stream ends for any
@@ -7971,9 +7994,10 @@ def _scan_rows(limit=60):
     cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
             "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
             "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
-            "rating:data->>feedback_helpful,came_from:data->>came_from")
+            "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval")
     try:
-        return _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
+        rows = _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
+        return [r for r in rows if str(r.get("eval")).lower() != "true"]      # Verilay's own test scans stay out
     except Exception as e:
         print(f"/admin/scans: full list unavailable, showing the basic one: {e}", flush=True)
     try:       # if a detail field is ever refused, the basic list still shows
