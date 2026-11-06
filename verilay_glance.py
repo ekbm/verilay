@@ -109,7 +109,16 @@ def render_glance_html(data):
     rows = []
 
     if read and total:
-        rows.append(_row("AI code review", _pct(read, total), f"{_n(read)} of {_n(total)} files ({_pct(read, total)}%)"))
+        # Very large files the deep scan could only read the start of (7 Nov 2026): never shown as a complete read.
+        cut = [c for c in (data.get("files_cut") or []) if isinstance(c, dict) and c.get("path")]
+        if cut:
+            names = ", ".join(_html.escape(_html.unescape(str(c["path"]).split("/")[-1])) for c in cut[:3])
+            more = f" and {len(cut) - 3} more" if len(cut) > 3 else ""
+            rows.append(_row("AI code review", min(_pct(read, total), 95),
+                             f"{_n(read)} of {_n(total)} files &middot; {len(cut)} too large to read in full: {names}{more}",
+                             "#BA7517"))
+        else:
+            rows.append(_row("AI code review", _pct(read, total), f"{_n(read)} of {_n(total)} files ({_pct(read, total)}%)"))
 
     for label, block in (("Secret scan", data.get("secret_scan")), ("Weak-crypto scan", data.get("crypto_scan"))):
         scanned = _i((block or {}).get("files_scanned"))
