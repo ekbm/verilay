@@ -8788,7 +8788,13 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append(f'<a href="/report/{_htmlmod.escape(report_id)}" style="display:inline-block;font-size:13px;color:#534AB7;'
                    'font-weight:600;margin:0 0 .6rem;text-decoration:none">&larr; Back to the summary</a>')
         out.append(deepreport.render_fixes_html(_fix_data, part="code" if view == "fixes" else "packages"))
-    if raw_data.get("scan_tier") == "lite":
+    # Only when there is something to fix (8 Nov 2026): a live-address preview and an A with no findings have no fix
+    # prompts, so "a fix prompt for every finding" made no sense there.
+    _hl = raw_data.get("health") or {}
+    _to_fix = (_hl.get("critical") or 0) + (_hl.get("warnings") or 0)
+    if _to_fix == 0 and "critical" not in _hl and "warnings" not in _hl:      # no counts saved: go by the grade
+        _to_fix = 0 if _hl.get("score") in (None, "A") else 1
+    if raw_data.get("scan_tier") == "lite" and not is_preview and _to_fix > 0:
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
                    'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro gives a '
@@ -8893,10 +8899,15 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     scan = data.get("secret_scan") or {}
     if scan.get("files_scanned"):
         scan_findings = scan.get("findings", [])
+        # A live-address scan also scans Verilay's own two note files (_headers.txt, _meta.txt): count only the site's
+        # files, so this matches "N in all" in the preview panel (8 Nov 2026: "3 files in all" next to "All 5 files").
+        _n_scanned = scan["files_scanned"]
+        if raw_data.get("input_method") == "url":
+            _n_scanned = livecheck.served_count(raw_data.get("files_analysed"), _n_scanned) or _n_scanned
         if not scan_findings:
             out.append(
                 '<div class="card"><strong style="color:#1D9E75">✓ No exposed keys or passwords found</strong>'
-                f'<div style="font-size:13px;color:#666;margin-top:.35rem">All {scan["files_scanned"]} files '
+                f'<div style="font-size:13px;color:#666;margin-top:.35rem">All {_n_scanned} files '
                 'were checked for hardcoded API keys, passwords and database logins. This check reads every '
                 'file directly — it is not a sample.</div></div>'
             )
