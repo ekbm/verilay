@@ -7996,8 +7996,10 @@ def _scan_rows(limit=60):
             "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
             "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval")
     try:
-        rows = _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit).execute().data or []
-        return [r for r in rows if str(r.get("eval")).lower() != "true"]      # Verilay's own test scans stay out
+        # Verilay's own test scans stay out. Extra rows are fetched so the list still shows `limit` real scans after a
+        # test run (a full run is 32 test scans; 8 Nov 2026: the page showed 54 instead of 60 after the pilot).
+        rows = _sb.table("reports").select(cols).order("created_at", desc=True).limit(limit * 3).execute().data or []
+        return [r for r in rows if str(r.get("eval")).lower() != "true"][:limit]
     except Exception as e:
         print(f"/admin/scans: full list unavailable, showing the basic one: {e}", flush=True)
     try:       # if a detail field is ever refused, the basic list still shows
