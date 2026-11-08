@@ -1843,6 +1843,7 @@ function gradeFromCounts(critical, warnings) {
 // setting such as SESSION_SECRET) is marked repeat_of and not counted again.
 function markRepeatedFindings(layers) {
   var seen = [];
+  var pathRx = /\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){3,}\b/g;   // e.g. request.auth.token.staff (same rule as app.py _REPEAT_PATH)
   var nameRx = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b/g, quoteRx = /["'`“‘]([^"'`”’\n]{8,80})["'`”’]/g;
   (layers || []).forEach(function(l) {
     (((l || {}).expert || {}).findings || []).forEach(function(f) {
@@ -1850,7 +1851,7 @@ function markRepeatedFindings(layers) {
       delete f.repeat_of;
       if (f.severity !== 'critical' && f.severity !== 'warning') return;
       var text = (f.title || '') + ' ' + (f.detail || '');
-      var names = text.match(nameRx) || [], quoted = [], m;
+      var names = (text.match(nameRx) || []).concat(text.match(pathRx) || []), quoted = [], m;
       quoteRx.lastIndex = 0;
       while ((m = quoteRx.exec(text))) quoted.push(m[1].trim().toLowerCase());
       var fm = String(f.file || '').match(/[\w.\-\/]+\.\w+/);

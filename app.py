@@ -157,7 +157,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-07.1"
+ANALYSIS_VERSION = "2026-11-08.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -968,6 +968,9 @@ def categorise_files(paths):
 _REPEAT_NAME = _re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b")
 _REPEAT_QUOTED = _re.compile("[\"'`“‘]([^\"'`”’\n]{8,80})[\"'`”’]")
 _REPEAT_FILE = _re.compile(r"[\w.\-/]+\.\w+")
+# A long dotted name such as request.auth.token.staff (4+ parts) names one specific check; shorter ones like
+# req.session.userId are too common to tell two problems apart (8 Nov 2026, accuracy check app 15).
+_REPEAT_PATH = _re.compile(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){3,}\b")
 
 
 def mark_repeated_findings(layers):
@@ -983,7 +986,7 @@ def mark_repeated_findings(layers):
             if f.get("severity") not in ("critical", "warning"):
                 continue
             text = f"{f.get('title', '')} {f.get('detail', '')}"
-            names = set(_REPEAT_NAME.findall(text))
+            names = set(_REPEAT_NAME.findall(text)) | set(_REPEAT_PATH.findall(text))
             quoted = {q.strip().lower() for q in _REPEAT_QUOTED.findall(text)}
             m = _REPEAT_FILE.search(str(f.get("file") or ""))
             fname = m.group(0).lower().split("/")[-1] if m else ""
@@ -3332,6 +3335,9 @@ def analyse_step2(files, repo_name, scan_block=""):
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
         "- Firebase Auth onAuthStateChanged/getAuth: valid auth\n"
+        "- Firebase custom claims (request.auth.token.<name>, e.g. token.admin or token.staff, in Cloud Functions or security rules): "
+        "signed by Firebase and set only with the Admin SDK, so users cannot forge them. Checking one is a valid role check: never "
+        "flag it as unverified or critical\n"
         "- Passwordless/magic links: valid secure auth\n"
         "- Drizzle ORM TypeScript schemas: type validation handled\n"
         "- Flask @app.route/jsonify/os.getenv(): correct patterns\n"
@@ -3449,6 +3455,24 @@ def analyse_step2(files, repo_name, scan_block=""):
                              _STEP2_LAYERS, "step2")
 
 
+# Row level security switched on in the app's SQL files (8 Nov 2026, accuracy check app 07). The API/Frontend pass is not
+# always shown the SQL files, so it once warned that a table's access rules were "not in the files read" although they were.
+# This tells it, in one line outside the code, which tables have row level security on. Deterministic, no AI.
+_RLS_ON = _re.compile(r"alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?([\w\".]+)\s+enable\s+row\s+level\s+security", _re.I)
+
+
+def rls_tables_note(files):
+    tables = set()
+    for p, t in (files or {}).items():
+        if str(p).lower().endswith(".sql") and isinstance(t, str):
+            tables.update(m.group(1).replace('"', "").split(".")[-1] for m in _RLS_ON.finditer(t))
+    if not tables:
+        return ""
+    return ("\n\nROW LEVEL SECURITY (found by Verilay in the app's SQL files, which this part of the review may not show): switched on "
+            "for these tables: " + ", ".join(sorted(tables)[:20]) + ". Do not say their access rules are missing or unseen. Browser "
+            "code reading them with the public anon key is the normal, safe Supabase pattern.\n\n")
+
+
 def analyse_step3(files, repo_name, osv_block=""):
     if layer_files.enabled():
         api_keys = layer_files.pick(files, layer_files.LAYERS_STEP3, manifests=True, legacy_words=(
@@ -3480,6 +3504,9 @@ def analyse_step3(files, repo_name, osv_block=""):
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
         "- Firebase Auth onAuthStateChanged/getAuth: valid auth\n"
+        "- Firebase custom claims (request.auth.token.<name>, e.g. token.admin or token.staff, in Cloud Functions or security rules): "
+        "signed by Firebase and set only with the Admin SDK, so users cannot forge them. Checking one is a valid role check: never "
+        "flag it as unverified or critical\n"
         "- Passwordless/magic links: valid secure auth\n"
         "- Drizzle ORM TypeScript schemas: type validation handled\n"
         "- Flask @app.route/jsonify/os.getenv(): correct patterns\n"
@@ -3705,6 +3732,9 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
         "- Firebase Auth onAuthStateChanged/getAuth: valid auth\n"
+        "- Firebase custom claims (request.auth.token.<name>, e.g. token.admin or token.staff, in Cloud Functions or security rules): "
+        "signed by Firebase and set only with the Admin SDK, so users cannot forge them. Checking one is a valid role check: never "
+        "flag it as unverified or critical\n"
         "- Passwordless/magic links: valid secure auth\n"
         "- Drizzle ORM TypeScript schemas: type validation handled\n"
         "- Flask @app.route/jsonify/os.getenv(): correct patterns\n"
@@ -4329,7 +4359,7 @@ def analyse_stream():
             import time as _time
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 f2 = executor.submit(with_model(_scan_model, analyse_step2), files, repo_name, scan_block + crypto_block + authz_block)
-                f3 = executor.submit(with_model(_scan_model, analyse_step3), files, repo_name, osv_teaser_block)
+                f3 = executor.submit(with_model(_scan_model, analyse_step3), files, repo_name, osv_teaser_block + rls_tables_note(files))
                 # Send keepalive every 15s while waiting — prevents Railway's
                 # own connection timeout from firing. Loops until BOTH futures
                 # are handled (not a fixed cutoff then a blocking wait) -- a
