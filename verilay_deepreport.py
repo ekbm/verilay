@@ -33,19 +33,46 @@ def _esc(s):
 # its monthly scheduled email, which only got through BECAUSE of the gap. The AI builder noticed only because the
 # prompt asked how the code was triggered. Every fix prompt now ends with this step, so the AI checks what works
 # today before changing it, and says how to test it afterwards. Added once (old saved prompts get it when shown).
-SAFETY_STEP = ("First, before making any change: list what works today that this change could stop working, such as "
-               "scheduled jobs, webhooks, emails, payments, sign-in or admin buttons. Keep all of those working. After "
-               "the change, tell me exactly how to check that each one still works.")
-_SAFETY_MARK = "list what works today that this change could stop working"
+#
+# 9 Nov 2026 (Moses: Verilay's prompts "should use the same reasoning" as the hand-written ones for a real app): the step
+# grew into the full "explain first" questions, the same ones the blog's "Understand Before You Fix" teaches, and each
+# prompt now has a separate Step 2 (GO_AHEAD) to paste only after the explanation makes sense. Old saved prompts that
+# end with the shorter step get the new one instead when shown.
+SAFETY_STEP = ("Please don't change anything yet. In plain English, tell me:\n"
+               "1. Is this really a problem? Show me the exact file and lines.\n"
+               "2. Who could misuse it, and what could they see or do?\n"
+               "3. How is this part meant to be used? What relies on it working the way it does now: other pages, a "
+               "mobile app that is already released, scheduled jobs, webhooks, emails, payments or sign-in?\n"
+               "4. What could the fix break, and how would we avoid that?\n"
+               "5. How will we check afterwards that everything still works, on the website and in the mobile app if "
+               "there is one?\n"
+               "Also check the whole app for the same kind of problem, and list every place with the file and line.\n"
+               "Don't change anything until I reply.")
+_SAFETY_MARK = "Don't change anything until I reply."
+_OLD_SAFETY_STEP = ("First, before making any change: list what works today that this change could stop working, such as "
+                    "scheduled jobs, webhooks, emails, payments, sign-in or admin buttons. Keep all of those working. After "
+                    "the change, tell me exactly how to check that each one still works.")
+# Code fitness tidy-ups (no security problem, nobody "misusing" anything): the same care, without the security questions.
+TIDY_STEP = ("Please don't change anything yet. In plain English, tell me:\n"
+             "1. What exactly would this tidy-up change, file by file?\n"
+             "2. What relies on this code working the way it does now: other pages, a mobile app that is already released, "
+             "scheduled jobs, webhooks, emails, payments or sign-in?\n"
+             "3. What could the tidy-up break, and how would we avoid that?\n"
+             "4. How will we check afterwards that everything still works?\n"
+             "Don't change anything until I reply.")
+GO_AHEAD = ("Thanks. Please make the change you described, changing only what's needed for this one problem and keeping "
+            "everything you listed working. Then tell me exactly what you changed, and walk me through the checks from your "
+            "answer so I can confirm everything still works.")
 FIX_PROMPT_KEYS = ("general_prompt", "lovable_prompt", "replit_prompt", "fix_prompt")
 
 
-def with_safety_step(prompt):
-    """The prompt with SAFETY_STEP added at the end, once. Empty stays empty."""
-    p = str(prompt or "").rstrip()
+def with_safety_step(prompt, step=None):
+    """The prompt with the "explain first" questions (SAFETY_STEP, or TIDY_STEP for a tidy-up) at the end, once; an older
+    prompt's shorter step is replaced. Empty stays empty."""
+    p = str(prompt or "").replace(_OLD_SAFETY_STEP, "").rstrip()
     if not p or _SAFETY_MARK in p:
         return p
-    return p + "\n\n" + SAFETY_STEP
+    return p + "\n\n" + (step or SAFETY_STEP)
 
 
 def fixes_with_safety_step(fixes):
@@ -459,13 +486,19 @@ def _pill(text, sev):
             f'border-radius:20px;margin-left:6px;text-transform:uppercase">{_esc(text)}</span>')
 
 
-def _prompt_block(pid, prompt):
-    prompt = with_safety_step(prompt)
-    return (f'<div style="font-size:12px;color:#888;margin-top:.5rem">Prompt for your AI builder:</div>'
+def _prompt_block(pid, prompt, kind="fix"):
+    """A copyable Step 1 prompt plus its Step 2 (go ahead). kind="tidy" for Code fitness tidy-ups."""
+    prompt = with_safety_step(prompt, TIDY_STEP if kind == "tidy" else None)
+    btn = ('style="margin-top:.4rem;font-size:12px;padding:5px 12px;border-radius:20px;border:0.5px solid #534AB7;'
+           'background:#fff;color:#534AB7;cursor:pointer"')
+    return (f'<div style="font-size:12px;color:#888;margin-top:.5rem"><strong>Step 1:</strong> paste this into your AI '
+            f'builder. It explains the problem first and changes nothing.</div>'
             f'<div class="pb" id="{pid}">{_esc(prompt)}</div>'
-            f'<button type="button" class="cp" data-target="{pid}" style="margin-top:.4rem;font-size:12px;'
-            f'padding:5px 12px;border-radius:20px;border:0.5px solid #534AB7;background:#fff;color:#534AB7;'
-            f'cursor:pointer">Copy prompt</button>')
+            f'<button type="button" class="cp" data-target="{pid}" {btn}>Copy prompt</button>'
+            f'<div style="font-size:12px;color:#888;margin-top:.7rem"><strong>Step 2:</strong> only when its answer makes '
+            f'sense to you, paste this to let it make the change.</div>'
+            f'<div class="pb" id="{pid}-go">{_esc(GO_AHEAD)}</div>'
+            f'<button type="button" class="cp" data-target="{pid}-go" {btn}>Copy prompt</button>')
 
 
 def _dep_group_html(g, idx):

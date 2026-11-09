@@ -157,7 +157,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-08.1"
+ANALYSIS_VERSION = "2026-11-09.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -3760,6 +3760,11 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "Do NOT invent generic fixes that are not supported by the findings above.\n\n"
         "WHOLE-REPO DIRECTION: Verilay analysed only a SAMPLE of the codebase, not every file. In each advice prompt, instruct the AI builder to check this class of issue across the ENTIRE repository — not only the flagged location — and to confirm WITH EVIDENCE per file (e.g. 'for EVERY edge function, confirm it verifies the caller and filters queries by the authenticated user, and LIST any that do not') rather than answering yes/no. This surfaces issues in files Verilay did not read. GROUNDING RULE: state specifics (file names, exact patterns) ONLY about files actually shown in the analysis above; for everything else, ask the builder to check the PATTERN across all files — never invent a specific file or finding you were not shown.\n\n"
         "Respond ONLY with key:value pairs, one per line, no other text.\n\n"
+        "WHAT EACH PROMPT CONTAINS (9 Nov 2026): describe THIS finding precisely: what was flagged, the file(s), what looks "
+        "wrong, and any question specific to it. Verilay itself adds the standard 'explain first' questions (is it real, "
+        "who could misuse it, what relies on it, what could break, how to test, check the whole app) and a separate "
+        "go-ahead step, so do not repeat those. The SEV you give must match the finding's own severity in the list above: "
+        "never call a warning critical.\n"
         "COVERAGE — read carefully: Generate ONE advice prompt per critical or warning finding. "
         "List ALL critical findings FIRST (each as its own prompt), then warnings. "
         "NEVER omit or merge a critical finding — every critical MUST get its own prompt, even if you keep others brief. "
@@ -4576,7 +4581,7 @@ def run_step4():
         # was already almost the whole budget for just the header line plus
         # bare layer statuses. A real multi-finding report needs more room.
         if len(findings) > 3000:
-            findings = findings[:3000] + '...'
+            findings = findings[:6000] + '...'
         _m4 = LITE_MODEL if (data.get("lite") == "1" and _request_is_admin()) else model_for_call()
         _p4 = pro_ticket_valid(data.get("pro_ticket", "")) if data.get("pro_ticket") else None
         if _p4:

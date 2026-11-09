@@ -1829,6 +1829,12 @@ function md(t) {
   return out.join('');
 }
 
+// Step 2 of every fix prompt (9 Nov 2026): paste only after the AI builder's explanation makes sense. Same text as
+// verilay_deepreport.GO_AHEAD, which the saved report pages use.
+var VERILAY_GO_AHEAD = "Thanks. Please make the change you described, changing only what's needed for this one problem and keeping " +
+  "everything you listed working. Then tell me exactly what you changed, and walk me through the checks from your " +
+  "answer so I can confirm everything still works.";
+
 function gradeFromCounts(critical, warnings) {
   if (critical >= 6) return 'F';
   if (critical >= 3) return 'D';
@@ -3207,7 +3213,8 @@ async function runPart2() {
     // the count+severity split (Decision 6). Layer findings from Auth/Config/
     // Database/API/Frontend are safe to pass through verbatim since the free
     // report already shows them in full, nothing new is exposed.
-    findings += 'Findings by layer:\n';
+    findings += 'Findings, most serious first:\n';
+    var ranked = [];
     Object.keys(currentLayers).forEach(function(name) {
       var layer = currentLayers[name];
       if (name === 'Libraries') {
@@ -3228,10 +3235,16 @@ async function runPart2() {
         findings += '- '+name+': no issues found.\n';
       } else {
         layerFindings.slice(0,5).forEach(function(f) {
-          findings += '- '+name+' ['+(f.severity||layer.status)+']: '+f.title+(f.detail ? ' — '+f.detail : '')+'\n';
+          ranked.push({sev: f.severity || layer.status, line: '- ['+(f.severity||layer.status)+'] '+name+': '+f.title+
+            (f.detail ? ' — '+String(f.detail).slice(0, 280) : '')+'\n'});
         });
       }
     });
+    // Most serious first, across every area (9 Nov 2026): the summary is cut at a set length, and going area by area
+    // let early areas fill it, so a critical problem in a later area never reached the fix prompts.
+    var _rank = {critical: 0, warning: 1};
+    ranked.sort(function(a, b) { return (a.sev in _rank ? _rank[a.sev] : 2) - (b.sev in _rank ? _rank[b.sev] : 2); });
+    ranked.forEach(function(r) { findings += r.line; });
     var resp = await fetch('/analyse-step4', {
       method: 'POST',
       headers: reportHeaders(savedReportId, {'Content-Type': 'application/json'}),
@@ -3584,6 +3597,11 @@ function renderPart2(data) {
     if (platformPrompt) {
       html += '<div style="margin-top:.5rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:12px;font-family:monospace;color:var(--mut);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;line-height:1.5" id="fix-prompt-' + fi + '">' + esc(platformPrompt) + '</div>';
     }
+    if (platformPrompt) {
+      html += '<div style="font-size:12px;color:var(--mut);margin-top:.6rem"><strong>Step 2:</strong> only when its answer makes sense to you, paste this to let it make the change.</div>';
+      html += '<div style="margin-top:.3rem;background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:12px;font-family:monospace;color:var(--mut);white-space:pre-wrap;line-height:1.5">' + esc(VERILAY_GO_AHEAD) + '</div>';
+      html += '<button id="fix-go-' + fi + '" type="button" style="margin-top:.35rem;font-size:12px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--pu);background:var(--sur);color:var(--pu);cursor:pointer">Copy step 2</button>';
+    }
     html += renderSelfCheck(f.check_detail);
     html += '</div></details>';
   });
@@ -3603,6 +3621,13 @@ function renderPart2(data) {
     bindProEarlyAccess();
     showProTopBanner(data);
     (data.top_fixes||[]).forEach(function(f, fi) {
+      var go = document.getElementById('fix-go-' + fi);
+      if (go) go.addEventListener('click', function() {
+        navigator.clipboard.writeText(VERILAY_GO_AHEAD).then(function() {
+          go.textContent = 'Copied';
+          setTimeout(function() { go.textContent = 'Copy step 2'; }, 2000);
+        });
+      });
       var btn = document.getElementById('fix-btn-' + fi);
       var copied = document.getElementById('fix-copied-' + fi);
       var prompt = f.general_prompt || f.lovable_prompt || '';
