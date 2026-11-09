@@ -3873,7 +3873,8 @@ def analyse_step4(repo_name, built_with, findings_summary):
     if lite_mode():
         prompt += ("\n\nLIGHT FREE SCAN: fill in ONLY FIX_1, for the single most serious finding (a critical one if there is "
                    "any). Leave FIX_2 to FIX_8 and the three OPINION_ keys empty.\n")
-    text = call_claude_text(prompt, max_tokens=900 if lite_mode() else 2000)
+    # Up to 8 fixes with a prompt each: 2,000 tokens ran out on a big app and left the last fix without a prompt (9 Nov 2026).
+    text = call_claude_text(prompt, max_tokens=900 if lite_mode() else 8000)
     lines = {}
     for line in text.strip().split("\n"):
         if ":" in line:
@@ -3902,6 +3903,8 @@ def analyse_step4(repo_name, built_with, findings_summary):
             "lovable_prompt": lines.get(f"FIX_{i}_PROMPT", ""),
             "general_prompt": lines.get(f"FIX_{i}_PROMPT", "")
         })
+        if not fixes[-1]["general_prompt"].strip():      # the AI ran out of room before writing it: build one
+            fixes[-1]["general_prompt"] = fixes[-1]["lovable_prompt"] = deepreport.fallback_prompt(fixes[-1])
     # Criticals must always appear first, regardless of the order the model returned them in.
     # Python's sort is stable, so within each severity the model's ordering is preserved.
     fixes.sort(key=lambda f: 0 if f["severity"] == "critical" else 1)

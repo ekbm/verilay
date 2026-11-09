@@ -75,6 +75,18 @@ def with_safety_step(prompt, step=None):
     return p + "\n\n" + (step or SAFETY_STEP)
 
 
+def fallback_prompt(fix):
+    """A Step 1 prompt built from a fix's own title and reason, for a fix the AI listed but did not finish writing a
+    prompt for (9 Nov 2026: a big app's 4th fix arrived with no prompt when the AI ran out of room). Verilay's explain-first
+    questions are added to it like any other prompt. Empty when the fix has no title."""
+    if not isinstance(fix, dict) or not str(fix.get("title") or "").strip():
+        return ""
+    why = str(fix.get("why_it_matters") or "").strip()
+    return (f"I received a security review flagging this problem: {str(fix['title']).strip()}."
+            + (f" Details from the review: {why}" if why else "")
+            + " Please review and advise without making changes yet.")
+
+
 def fixes_with_safety_step(fixes):
     """Copies of the fixes with SAFETY_STEP on every prompt they carry."""
     out = []
@@ -783,7 +795,7 @@ def render_fixes_html(data, part="all"):
 
     ai_html = ""
     for i, f in enumerate(fixes):
-        prompt = f.get("lovable_prompt") or f.get("general_prompt") or ""
+        prompt = f.get("lovable_prompt") or f.get("general_prompt") or fallback_prompt(f)
         sev = (f.get("severity") or "warning").lower()
         tag = _fix_label(f)
         tag_html = (f'<span style="display:block;font-size:11px;font-weight:400;color:#6b6966;margin-top:2px">'
