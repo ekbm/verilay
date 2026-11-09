@@ -321,6 +321,8 @@ def save_report_data(data, user_id=None):
         _cc = paywall.DEEP_SCAN_COUNTRY.get(str(user_id))            # noted when it started (3 Nov 2026)
         if _cc:
             data["country"] = _cc
+    if data.get("is_deep_scan") and not _deep_repo_is_public(data.get("repo")):
+        data["owner_only"] = True     # see _deep_repo_is_public
     return save_report_with_token(data, user_id)[0]
 
 
@@ -564,8 +566,37 @@ def _is_deleted_report(data):
 
 def get_report_data(report_id):
     """A saved report by id, or None. A private report (private-repository beta) is shown only to the browser that ran the scan or to
-    a signed-in admin; to everyone else it simply does not exist (verilay_private.gate)."""
-    return privatemod.gate(_get_report_data_raw(report_id), report_id)
+    a signed-in admin; to everyone else it simply does not exist (verilay_private.gate). A deep scan of a repository that is
+    not public is owner-only in the same way (9 Nov 2026), including deep reports saved before that."""
+    data = _get_report_data_raw(report_id)
+    if isinstance(data, dict) and data.get("is_deep_scan") and not data.get("owner_only") and not _deep_repo_is_public(data.get("repo")):
+        data = dict(data, owner_only=True)
+    return privatemod.gate(data, report_id)
+
+
+# A deep report of a private repository could be opened by anyone with its link (seen 9 Nov 2026 on a private app's deep
+# report, which lists that app's weaknesses). Such reports are now "owner only": they open for the account that ran the
+# scan and for a signed-in admin, and are "not found" for everyone else. Unlike "private" (the private-repository beta),
+# owner_only changes nobody's expiry date. Repository visibility is asked of GitHub at most once an hour per repository;
+# anything but a clear "public" counts as not public, so a GitHub hiccup errs on the side of privacy.
+_DEEP_VIS = {}
+_DEEP_VIS_LOCK = threading.Lock()
+
+
+def _deep_repo_is_public(repo, now=None):
+    owner, _, name = str(repo or "").strip().partition("/")
+    if not owner or not name:
+        return False
+    key = f"{owner}/{name}".lower()
+    now = time.time() if now is None else now
+    with _DEEP_VIS_LOCK:
+        hit = _DEEP_VIS.get(key)
+        if hit and now - hit[1] < (3600 if hit[0] != "unknown" else 60):
+            return hit[0] == "public"
+    vis = repo_visibility(owner, name, GITHUB_TOKEN)
+    with _DEEP_VIS_LOCK:
+        _DEEP_VIS[key] = (vis, now)
+    return vis == "public"
 
 
 def _get_report_data_raw(report_id):
@@ -973,6 +1004,13 @@ _REPEAT_FILE = _re.compile(r"[\w.\-/]+\.\w+")
 _REPEAT_PATH = _re.compile(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){3,}\b")
 
 
+# The same unsafe display (XSS) reported once against the server file and once against the page file (9 Nov 2026, accuracy
+# check app 13: "API: ... comments.js builds markup via innerHTML" and "Frontend: comments.js ... innerHTML"). Two findings
+# that name the same unsafe display function and mention the same code file are one problem.
+_REPEAT_SINKS = ("innerhtml", "outerhtml", "dangerouslysetinnerhtml", "insertadjacenthtml", "document.write", "v-html")
+_REPEAT_CODE_FILE = _re.compile(r"[\w\-/]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|html|htm|py|rb|php)\b")
+
+
 def mark_repeated_findings(layers):
     seen = []
     for layer in layers or []:
@@ -990,12 +1028,16 @@ def mark_repeated_findings(layers):
             quoted = {q.strip().lower() for q in _REPEAT_QUOTED.findall(text)}
             m = _REPEAT_FILE.search(str(f.get("file") or ""))
             fname = m.group(0).lower().split("/")[-1] if m else ""
-            for other, ofile, onames, oquoted in seen:
-                if other != name and ((quoted & oquoted) or (fname and fname == ofile and names & onames)):
+            low = f"{text} {f.get('file', '')}".lower()
+            sinks = {s for s in _REPEAT_SINKS if s in low}
+            files = {p.split("/")[-1] for p in _REPEAT_CODE_FILE.findall(low)}
+            for other, ofile, onames, oquoted, osinks, ofiles in seen:
+                if other != name and ((quoted & oquoted) or (fname and fname == ofile and names & onames)
+                                      or (sinks & osinks and files & ofiles)):
                     f["repeat_of"] = other
                     break
             else:
-                seen.append((name, fname, names, quoted))
+                seen.append((name, fname, names, quoted, sinks, files))
     return layers
 
 

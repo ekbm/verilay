@@ -471,7 +471,7 @@ def viewer_ok(report_id):
 
 def gate(data, report_id):
     """Return the report if it may be shown to this request, else None (which every page treats as 'not found')."""
-    if isinstance(data, dict) and data.get("private") and not viewer_ok(report_id):
+    if isinstance(data, dict) and (data.get("private") or data.get("owner_only")) and not viewer_ok(report_id):
         return None
     return data
 

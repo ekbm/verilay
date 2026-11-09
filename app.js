@@ -1862,14 +1862,21 @@ function markRepeatedFindings(layers) {
       while ((m = quoteRx.exec(text))) quoted.push(m[1].trim().toLowerCase());
       var fm = String(f.file || '').match(/[\w.\-\/]+\.\w+/);
       var fname = fm ? fm[0].toLowerCase().split('/').pop() : '';
+      // Same unsafe display function + same code file = one XSS problem (same rule as app.py _REPEAT_SINKS)
+      var low = (text + ' ' + (f.file || '')).toLowerCase();
+      var sinks = ['innerhtml', 'outerhtml', 'dangerouslysetinnerhtml', 'insertadjacenthtml', 'document.write', 'v-html']
+        .filter(function(s) { return low.indexOf(s) > -1; });
+      var files = (low.match(/[\w\-\/]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|html|htm|py|rb|php)\b/g) || [])
+        .map(function(p) { return p.split('/').pop(); });
       for (var i = 0; i < seen.length; i++) {
         var o = seen[i];
         if (o.name === l.name) continue;
         var q = quoted.some(function(x) { return o.quoted.indexOf(x) > -1; });
         var n = fname && fname === o.file && names.some(function(x) { return o.names.indexOf(x) > -1; });
-        if (q || n) { f.repeat_of = o.name; return; }
+        var x = sinks.some(function(s) { return o.sinks.indexOf(s) > -1; }) && files.some(function(p) { return o.files.indexOf(p) > -1; });
+        if (q || n || x) { f.repeat_of = o.name; return; }
       }
-      seen.push({name: l.name, file: fname, names: names, quoted: quoted});
+      seen.push({name: l.name, file: fname, names: names, quoted: quoted, sinks: sinks, files: files});
     });
   });
   return layers;
