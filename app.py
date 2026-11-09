@@ -11338,6 +11338,8 @@ if _HAS_PAYWALL:
         osv_to_prompt_block=osv_to_prompt_block,
         categorise_files=categorise_files,
         grade_from_counts=grade_from_counts,
+        mark_repeated_findings=mark_repeated_findings,   # one problem, one count (9 Nov 2026)
+        rls_tables_note=rls_tables_note,                 # row level security note for the API/Frontend pass
         save_report_data=save_report_data,
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
         increment_analysis_count=increment_analysis_count,
