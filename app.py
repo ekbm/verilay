@@ -4919,6 +4919,100 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "fix-it-with-ai-understand-before-you-fix",
+        "title": "Fix It With AI, Part 2: Understand Before You Fix",
+        "seo_title": "How to Fix Your App With AI Without Breaking Something Else",
+        "date": "November 11, 2026",
+        "category": "Guide",
+        "excerpt": "Asking your AI builder to fix a problem straight away can break something else. Get it to explain first: the prompt, the warning signs and a checklist.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p>In Part 1, I said you can fix what you built with AI, using AI. This part is about the step most of us skip, and it's the one that decides whether a fix helps or hurts.</p>
+<p>It's this: <strong>before your AI changes anything, make it explain the problem to you.</strong></p>
+<h2>The fix that would have broken something else</h2>
+<p>A scan of one of my apps flagged a problem: a function on the server that anyone could trigger without signing in. It sent an email to everyone on the mailing list.</p>
+<p>The obvious fix was one line: make it require a sign-in. My AI builder could have done that in seconds.</p>
+<p>Instead, the prompt I used said: <em>review and advise, don't change anything yet</em>, and it asked one more question: <strong>how is this function meant to be started?</strong></p>
+<p>That question found the trap. The monthly newsletter was sent by a scheduled job, and that job called the function <strong>without signing in</strong>. It only worked <em>because</em> of the gap. If we had closed the gap straight away, the newsletter would have quietly stopped. No error, no warning. I'd have found out weeks later, when nobody had received anything.</p>
+<p>The real fix had two parts: lock the door, <strong>and</strong> give the scheduled job its own key.</p>
+<p>The same prompt asked the AI to check the whole app for the same kind of gap. It found four more. One flagged problem became five fixed ones.</p>
+<p>Here's the honest part. The hard part of that fix wasn't writing the code. It was knowing what the code was connected to.</p>
+<h2>Why AI jumps straight to fixing</h2>
+<p>AI builders are made to be helpful, and "helpful" usually means <em>doing</em> something. Ask about a problem and you'll often get a change, not an explanation.</p>
+<p>They also work with what's in front of them. The AI sees the function it was asked about. It doesn't automatically go looking for the scheduled job in another file that depends on the bug staying exactly as it is.</p>
+<p>Even the companies building these tools say to slow down. Anthropic's own advice for its coding assistant is to have the AI ask you questions and write down a plan <em>before</em> it builds, and it lists <em>"Claude built something different from what you had in mind"</em> among the common ways a session goes wrong. (<a href="https://code.claude.com/docs/en/best-practices" target="_blank" rel="noopener">Anthropic, Claude Code best practices</a>)</p>
+<p>So if your AI builder rushed into a fix, it wasn't being careless. That's simply its default. Your job is to change the order: <strong>understand first, then fix.</strong></p>
+<h2>The "explain first" prompt</h2>
+<p>Copy this into your AI builder, and put the problem where it says so:</p>
+<pre style="white-space:pre-wrap"><code>Don't change anything yet. I want to understand this problem first:
+
+[paste the problem here]
+
+In plain English, please tell me:
+1. What exactly is the problem, and where is it?
+2. Who could misuse it, and what could they do?
+3. How is this part of the app meant to be used or started?
+   Is anything (a schedule, another page, another service, a mobile app that's already released) relying on it working the way it does now?
+4. What else depends on this code?
+5. What could the fix break?
+6. How will we check that everything still works afterwards?
+
+Also check the whole app for the same kind of problem, and list every place you find it.</code></pre>
+<p>Question 3 is the one that saved my newsletter. Never skip it.</p>
+<p>The mobile app in that list is there for a reason, too. Many app-store apps simply load your website inside them. Lock something down on the website, and the app that's already on people's phones changes the same moment. I recently had a fix to file downloads that, done the obvious way, would have stopped files opening inside a released phone app. The explain-first answer caught it before anything changed.</p>
+<h2>Plan the change before any code moves</h2>
+<p>For a small fix, the answer to that prompt may be all you need. For anything bigger, like a change that touches several files or splits a large file into smaller ones, take one more step: <strong>agree on a plan before anything is changed.</strong></p>
+<p>Ask the AI to write down:</p>
+<ul>
+<li><strong>what</strong> it will change,</li>
+<li><strong>why</strong> each change is needed, and</li>
+<li><strong>what the app will look like</strong> when it's done.</li>
+</ul>
+<p>Then read it and push back where something doesn't make sense. Go back and forth until the plan matches what you actually want. It costs a few messages, and it's far cheaper than undoing a change you didn't understand.</p>
+<p>One question deserves special attention in any plan: <strong>which part of the app is in charge of each piece of information?</strong> Think of a setting like a size limit, a user's role, or the current mode. If two parts of the app each keep their own copy, a change in one won't reach the other. That's how you end up with "I changed it, but one page still shows the old value." A good plan gives every piece of information one home, and every other part reads it from there.</p>
+<p>Only when the plan is clear, tell the AI to turn it into steps and make the changes.</p>
+<h2>How to read the answer</h2>
+<p><strong>Good signs:</strong></p>
+<ul>
+<li>It names specific files and places, not "the backend".</li>
+<li>It lists what depends on the code, even if the list is "nothing else uses this".</li>
+<li>It mentions a risk you hadn't thought of.</li>
+<li>It suggests how to test the fix.</li>
+</ul>
+<p><strong>Warning signs:</strong></p>
+<ul>
+<li>Vague answers like "this should be fine" or "this follows best practices".</li>
+<li>It has already changed code, even though you asked it not to.</li>
+<li>It can't tell you how the part is meant to be used.</li>
+<li>The fix sounds bigger than the problem.</li>
+</ul>
+<p>If you see warning signs, ask again, more specifically: <em>"Which files call this function? List them."</em> A vague answer usually means the AI hasn't looked yet.</p>
+<h2>Before you say "go ahead"</h2>
+<ul>
+<li>&#9744; I can explain the problem in one sentence.</li>
+<li>&#9744; I know who could misuse it and how.</li>
+<li>&#9744; I know how this part is meant to be used, and what relies on it.</li>
+<li>&#9744; I know what the fix could break.</li>
+<li>&#9744; For a bigger change: there's a written plan, and every piece of information has one home.</li>
+<li>&#9744; I know how we'll check that everything still works.</li>
+<li>&#9744; The AI checked the rest of the app for the same problem.</li>
+</ul>
+<p>If you can tick all of them, let it make the change.</p>
+<h2>How Verilay helps</h2>
+<p>Every fix in a Verilay report comes as two prompts, in this order:</p>
+<ul>
+<li><strong>Step 1: explain first.</strong> It asks your AI builder not to change anything yet, and to tell you in plain English: is this really a problem (with the exact file and lines), who could misuse it, what relies on it working the way it does now (other pages, a mobile app that's already released, scheduled jobs, emails, payments, sign-in), what the fix could break, and how you'll check afterwards. It also asks it to look for the same problem everywhere else in the app.</li>
+<li><strong>Step 2: go ahead.</strong> You only paste it once the answer makes sense to you. It asks for the change, keeping everything listed in the answer working, and for a walk-through of the checks.</li>
+</ul>
+<p>The "what relies on it?" question is there because of the newsletter story above.</p>
+<h2>Next in the series</h2>
+<p>Part 3: <strong>one fix at a time, with an undo point.</strong> Even with a good plan, changing five things at once makes it hard to tell which one broke something. In two weeks: how to make one change, check it, and keep a way back.</p>
+<p>If you've had a fix go wrong, or a "fix" that broke something you didn't expect, tell me: <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>.</p>
+""",
+    },
+    {
         "slug": "building-ai-apps-like-an-engineer-start-here",
         "title": "Building AI Apps Like an Engineer: Start Here",
         "seo_title": "Frontend vs Backend vs Database, Explained Simply",
