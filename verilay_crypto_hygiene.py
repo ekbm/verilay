@@ -167,14 +167,6 @@ def _has_context(lines: List[str], lineno: int) -> bool:
 
 # ── The scanner ────────────────────────────────────────────────────────────────
 
-# MD5/SHA-1 over a random value or the clock only makes an ID or a cache key, never protects a secret
-# (StudySphere 11 Nov 2026: "DEFAULT 'qa_' || substr(md5(random()::text), 1, 8)" was flagged as a weak password hash).
-_RANDOM_ID_HASH = re.compile(
-    r"(?i)\b(?:md5|sha1)\s*\(\s*(?:random\s*\(|gen_random_uuid\s*\(|uuid_generate_v4\s*\(|uuid\w*\s*\(|"
-    r"now\s*\(|clock_timestamp\s*\(|timeofday\s*\(|Math\.random\s*\(|Date\.now\s*\(|time\.time\s*\(|"
-    r"crypto\.randomUUID\s*\(|uuid\.uuid4\s*\()")
-
-
 def scan_file(path: str, content: str) -> List[Finding]:
     if _should_skip(path) or len(content) > MAX_SCAN_BYTES:
         return []
@@ -192,8 +184,6 @@ def scan_file(path: str, content: str) -> List[Finding]:
                 continue
             if rule.needs_context and not _has_context(lines, lineno):
                 continue   # e.g. MD5 hashing a cache key — normal, stay silent
-            if rule.rule_id == "CRYPTO001" and _RANDOM_ID_HASH.search(line):
-                continue   # MD5 of random()/a uuid/the time just makes an ID, e.g. md5(random()::text) (11 Nov 2026)
 
             key = (rule.rule_id, path, lineno)
             if key in seen:

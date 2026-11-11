@@ -1831,10 +1831,9 @@ function md(t) {
 
 // Step 2 of every fix prompt (9 Nov 2026): paste only after the AI builder's explanation makes sense. Same text as
 // verilay_deepreport.GO_AHEAD, which the saved report pages use.
-var VERILAY_GO_AHEAD = "Thanks. Please fix only the place named in this report, not the other places you listed: we'll do those separately, one " +
-  "at a time. Keep everything you listed working. Don't publish or deploy anything. I'll test it in the preview first. " +
-  "Then tell me exactly what you changed, file by file, and walk me through the checks from your answer so I can confirm " +
-  "everything still works. If there's a mobile app that's already released, remind me to test it after publishing.";   // same text as verilay_deepreport.GO_AHEAD (11 Nov 2026)
+var VERILAY_GO_AHEAD = "Thanks. Please make the change you described, changing only what's needed for this one problem and keeping " +
+  "everything you listed working. Then tell me exactly what you changed, and walk me through the checks from your " +
+  "answer so I can confirm everything still works.";
 
 function gradeFromCounts(critical, warnings) {
   if (critical >= 6) return 'F';
@@ -2573,7 +2572,6 @@ function _firstFix(data) {
 function builderFromBuiltWith(text) {
   var lead = String(text || '').toLowerCase().split(/\s[\u2014\u2013-]\s|[(:;,]|\.(?=\s|$)/)[0];   // "v0.4", "Bolt.new" stay whole
   if (/\b(unknown|unclear|not|no|none|human|hand|custom)\b/.test(lead)) return '';
-  if (/\b(likely|probably|possibly|perhaps|maybe|may|might|suggests?|appears?|similar|guess)\b/.test(lead)) return '';   // a guess is not a builder (11 Nov 2026)
   if (/\blovable\b/.test(lead)) return 'Lovable';
   if (/\breplit\b/.test(lead)) return 'Replit';
   if (/\bbolt\b/.test(lead)) return 'Bolt';

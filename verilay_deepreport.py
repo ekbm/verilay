@@ -60,12 +60,9 @@ TIDY_STEP = ("Please don't change anything yet. In plain English, tell me:\n"
              "3. What could the tidy-up break, and how would we avoid that?\n"
              "4. How will we check afterwards that everything still works?\n"
              "Don't change anything until I reply.")
-# Step 2 (11 Nov 2026): safe even when pasted without reading. Fix only this place (a Step 1 answer often lists many),
-# never publish before a preview test, and remember a released mobile app that loads the website.
-GO_AHEAD = ("Thanks. Please fix only the place named in this report, not the other places you listed: we'll do those separately, one "
-            "at a time. Keep everything you listed working. Don't publish or deploy anything. I'll test it in the preview first. "
-            "Then tell me exactly what you changed, file by file, and walk me through the checks from your answer so I can confirm "
-            "everything still works. If there's a mobile app that's already released, remind me to test it after publishing.")
+GO_AHEAD = ("Thanks. Please make the change you described, changing only what's needed for this one problem and keeping "
+            "everything you listed working. Then tell me exactly what you changed, and walk me through the checks from your "
+            "answer so I can confirm everything still works.")
 FIX_PROMPT_KEYS = ("general_prompt", "lovable_prompt", "replit_prompt", "fix_prompt")
 
 
