@@ -157,7 +157,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-09.1"
+ANALYSIS_VERSION = "2026-11-11.2"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -3234,7 +3234,10 @@ def analyse_step1(files, tree, repo_name, method):
         "Your findings must reflect actual libraries present — never assume patterns not in dependencies.\\n\\n"
         "Use exactly these keys:\n\n"
         "SUMMARY: one sentence what this app does\n"
-        "BUILT_WITH: which AI platform built this and why you think so\n"
+        "BUILT_WITH: the AI platform that built this, ONLY when you can see a concrete marker for it (a builder folder or "
+        "config file such as .lovable, .replit, replit.nix, .bolt, .aistudio; lovable-tagger in package.json or the Vite "
+        "config; a builder badge or script in index.html; the README saying so), and name that marker. If there is no "
+        "marker, start with 'Unknown'. A common setup (React, Vite, Supabase, Google sign-in) is NOT a marker\n"
         "DEPTH: " + ("surface" if is_surface else "full") + "\n"
         "VERDICT: ready|needs_work|not_ready\n"
         "CONFIDENCE: high|medium|low\n"
@@ -3680,8 +3683,11 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
             and len(findings) == 1
             and findings[0].get("title") == "No issues found"
         ) or layer.get("status") == "not_checked"   # no AI answer: the package check is still a real result
-        if not is_generic:
-            break  # Claude wrote something specific — leave it alone
+        # Claude wrote something specific: leave it alone, EXCEPT the count of vulnerable packages, which must come from
+        # the check, never the AI (11 Nov 2026: a light scan's AI wrote "2 packages" for 1 package with 2 advisories).
+        keep_ai = not is_generic
+        if keep_ai and not osv_vulns:
+            break
 
         crit, warn = osv_severity_counts(osv_vulns)
         # Say exactly what was covered: "all" only when the whole package list (lockfile) was read.
@@ -3730,15 +3736,13 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
                  f"Checked {cs['summary']} against OSV.dev — {n_pk} of them, used only while building the app, have known vulnerabilities; none that your visitors' browsers or your server run.")
                 + _dev_note + scope_note
             )
-            layer["status"] = sev
-            layer["expert"]["summary"] = summary
-            layer["expert"]["findings"] = [{
+            det_finding = {
                 "severity": sev,
                 "title": f"{n_pk} {vuln_noun} known vulnerabilities",
                 "detail": summary, "file": "",
                 "why_it_matters": "Outdated libraries are one of the most common ways AI-built apps get compromised.",
-            }]
-            layer["learner"]["findings_plain"] = [{
+            }
+            det_plain = {
                 "severity": sev,
                 "plain_title": f"{n_pk} of your code libraries have known security problems",
                 "plain_detail": (
@@ -3748,9 +3752,45 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
                 ),
                 "real_world_impact": "A known, published weakness in one of your libraries could be used against your app.",
                 "action": "Ask your AI builder to check for outdated dependencies and update them to their patched versions.",
-            }]
+            }
+            if keep_ai:
+                _vx = _re.compile(r"vulnerab|advisor|cve", _re.I)
+                ex = layer.setdefault("expert", {})
+                ex["findings"] = [det_finding] + [f for f in (ex.get("findings") or [])
+                                                  if not _vx.search(f"{f.get('title', '')}")]
+                le = layer.setdefault("learner", {})
+                le["findings_plain"] = [det_plain] + [f for f in (le.get("findings_plain") or [])
+                                                      if not _vx.search(f"{f.get('plain_title', '')}")]
+                layer["status"] = worst_finding_status(ex["findings"], layer.get("status"))
+            else:
+                layer["status"] = sev
+                layer["expert"]["summary"] = summary
+                layer["expert"]["findings"] = [det_finding]
+                layer["learner"]["findings_plain"] = [det_plain]
         break
     return s3
+
+
+_STATUS_RANK = {"critical": 3, "warning": 2, "passing": 1}
+
+
+def worst_finding_status(findings, current=None):
+    """An area's colour is its worst finding (11 Nov 2026: an area showed red with only a warning in it). Areas with no
+    graded findings keep their status (e.g. not_checked)."""
+    sevs = [str((f or {}).get("severity") or "").lower() for f in (findings or [])]
+    sevs = [s for s in sevs if s in _STATUS_RANK]
+    if not sevs:
+        return current
+    return max(sevs, key=lambda s: _STATUS_RANK[s])
+
+
+def align_layer_status(layers):
+    """Make every area's status match its worst finding (item 13). Only touches areas that have graded findings."""
+    for L in layers or []:
+        if not isinstance(L, dict) or L.get("status") not in _STATUS_RANK:
+            continue
+        L["status"] = worst_finding_status((L.get("expert") or {}).get("findings"), L.get("status"))
+    return layers
 
 
 def analyse_step4(repo_name, built_with, findings_summary):
@@ -3811,6 +3851,10 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "List ALL critical findings FIRST (each as its own prompt), then warnings. "
         "NEVER omit or merge a critical finding — every critical MUST get its own prompt, even if you keep others brief. "
         "Produce up to 8 prompts total, one per finding, ordered criticals first then warnings.\\n"
+        "Within the same severity, order by danger: 1) anyone can take over an account or become an admin (default or "
+        "hard-coded passwords, login checked only in the browser, users granting themselves a role); 2) personal data anyone "
+        "can read or change (emails, photos, student or customer records); 3) money (payments, purchases, vouchers); "
+        "4) everything else.\\n"
         "For each finding output six keys with the literal numbered names below. Leave a whole block blank only if there is no finding at that position.\\n"
         "FIX_1_TITLE: short title of the highest-severity finding\\n"
         "FIX_1_SEV: critical|warning\\n"
@@ -3872,7 +3916,9 @@ def analyse_step4(repo_name, built_with, findings_summary):
 
     if lite_mode():
         prompt += ("\n\nLIGHT FREE SCAN: fill in ONLY FIX_1, for the single most serious finding (a critical one if there is "
-                   "any). Leave FIX_2 to FIX_8 and the three OPINION_ keys empty.\n")
+                   "any). If several are equally severe, choose by the danger order above: account takeover or becoming an "
+                   "admin first, then personal data anyone can read or change, then money. Leave FIX_2 to FIX_8 and the "
+                   "three OPINION_ keys empty.\n")
     # Up to 8 fixes with a prompt each: 2,000 tokens ran out on a big app and left the last fix without a prompt (9 Nov 2026).
     text = call_claude_text(prompt, max_tokens=900 if lite_mode() else 8000)
     lines = {}
@@ -4431,6 +4477,7 @@ def analyse_stream():
                         if s2_err:
                             yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
                         else:
+                            align_layer_status(s2.get("layers"))   # area colour = its worst finding (11 Nov 2026)
                             yield json.dumps({"event":"step2","data":s2}) + "\n"
                         f2 = None
                     if f3 is not None and f3.done():
@@ -4442,6 +4489,7 @@ def analyse_stream():
                             yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
                         else:
                             s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
+                            align_layer_status(s3.get("layers"))   # area colour = its worst finding (11 Nov 2026)
                             yield json.dumps({"event":"step3","data":s3}) + "\n"
                         f3 = None
                     if disc["done"] and not disc["sent"]:
@@ -4466,6 +4514,7 @@ def analyse_stream():
                 if f2 is not None:
                     try:
                         s2 = f2.result(timeout=10)
+                        align_layer_status(s2.get("layers"))   # area colour = its worst finding (11 Nov 2026)
                         yield json.dumps({"event":"step2","data":s2}) + "\n"
                     except Exception as e:
                         s2_err = _layer_failure_text(e, _STEP2_LAYERS)
@@ -4474,6 +4523,7 @@ def analyse_stream():
                     try:
                         s3 = f3.result(timeout=10)
                         s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
+                        align_layer_status(s3.get("layers"))   # area colour = its worst finding (11 Nov 2026)
                         yield json.dumps({"event":"step3","data":s3}) + "\n"
                     except Exception as e:
                         s3_err = _layer_failure_text(e, _STEP3_LAYERS)
@@ -8240,6 +8290,9 @@ def built_label(text):
     t = _re.split(r"\s[\u2014\u2013-]\s|[(:;,]|\.(?=\s|$)", full)[0]     # a full stop only when it ends a sentence ("v0.4", "Bolt.new" stay)
     if _re.search(r"\b(unknown|unclear|not|no|none|human|hand|custom)\b", t):
         return "Unknown"
+    # A guess is not a builder (11 Nov 2026: "Likely Lovable or a similar AI app builder" was listed as Lovable).
+    if _re.search(r"\b(likely|probably|possibly|perhaps|maybe|may|might|suggests?|appears?|similar|guess)\b", t):
+        return "Unknown"
     for key, label in _BUILT_LABELS:
         tail = r"(?:\.dev|(?![a-z0-9.]))" if key == "v0" else r"(?![a-z0-9])"     # "v0.dev" yes, "v0.4 of a library" no
         if _re.search(r"(?<![a-z0-9])" + _re.escape(key) + tail, t):
@@ -11434,6 +11487,7 @@ if _HAS_PAYWALL:
         grade_from_counts=grade_from_counts,
         mark_repeated_findings=mark_repeated_findings,   # one problem, one count (9 Nov 2026)
         rls_tables_note=rls_tables_note,                 # row level security note for the API/Frontend pass
+        align_layer_status=align_layer_status,           # area colour = its worst finding (11 Nov 2026)
         save_report_data=save_report_data,
         consume_scan=lambda purchase_id: billing.consume_scan(_sb, purchase_id),
         increment_analysis_count=increment_analysis_count,
