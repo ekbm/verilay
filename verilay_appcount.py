@@ -132,8 +132,16 @@ def apps_improved(sb, now=None):
         if _improved["failed_at"] and now - _improved["failed_at"] < FAIL_RETRY_SECONDS:
             return None
     try:
-        rows = (sb.table("reports").select("repo,score,prev:data->>prev_score").not_.is_("data->>prev_score", "null")
-                .order("created_at", desc=True).limit(5000).execute().data or [])
+        # Every re-scan is read, page by page (13 Nov 2026: a single request returns at most 1,000 rows on Supabase,
+        # so the old .limit(5000) would quietly have stopped counting once there were more re-scans than that).
+        rows, start, page = [], 0, 1000
+        while start < 200000:
+            part = (sb.table("reports").select("repo,score,prev:data->>prev_score").not_.is_("data->>prev_score", "null")
+                    .order("created_at", desc=True).range(start, start + page - 1).execute().data or [])
+            rows += part
+            if len(part) < page:
+                break
+            start += page
         val = count_improved(rows)
     except Exception as e:
         print(f"[appcount] apps improved not worked out: {type(e).__name__}", flush=True)

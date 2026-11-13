@@ -504,8 +504,11 @@ def _save_report_row(data, user_id=None):
             prev_row = None
             if repo and not data.get("private") and not data.get("eval"):      # a private report never borrows from, or lends to, another report of the same name; a test scan neither
                 try:
-                    prev = _sb.table("reports").select("score,data").eq("repo", repo).order("created_at", desc=True).limit(5).execute()
-                    prev_rows = [r for r in (prev.data or []) if not (r.get("data") or {}).get("eval")]
+                    # Read on past Verilay's own test scans of the same app (the accuracy check scans the public
+                    # practice apps again and again), instead of looking at a fixed 5 (13 Nov 2026).
+                    prev_rows, _, _ = newest_real_rows(
+                        lambda a, z: _sb.table("reports").select("score,data").eq("repo", repo)
+                        .order("created_at", desc=True).range(a, z).execute().data, need=1, page=20, cap=400)
                     if prev_rows:
                         prev_row = prev_rows[0]
                         prev_score = prev_row.get("score", "")
@@ -8203,6 +8206,37 @@ def admin_pro_survey():
 _SCAN_HOW = {"github": "GitHub", "zip": "ZIP", "url": "Live URL", "github_private": "Private repo"}
 
 
+def is_test_row(r):
+    """True for a report made by Verilay's own accuracy check (saved with data.eval = true)."""
+    r = r or {}
+    return str(r.get("eval")).lower() == "true" or bool((r.get("data") or {}).get("eval"))
+
+
+def newest_real_rows(fetch, need, page=300, cap=3000):
+    """The newest `need` reports that are not Verilay's own test scans, read page by page, newest first.
+    fetch(start, end) returns rows start..end (inclusive). Never "fetch N, then drop the test scans": a long test run
+    would push every real report out of a fixed window (13 Nov 2026: the admin list showed 7 real scans instead of 60).
+    Returns (rows, test_scans_skipped, complete). complete is False only when `cap` rows were read without finding
+    `need` real ones, so a caller can say so instead of quietly showing a short list."""
+    real, skipped, start = [], 0, 0
+    while start < cap:
+        rows = fetch(start, start + page - 1) or []
+        for r in rows:
+            if len(real) >= need:
+                break
+            if is_test_row(r):
+                skipped += 1
+            else:
+                real.append(r)
+        if len(real) >= need or len(rows) < page:
+            return real, skipped, True
+        start += page
+    return real, skipped, False
+
+
+_scan_stats = {"skipped": 0, "complete": True}
+
+
 def _scan_rows(limit=60):
     if not _HAS_SUPABASE:
         return [{"id": k, "created_at": "", "repo": (v.get("data") or {}).get("repo"), "score": ((v.get("data") or {}).get("health") or {}).get("score"),
@@ -8220,16 +8254,12 @@ def _scan_rows(limit=60):
             "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
             "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval")
     try:
-        # Verilay's own test scans stay out. Pages are read until `limit` real scans are found, however many test scans
-        # came in between (13 Nov 2026: about 170 test scans on 11-12 Nov filled a fixed 180-row window, so the page showed
-        # only 7 real scans). At most 3,000 rows are read, so a very long test run can't make the page slow.
-        real, page = [], 300
-        for start in range(0, 3000, page):
-            rows = _sb.table("reports").select(cols).order("created_at", desc=True).range(start, start + page - 1).execute().data or []
-            real += [r for r in rows if str(r.get("eval")).lower() != "true"]
-            if len(real) >= limit or len(rows) < page:
-                break
-        return real[:limit]
+        # Verilay's own test scans stay out, however many came in between (13 Nov 2026: about 170 test scans on 11-12 Nov
+        # filled a fixed 180-row window, so the page showed only 7 real scans). How many were skipped is shown on the page.
+        real, skipped, complete = newest_real_rows(
+            lambda a, z: _sb.table("reports").select(cols).order("created_at", desc=True).range(a, z).execute().data, need=limit)
+        _scan_stats.update(skipped=skipped, complete=complete)
+        return real
     except Exception as e:
         print(f"/admin/scans: full list unavailable, showing the basic one: {e}", flush=True)
     try:       # if a detail field is ever refused, the basic list still shows
@@ -8312,7 +8342,9 @@ def admin_scans():
     if not _request_is_admin():
         return "Not found", 404
     esc = _htmlmod.escape
+    _scan_stats.update(skipped=0, complete=True)
     rows = [r for r in _scan_rows() if str(r.get("deleted")).lower() != "true"]
+    _skipped, _complete = _scan_stats["skipped"], _scan_stats["complete"]
     today = datetime.utcnow().strftime("%Y-%m-%d")
     def kind(r):
         return "Deep" if str(r.get("deep")).lower() == "true" else ("Pro" if r.get("tier") == "pro" else "Free")
@@ -8360,7 +8392,12 @@ def admin_scans():
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(counts.items())) if counts else "")
                + (" &middot; " + " &middot; ".join(f"{k}: {n}" for k, n in sorted(how_counts.items())) if how_counts else "")
                + countries
-               + f'<br><span class="note">Showing the newest {len(rows)} reports. Times are UTC (add 11 hours for Sydney in summer).</span></div>')
+               + f'<br><span class="note">Showing the newest {len(rows)} reports'
+               + (f' ({_skipped} test scan{"" if _skipped == 1 else "s"} from the accuracy check left out)' if _skipped else '')
+               + '. Times are UTC (add 11 hours for Sydney in summer).</span>'
+               + ('' if _complete else '<br><b style="color:#A32D2D">Fewer real scans than usual:</b> the newest 3,000 reports '
+                  'were mostly test scans, so older real scans aren&rsquo;t shown. Nothing is lost; they are still saved.')
+               + '</div>')
     lines = ""
     for r in rows:
         k = kind(r)
