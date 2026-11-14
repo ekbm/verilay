@@ -1334,6 +1334,40 @@ def newsletter_add(email, place):
     return synced
 
 
+NEWSLETTER_WHERE = {"blog": "blog page", "post": "a blog post", "pricing": "Pricing page", "page": "newsletter page",
+                    "report": "a report"}
+
+
+def newsletter_admin_html(sb, esc):
+    """The admin page's "Newsletter sign-ups (N)" card. Never raises: a database problem shows a short note instead."""
+    head = '<details class="acc"><summary>\U0001F4F0 Newsletter sign-ups'
+    try:
+        rows = (sb.table("waitlist").select("email,source,created_at").like("source", "newsletter-%")
+                .order("created_at", desc=True).limit(1000).execute().data or []) if sb is not None else []
+    except Exception as e:
+        print(f"[admin] newsletter list unavailable: {type(e).__name__}", flush=True)
+        return (head + '</summary><div class="acc-body"><p class="note" style="margin:0">The list could not be read just now. '
+                'All sign-ups are also on <a href="/admin/users">Users and sign-ups</a>.</p></div></details>')
+    seen, people = set(), []
+    for r in rows:
+        em = str(r.get("email") or "").strip().lower()
+        if em and em not in seen:
+            seen.add(em); people.append(r)
+    cell = 'style="padding:6px 8px;font-size:12px;border-bottom:0.5px solid #e8e6e0"'
+    th = 'style="text-align:left;padding:6px 8px;font-size:11px;color:#6b6966"'
+    body = "".join(
+        f'<tr><td {cell}>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td><td {cell}>{esc(r.get("email"))}</td>'
+        f'<td {cell}>{esc(NEWSLETTER_WHERE.get(str(r.get("source") or "")[len("newsletter-"):], str(r.get("source") or "")))}</td></tr>'
+        for r in people)
+    return (head + f' ({len(people)})</summary><div class="acc-body">'
+            + ('<div style="overflow-x:auto"><table style="width:100%;min-width:480px;border-collapse:collapse">'
+               f'<tr><th {th}>When (UTC)</th><th {th}>Email</th><th {th}>Signed up on</th></tr>' + body + '</table></div>'
+               if people else '<p class="note" style="margin:0">No one has signed up yet.</p>')
+            + '<p class="note" style="margin:.5rem 0 0">Newest first, each email once. Download for beehiiv: '
+              '<a href="/admin/newsletter.csv">newsletter.csv</a> &middot; every list: <a href="/admin/users">Users and sign-ups</a>.</p>'
+            + '</div></details>')
+
+
 @bp.route("/admin/newsletter.csv")
 def newsletter_csv():
     """The opted-in newsletter list as a CSV for beehiiv's import (admin only): people who signed up for the newsletter
@@ -1871,7 +1905,9 @@ def admin_home():
     if not _is_admin_user(user):
         return "Not found", 404
     admin_note, monitor_note, interest_note, private_note, clients_note = _admin_sections()
-    people = f'<div class="grp">People and demand</div>{interest_note}{private_note}{clients_note}'
+    # Newsletter sign-ups first (14 Nov 2026, Moses: "I did not know someone had signed up until I checked my emails").
+    newsletter_note = newsletter_admin_html(_sb(), _esc)
+    people = f'<div class="grp">People and demand</div>{newsletter_note}{interest_note}{private_note}{clients_note}'
     body = (_ADMIN_CSS + '<div class="eyebrow">Admin</div><h1>Admin</h1>'
             + admin_note + _admin_tools_html() + people
             + (f'<div class="grp">Your own apps</div>{monitor_note}' if monitor_note else "")
