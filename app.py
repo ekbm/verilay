@@ -3757,7 +3757,12 @@ def apply_osv_library_fallback(s3, osv_vulns, osv_checked):
                 "action": "Ask your AI builder to check for outdated dependencies and update them to their patched versions.",
             }
             if keep_ai:
-                _vx = _re.compile(r"vulnerab|advisor|cve", _re.I)
+                # 14 Nov 2026: "Outdated third-party packages with known weaknesses" slipped past the old pattern and
+                # the same 9 packages were counted twice. Any AI title about known problems in packages now counts as
+                # the same thing as the checked count. (The old pattern's word marks around "cve" had been saved as two
+                # invisible backspace characters, so a title saying just "CVE" never matched either.)
+                _vx = _re.compile(r"vulnerab|advisor|\bcves?\b|outdated|known (security )?(weakness|issue|problem|flaw|risk)|"
+                                  r"security (weakness|issue|problem|flaw)", _re.I)
                 ex = layer.setdefault("expert", {})
                 ex["findings"] = [det_finding] + [f for f in (ex.get("findings") or [])
                                                   if not _vx.search(f"{f.get('title', '')}")]
@@ -9155,7 +9160,10 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append(
             f'<div class="card"><strong>Files reviewed: {files_read} of {files_total}</strong>{badge}{_limited}'
             f'<div style="font-size:13px;color:#666;margin-top:.35rem">'
-            + ("A deep scan reads far more of your codebase than the free analysis, which "
+            # 14 Nov 2026 (Moses): a 17-file upload read in full was still told "Want more files reviewed?". When every
+            # file was read, say so and offer nothing more.
+            + ("Every file you shared was read." if files_read >= files_total else
+               "A deep scan reads far more of your codebase than the free analysis, which "
                "covers the 25 files most likely to carry risk." if is_deep else
                "The free analysis covers the 25 files most likely to carry risk. Want more files reviewed, "
                "plus exact dependency package names and fixes? See the "
