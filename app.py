@@ -7043,6 +7043,10 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
 
   <h2 style="font-size:18px;font-weight:700;margin-bottom:.75rem">Other products</h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:2rem">
+    <a href="https://patchmap.verilay.dev" target="_blank" rel="noopener" class="product-card">
+      <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">Patchmap &#x2197;</div>
+      <div style="font-size:12px;color:#6b6966;line-height:1.5">Free tool for IT and print support: what each Windows update changed, known problems, and the files it touched.</div>
+    </a>
     <a href="https://diychatbots.com" target="_blank" class="product-card">
       <div style="font-weight:600;font-size:14px;color:#1a1917;margin-bottom:.25rem">DIYChatbots &#x2197;</div>
       <div style="font-size:12px;color:#6b6966;line-height:1.5">Free AI chatbot generator for small businesses — no code, no signup, self-hosted forever.</div>
@@ -10531,7 +10535,8 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <a href="/blog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Blog</a>
     <a href="/pricing" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Pricing</a>
     <a href="/changelog" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">Changelog</a>
-    <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0">GitHub</a>
+    <a href="https://github.com/ekbm/verilay" target="_blank" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0;border-bottom:0.5px solid var(--bdr)">GitHub</a>
+    <a href="https://patchmap.verilay.dev" target="_blank" rel="noopener" style="font-size:16px;color:var(--txt);text-decoration:none;padding:.6rem 0">Patchmap &#x2197; <span style="font-size:13px;color:var(--mut)">Windows update changes</span></a>
   </div>
 </div>
 
@@ -11365,6 +11370,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
     <a href="/terms" style="font-size:12px;color:var(--mut);text-decoration:none">Terms</a>
     <a href="/ai-disclaimer" style="font-size:12px;color:var(--mut);text-decoration:none">AI Disclaimer</a>
     <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:12px;color:var(--mut);text-decoration:none">Contact Moses</a>
+    <a href="https://patchmap.verilay.dev" target="_blank" rel="noopener" title="Also by us: what each Windows update changed (opens in a new tab)" style="font-size:12px;color:var(--mut);text-decoration:none">Patchmap &#x2197;</a>
   </div>
   <div style="margin-top:1rem">
     <a href="https://peerpush.com/p/verilay" target="_blank" rel="noopener">
