@@ -874,6 +874,14 @@ SECURITY_KEYWORDS = [
     'email','smtp','webhook','cron',
 ]
 
+# File types for picking which files to read (17 Nov 2026, change-list item 26).
+_PICK_CODE_EXT = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".go", ".rb", ".php", ".java", ".kt", ".cs", ".rs",
+                  ".swift", ".dart", ".vue", ".svelte", ".sql", ".sh", ".c", ".cc", ".cpp", ".h", ".hpp")
+_PICK_DATA_EXT = (".xml", ".csv", ".tsv", ".md", ".txt", ".json", ".geojson", ".svg", ".log", ".rst", ".html", ".htm")
+_PICK_CONFIG_WORDS = ("config", "setting", "env", "secret", "rule", "policy", "permission", "firebase", "supabase",
+                      "vercel", "netlify", "manifest", "auth", "login", "admin")
+
+
 def smart_file_selection(files, max_files=25):
     """Intelligently select the most security-relevant files from a repo."""
     all_paths = list(files.keys())
@@ -919,19 +927,28 @@ def smart_file_selection(files, max_files=25):
         remaining = [p for p in all_paths if p not in selected_set]
 
         def security_score(filepath):
+            # 17 Nov 2026 (change-list item 26): a 440-file repo got 24 XML data feeds read instead of its code, because
+            # data folders named email/, storage/ and server-roles/ matched the keywords. Code now outranks data: a
+            # keyword in the file's own name counts more than one in a folder name, code files get a boost, data and
+            # text files a penalty (unless their own name looks like config), and CI workflows (which hold secrets and
+            # permissions) a boost.
             name = filepath.lower()
+            base = name.rsplit('/', 1)[-1]
             score = 0
-            # Quick keyword check
-            for kw in SECURITY_KEYWORDS:
-                if kw in name:
-                    score += 2
-                    break  # One match is enough to boost
+            if any(kw in base for kw in SECURITY_KEYWORDS):
+                score += 2
+            elif any(kw in name for kw in SECURITY_KEYWORDS):
+                score += 1
             if any(d in name for d in ['/api/', '/auth/', '/db/', '/lib/', '/middleware/']):
                 score += 3
             if any(d in name for d in ['.test.', '.spec.', '/test/', '/tests/', '/assets/', '/public/', 'node_modules']):
                 score -= 10
-            if name.endswith(('.ts', '.tsx', '.py', '.go')):
-                score += 1
+            if name.endswith(_PICK_CODE_EXT):
+                score += 3
+            elif name.endswith(_PICK_DATA_EXT) and not any(k in base for k in _PICK_CONFIG_WORDS):
+                score -= 4
+            if name.startswith('.github/workflows/') and name.endswith(('.yml', '.yaml')):
+                score += 5
             return score
 
         # Only sort what we need
