@@ -1308,6 +1308,7 @@ async function runAnalysis() {
   window._incompleteLayers = [];
   window._layerErrorMsgs = [];
   window._p2AutoStarted = false;      // each new scan starts its own Part 2
+  window._aiDeclined = false;
   window._moreExtra = []; window._p2Fixes = null; window._startPrompt = '';
   stopTrickle();
   stopP2Trickle();
@@ -1559,6 +1560,7 @@ function handleStreamEvent(evt) {
     case 'saved':
       updateStepsProgress(97);
       savedReportId = evt.data.report_id;
+      if (evt.data.ai_declined) { window._aiDeclined = true; try { updateHealthDisplay(); } catch (e) {} }
       storeReportToken(evt.data.report_id, evt.data.manage_token);
       if (currentReport && currentReport.private) {
         // The server checks the report's own private key before it lets this browser open the report later.
@@ -1634,8 +1636,8 @@ function handleStreamEvent(evt) {
           window._p2AutoStarted = true;
           try { if (typeof plausible === 'function') plausible('Part 2 Auto Start'); } catch (e) {}
           setTimeout(function() { runPart2().catch(function() { p2.style.display = 'block'; }); }, 400);
-        } else {
-          p2.style.display = 'block';
+        } else if (!scanFullyIncomplete()) {
+          p2.style.display = 'block';      // nothing checked: no fix prompts to offer (18 Nov 2026)
         }
       }
       showCompareOffer();
@@ -2434,8 +2436,11 @@ function incompleteBannerHTML(names) {
   return '<div class="prod-banner" style="background:#F1EFE8;color:#444441">' +
     '<i class="ti ti-alert-triangle" style="font-size:26px"></i>' +
     '<div style="flex:1"><div style="font-size:16px;font-weight:600;margin-bottom:2px">Analysis incomplete</div>' +
-    '<div style="font-size:13px;opacity:.85">Verilay could not finish checking: ' + esc(names.join(', ')) +
-    '. This is not a grade and does not mean those parts are fine. Run the analysis again.</div></div></div>';
+    '<div style="font-size:13px;opacity:.85">' + (window._aiDeclined
+      ? 'Verilay&rsquo;s AI review declined to look at this code, so nothing was checked and there is no grade. ' +
+        'This can happen when code looks built to harm or deceive. Running the analysis again won&rsquo;t change it.'
+      : 'Verilay could not finish checking: ' + esc(names.join(', ')) +
+        '. This is not a grade and does not mean those parts are fine. Run the analysis again.') + '</div></div></div>';
 }
 
 // Open a group and bring it into view (used by the "Ask" button; optional input to focus).

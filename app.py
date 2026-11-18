@@ -2739,6 +2739,14 @@ UNANSWERED_DETAIL = ("Verilay's AI review did not return a readable answer for t
                      "it is healthy. Do not read this as a pass. Running the analysis again usually fixes this.")
 
 
+# 18 Nov 2026 (change-list item 28): when the AI declines to review the code (stop reason "refusal"), running the
+# scan again gives the same answer, so the report must not say it usually fixes things.
+DECLINED_DETAIL = ("Verilay's AI review declined to look at this code, so this area was not checked. This can happen "
+                   "when code looks built to harm or deceive. Running the analysis again won't change it.")
+DECLINED_REASON = ("Verilay's AI review declined to look at this code, so nothing was checked and there is no grade. "
+                   "This can happen when code looks built to harm or deceive. Running the analysis again won't change it.")
+
+
 def _unanswered_layer(name):
     """The layer entry for an area the AI answer said nothing about: plainly 'Not checked'."""
     return {
@@ -4582,6 +4590,12 @@ def analyse_stream():
                     partial["not_checked_reason"] = _diag[:300]
             if partial["layers"] and len(_missing) == len(partial["layers"]):
                 partial["analysis_incomplete"] = _missing
+                if "refusal" in (partial.get("not_checked_reason") or ""):
+                    partial["ai_declined"] = True
+                    for _l in partial["layers"]:
+                        for _f in (_l.get("expert") or {}).get("findings") or []:
+                            if _f.get("detail") == UNANSWERED_DETAIL:
+                                _f["detail"] = DECLINED_DETAIL
             if disc["result"] and disc["result"].get("status") in ("ok", "none"):
                 partial["discovery"] = disc["result"]
             partial["architecture_diagram"] = build_architecture_diagram(s1.get("stack", []), partial["layers"])
@@ -4621,6 +4635,8 @@ def analyse_stream():
             partial["health"]["passing"] = _pass
             partial["health"]["score"] = grade_with_coverage(grade_with_unchecked(grade_from_counts(_crit, _warn), _missing),
                                                              partial.get("files_read"), partial.get("files_total"))
+            if partial.get("analysis_incomplete"):
+                partial["health"]["score"] = ""      # nothing was checked: no grade at all (item 28, was saved as B)
             if not enough_read_for_a(partial.get("files_read"), partial.get("files_total")):
                 partial["health"]["limited_coverage"] = True
             partial["secret_scan"] = to_report_dict(scan_findings, scan_files_count)
@@ -4643,7 +4659,8 @@ def analyse_stream():
                 usage.scan_done("pro" if _pro else "full")
             except Exception as _inc_err:
                 print(f"Stats increment failed (non-critical): {_inc_err}", flush=True)
-            yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token}}) + "\n"
+            yield json.dumps({"event":"saved","data":{"report_id":report_id,"manage_token":manage_token,
+                                                      "ai_declined":bool(partial.get("ai_declined"))}}) + "\n"
 
             # ── Done with layers ────────────────────────────────────────
             yield json.dumps({"event":"layers_complete","data":{}}) + "\n"
@@ -4695,6 +4712,15 @@ def run_step4():
         built_with     = data.get("built_with","")
         findings       = data.get("findings_summary","")
         report_id      = data.get("report_id","")
+        if report_id:
+            try:
+                _rd = get_report_data(report_id) or {}
+            except Exception:
+                _rd = {}
+            if _rd.get("analysis_incomplete"):
+                # Nothing was checked, so there is nothing to fix (item 28: a prompt was written about unchecked areas)
+                return jsonify({"top_fixes": [], "security_score": {}, "second_opinion": {}, "part2_loaded": True,
+                                "nothing_checked": True})
 
         # Truncate findings if too long to prevent timeout. Raised from 800 —
         # that cap predates per-finding detail being included here at all, and
@@ -8278,7 +8304,7 @@ def _scan_rows(limit=60):
     cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
             "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
             "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
-            "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval")
+            "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval,declined:data->>ai_declined")
     try:
         # Verilay's own test scans stay out, however many came in between (13 Nov 2026: about 170 test scans on 11-12 Nov
         # filled a fixed 180-row window, so the page showed only 7 real scans). How many were skipped is shown on the page.
@@ -8445,6 +8471,8 @@ def admin_scans():
         if r.get("id") in returning:
             was = returning[r.get("id")]
             extras.append(f'<b style="color:#534AB7">&#8635; scanned again</b>' + (f' (was {esc(was)})' if was else ""))
+        if str(r.get("declined")).lower() == "true":
+            extras.append('<b style="color:#A32D2D">AI declined to review</b>')
         if r.get("user_id"):
             extras.append("signed in")
         if r.get("compared"):
@@ -8904,7 +8932,10 @@ Run a new analysis &rarr;</a>
         # Part of the analysis never finished: do not present a letter worked out from what did arrive.
         verdict_label = "Incomplete analysis"
         verdict_color = "#6b6966"
-        verdict_reason = ("Verilay could not finish checking: " + ", ".join(incomplete_names) +
+        # older reports have no ai_declined flag, but their saved reason says "stop: refusal"
+        _declined = data.get("ai_declined") or "refusal" in str(data.get("not_checked_reason") or "")
+        verdict_reason = (DECLINED_REASON if _declined else
+                          "Verilay could not finish checking: " + ", ".join(incomplete_names) +
                           ". This is not a grade. Run the analysis again.")
         score_display = "n/a"
         score_color = "#999"
@@ -9067,6 +9098,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
             _fix_data = dict(raw_data)
             _fix_data["dependency_fixes"] = deepreport.build_dependency_fixes(_vd)
             _fix_data["top_fixes"] = deepreport.drop_dependency_fixes(raw_data.get("top_fixes"), _vd)
+    if raw_data.get("analysis_incomplete"):
+        _fix_data = dict(_fix_data, top_fixes=[])     # nothing was checked: no fix prompts (item 28)
     _fixes_url, _packages_url = f"/report/{report_id}/fixes", f"/report/{report_id}/packages"
     if view == "full":
         if raw_data.get("is_deep_scan"):
@@ -9101,7 +9134,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                    'font-weight:600">See Verilay Pro</a></div></div>')
     out = _B["head"]          # the "not checked" note belongs with the grade it explains
     _nc = data.get("layers_not_checked") or [l.get("name", "") for l in layers if l.get("status") == "not_checked"]
-    if _nc:
+    if _nc and not data.get("analysis_incomplete"):     # nothing checked: the banner above already says so, with no grade
         out.append('<div class="card" style="background:#F1EFE8;border-color:#D3D1C7"><div style="font-size:13px;'
                    'color:#444"><strong>Not checked in this scan:</strong> '
                    + ", ".join(str(n) for n in _nc)  # data is already escaped
