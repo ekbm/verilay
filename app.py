@@ -157,7 +157,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-17.1"
+ANALYSIS_VERSION = "2026-11-19.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -1031,7 +1031,60 @@ _REPEAT_SINKS = ("innerhtml", "outerhtml", "dangerouslysetinnerhtml", "insertadj
 _REPEAT_CODE_FILE = _re.compile(r"[\w\-/]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|html|htm|py|rb|php)\b")
 
 
+_EXAMPLE_FILE = _re.compile(r"(\.env\.(example|sample|template|dist)|\.(example|sample|template))\b", _re.I)
+
+
+def cap_example_file_findings(layers, secret_findings=None):
+    """A finding about an example settings file (.env.example and the like) is not critical: such files hold placeholders,
+    and Verilay's key scanner, which reads every file, decides whether a value there is a real key (change-list item 27,
+    17 Nov 2026: the AI called a placeholder database password in .env.example critical). If the key scanner found a
+    critical key in that same file, the AI's critical stays."""
+    real = {str(getattr(f, "file", "") or (f.get("file") if isinstance(f, dict) else "") or "").split("/")[-1].lower()
+            for f in (secret_findings or [])
+            if str(getattr(f, "severity", "") or (f.get("severity") if isinstance(f, dict) else "")).lower() == "critical"}
+    for layer in layers or []:
+        for f in ((layer or {}).get("expert") or {}).get("findings") or []:
+            if not isinstance(f, dict) or str(f.get("severity")).lower() != "critical":
+                continue
+            where = f"{f.get('file', '')} {f.get('title', '')} {f.get('detail', '')}"
+            m = _EXAMPLE_FILE.search(where)
+            if not m:
+                continue
+            fname = str(f.get("file") or "").split("/")[-1].lower()
+            if fname and fname in real:
+                continue
+            f["severity"] = "warning"
+            f["capped_from"] = "critical"
+    return layers
+
+
+def _title_key(f):
+    """A finding's title, normalised for comparing (case, punctuation and spacing ignored)."""
+    return " ".join(_re.sub(r"[^a-z0-9 ]+", " ", str(f.get("title") or "").lower()).split())
+
+
+_SEV_RANK = {"critical": 2, "warning": 1}
+
+
 def mark_repeated_findings(layers):
+    # 19 Nov 2026 (change-list item 21): the very same title in two areas is one problem, counted once, at the more
+    # serious of the two (seen on a correct voucher app: "Voucher codes can be guessed without limit" in Auth AND API).
+    # Only titles of 5+ words: a short generic one ("No rate limit") can be two different problems in two areas.
+    by_title = {}
+    for layer in layers or []:
+        if not isinstance(layer, dict):
+            continue
+        for f in (layer.get("expert") or {}).get("findings") or []:
+            if isinstance(f, dict) and f.get("severity") in ("critical", "warning") and len(_title_key(f).split()) >= 5:
+                by_title.setdefault(_title_key(f), []).append((layer.get("name", ""), f))
+    _title_repeat = {}
+    for key, items in by_title.items():
+        if len({n for n, _ in items}) < 2:
+            continue
+        keep_name, keep = max(items, key=lambda it: _SEV_RANK.get(it[1].get("severity"), 0))
+        for n, f in items:
+            if f is not keep and n != keep_name:
+                _title_repeat[id(f)] = keep_name
     seen = []
     for layer in layers or []:
         if not isinstance(layer, dict):
@@ -1042,6 +1095,9 @@ def mark_repeated_findings(layers):
                 continue
             f.pop("repeat_of", None)
             if f.get("severity") not in ("critical", "warning"):
+                continue
+            if id(f) in _title_repeat:
+                f["repeat_of"] = _title_repeat[id(f)]
                 continue
             text = f"{f.get('title', '')} {f.get('detail', '')}"
             names = set(_REPEAT_NAME.findall(text)) | set(_REPEAT_PATH.findall(text))
@@ -3260,10 +3316,13 @@ def analyse_step1(files, tree, repo_name, method):
         "database (prisma/drizzle/mongoose/supabase/sqlalchemy/gorm/typeorm), "
         "and framework (nextjs/express/flask/fastapi/django/hono/nuxt/sveltekit/astro). "
         "Your findings must reflect actual libraries present — never assume patterns not in dependencies.\\n\\n"
+        "Write every value in English, even when the app's own text is in another language (translate names you list, "
+        "e.g. a Russian analytics tool as 'Yandex Metrica').\n"
         "Use exactly these keys:\n\n"
-        "SUMMARY: one sentence what this app does\n"
+        "SUMMARY: one sentence in English: what this app does\n"
         "BUILT_WITH: the AI platform that built this, ONLY when you can see a concrete marker for it (a builder folder or "
-        "config file such as .lovable, .replit, replit.nix, .bolt, .aistudio; lovable-tagger in package.json or the Vite "
+        "config file such as .lovable, .replit, replit.nix, .bolt, .aistudio, a base44/ folder; lovable-tagger or "
+        "@base44/sdk in package.json or the Vite "
         "config; a builder badge or script in index.html; the README saying so), and name that marker. If there is no "
         "marker, start with 'Unknown'. A common setup (React, Vite, Supabase, Google sign-in) is NOT a marker\n"
         "DEPTH: " + ("surface" if is_surface else "full") + "\n"
@@ -4608,6 +4667,8 @@ def analyse_stream():
             # step 1's separate guess, so the header can never contradict the layers
             # and the grade is a deterministic result of counting, not a re-rolled judgment.
             _crit = _warn = _pass = 0
+            cap_example_file_findings(partial["layers"], scan_findings)   # placeholders in .env.example: not critical (item 27)
+            align_layer_status(partial["layers"])
             mark_repeated_findings(partial["layers"])
             for _layer in partial["layers"]:
                 for _f in _layer.get("expert", {}).get("findings", []):
@@ -5019,6 +5080,60 @@ def self_monitor_health():
 # Blog routes — paste this into app.py before the sitemap route
 
 BLOG_POSTS = [
+    {
+        "slug": "plain-english-glossary-for-ai-app-builders",
+        "title": "Building AI Apps Like an Engineer: A Plain-English Glossary",
+        "seo_title": "Vibe Coding Glossary: App Security Terms Explained Simply",
+        "date": "November 19, 2026",
+        "category": "Guide",
+        "excerpt": "Frontend, backend, API key, row level security, CVE: the words you meet when building apps with AI, explained in plain English.",
+        "medium_url": None,
+        "read_time": "7 min read",
+        "featured": False,
+        "body": """
+<p>In my first post in this series, I admitted I'd spent months nodding along to words I didn't understand. Frontend. Deploy. Row-level security.</p>
+<p>This is the list I wish I'd had. Every term is explained with the same food delivery app from <a href="/blog/building-ai-apps-like-an-engineer-start-here">Start Here</a>, and where it helps, there's a question you can ask your AI builder about your own app.</p>
+<p>It's not complete. It will grow with every post in the series.</p>
+<h2>What an app is made of</h2>
+<p><strong>Frontend.</strong> The part you see and tap: menus, photos, the "Place order" button. It runs on your phone or in your browser. Anything in the frontend, a curious person can look inside and change.</p>
+<p><strong>Backend (or server).</strong> The company's own computers, where the real decisions happen: is this person signed in, is the price right, did the payment go through. Customers can't reach in and change it.</p>
+<p><strong>Database.</strong> Everything the app remembers: accounts, addresses, past orders. Only the backend should be able to read or change it.</p>
+<p><strong>API.</strong> The way the frontend asks the backend for something. "Show me my orders" and "cancel order 1042" are both API requests. If the backend doesn't check who's asking, anyone can send the same request.<br><em>Ask your AI:</em> "List every API route in my app, and for each one, who is allowed to call it."</p>
+<p><strong>Hosting.</strong> The service that keeps your app switched on and reachable on the internet.</p>
+<p><strong>Repository (or repo).</strong> The folder that holds all your app's code, usually on GitHub. <em>Public</em> means anyone can read it; <em>private</em> means only people you invite can.</p>
+<p><strong>Package (or library, or dependency).</strong> A ready-made building block someone else wrote, which your app uses instead of writing it from scratch. Most apps use hundreds of them, often without the builder knowing.</p>
+<h2>Who can do what</h2>
+<p><strong>Authentication.</strong> Checking <em>who</em> someone is. Signing in.</p>
+<p><strong>Authorization.</strong> Checking what that person is <em>allowed</em> to do. Signing in proves you're Sam; authorization stops Sam from opening Alex's order. Apps often get the first right and forget the second. OWASP, the group behind the best-known list of web app risks, puts broken access control at number one, and found some form of it in every application it tested. (<a href="https://owasp.org/Top10/2025/A01_2025-Broken_Access_Control/" rel="noopener">OWASP Top 10:2025</a>)<br><em>Ask your AI:</em> "Where does my app check that the signed-in person owns the record they're asking for? Is that check on the server?"</p>
+<p><strong>Admin.</strong> An account with extra powers, like refunding orders or seeing every customer. The check that someone really is an admin has to happen on the server, not by hiding a button.</p>
+<p><strong>Row Level Security (RLS).</strong> A Supabase feature: rules inside the database itself that decide which rows each person can see or change, such as "customers see only their own orders". Supabase's own guide warns that a table without it can be read and written by anyone who has access to that table. (<a href="https://supabase.com/docs/guides/database/postgres/row-level-security" rel="noopener">Supabase docs</a>)<br><em>Ask your AI:</em> "Does every table in my database have Row Level Security switched on? What does each policy allow?"</p>
+<p><strong>Rate limit.</strong> A cap on how often something can be done, like five wrong passwords and then a pause. Without one, someone can keep guessing.</p>
+<h2>Keys and secrets</h2>
+<p><strong>API key.</strong> A password your app uses to talk to another service, like payments, maps or AI. Some keys are meant to be public (a Supabase "anon" key, a Firebase website key) and are protected by other rules. Others are secret and must never be in the frontend.</p>
+<p><strong>Secret key.</strong> A key that gives real power: charging cards, reading every record, spending your AI credits. If it's in the frontend or in a public repo, assume someone has it.</p>
+<p><strong>Environment variable.</strong> A setting kept outside your code, on the server or hosting service, so secret keys don't end up in the repo. In code, it often looks like <code>process.env.SOMETHING</code>.</p>
+<p><strong>Hard-coded.</strong> Written straight into the code instead of kept in a setting. A hard-coded password or key is one anybody who can read the code can see.</p>
+<p><strong><code>.env.example</code>.</strong> A sample settings file with fake values, showing which settings an app needs. Placeholders in it are fine. Real keys in it are not.</p>
+<h2>How changes happen</h2>
+<p><strong>Commit.</strong> A saved snapshot of your code at one moment. A list of commits is your app's history, and your way back if something breaks.</p>
+<p><strong>Deploy.</strong> Putting a new version of your app live, where users see it.</p>
+<p><strong>Preview (or staging).</strong> A copy of your app where you try changes before real users see them.</p>
+<p><strong>Production.</strong> The live app your real users use.</p>
+<p><strong>Rollback.</strong> Going back to the last version that worked. The most important question before any change is "how do I undo this?"</p>
+<p><strong>Migration.</strong> A saved change to the structure of your database, such as adding a table or changing who can read it.</p>
+<h2>Words you'll see in a security report</h2>
+<p><strong>Vulnerability.</strong> A weakness someone could use to do something they shouldn't.</p>
+<p><strong>CVE.</strong> A public ID number for one known vulnerability, so everyone means the same problem when they talk about it. The CVE Program keeps "one CVE Record for each vulnerability". (<a href="https://www.cve.org/About/Overview" rel="noopener">CVE.org</a>) If a package your app uses has a CVE, updating the package usually fixes it.</p>
+<p><strong>Critical / warning.</strong> How serious a finding is. Critical means fix it before real people use the app. Warning means worth fixing, but not an emergency.</p>
+<p><strong>Injection (SQL injection).</strong> When text a visitor types gets treated as a command, for example a search box that can be tricked into reading the whole database.</p>
+<p><strong>XSS (cross-site scripting).</strong> When text a visitor types is put into the page as code, so it can run in other people's browsers.</p>
+<p><strong>False alarm (false positive).</strong> When a scanner calls something a problem and it isn't. Every scanner has some. A good report tells you how to check it yourself.</p>
+<h2>What's next</h2>
+<p>Next in this series: <strong>the rules file</strong>, one short file that tells your AI builder how you want it to work, so it stops repeating the same mistakes.</p>
+<p>Missing a word you keep running into? Tell me, and it goes in the next update of this page.</p>
+<p><em>Want to see which of these apply to your app? <a href="https://verilay.dev">Run a free check on verilay.dev</a>. It explains every finding in the same plain English.</em></p>
+""",
+    },
     {
         "slug": "fix-it-with-ai-understand-before-you-fix",
         "title": "Fix It With AI, Part 2: Understand Before You Fix",

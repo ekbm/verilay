@@ -2585,6 +2585,7 @@ function builderFromBuiltWith(text) {
   if (/\bv0(?:\.dev\b|(?![\w.]))/.test(lead)) return 'v0';     // "v0.dev" or "v0", not "v0.4 of a library"
   if (/\bcursor\b/.test(lead)) return 'Cursor';
   if (/\b(google )?ai studio\b/.test(lead)) return 'Google AI Studio';
+  if (/\bbase44\b/.test(lead)) return 'Base44';
   return '';
 }
 function _fixPrompt(f, data) {
