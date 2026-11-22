@@ -1857,14 +1857,15 @@ def launch_banner_html(now=None):
     """The note at the top of the home page: before the switch, Pro free until 30 Nov and what happens on 1 Dec; after
     it, that every fix prompt is now in the free scan. A new dismiss key, so visitors who closed the old banner see it."""
     if all_prompts_free(now):
-        key, text = "vl_dismissed_allprompts_banner", ('&#10024; New: <strong>every fix prompt is now included in the free '
-                                                        'scan</strong>, one for each problem it finds.')
-        link = '<a href="/pricing" style="color:var(--put);text-decoration:underline;font-weight:600">See what&rsquo;s free &rarr;</a>'
+        key, text = "vl_dismissed_scanfree_banner", ('&#10024; <strong>Scan free, as often as you need.</strong> See every '
+                                                      'problem in plain English. Want ready-to-paste fixes? Unlock every fix '
+                                                      'prompt for your app for A$2.99.')
+        link = '<a href="/pricing" style="color:var(--put);text-decoration:underline;font-weight:600">See pricing &rarr;</a>'
     else:
         until = launch_until_text() or "30 November"
-        key, text = "vl_dismissed_profree_banner", (f'&#10024; <strong>Verilay Pro is free until {until}</strong>: a fix prompt for '
-                                                     'every problem, and up to 50 files read. From 1 December, every fix prompt '
-                                                     'will be included in the free scan.')
+        key, text = "vl_dismissed_profree2_banner", (f'&#10024; <strong>Verilay Pro is free until {until}.</strong> From 1 '
+                                                      'December, scans and re-scans stay free, and every fix prompt for your app '
+                                                      'unlocks for A$2.99.')
         link = '<a href="/pricing#pro" style="color:var(--put);text-decoration:underline;font-weight:600">How to get it &rarr;</a>'
     return (f'<div id="launch-banner" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);'
             'padding:.65rem 2.25rem .65rem 1rem;text-align:center;margin-bottom:1.5rem;position:relative">'
@@ -8651,6 +8652,9 @@ _LIST_SOURCES = {
     "pro-launch-updates": "Tell me when Pro and Self Fix open",
     "verilay-features": "Occasional feature emails",
     "fix-session": "Self Fix early access (Pricing page)",
+    "fix-light": "Self Fix early access: Light (A$9.99)",
+    "fix-full": "Self Fix early access: Full (A$29)",
+    "fix-neither": "Self Fix early access: neither for now",
     "fix-session-report": "Self Fix early access (line on a report)",
     "fix-session-compare": "Self Fix early access (compare page)",
     "fix-session-footer": "Self Fix early access (report footer)",
@@ -8662,6 +8666,19 @@ _LIST_SOURCES = {
     "newsletter-page": "Monthly newsletter (newsletter page)",
     "newsletter-report": "Monthly newsletter (a report)",
 }
+
+
+_STAGE_LABELS = {"idea": "just trying an idea", "testing": "testing with a few people", "real-users": "real users or clients",
+                 "paying": "paying customers"}
+
+
+def _list_source_label(source):
+    """A waitlist source in plain words. Self Fix sign-ups since 22 Nov 2026 carry their option and app stage as
+    "fix-<choice>|<stage>|<where>"."""
+    parts = str(source or "").split("|")
+    label = _LIST_SOURCES.get(parts[0], parts[0])
+    extra = [_STAGE_LABELS.get(p, p) for p in parts[1:] if p]
+    return label + (" · " + " · ".join(extra) if extra else "")
 
 
 def _accounts():
@@ -8729,10 +8746,10 @@ def admin_users():
     counts = {}
     for r in waitlist:
         counts[r.get("source") or "?"] = counts.get(r.get("source") or "?", 0) + 1
-    count_html = " &middot; ".join(f"{esc(_LIST_SOURCES.get(k, k))}: <b>{n}</b>" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
+    count_html = " &middot; ".join(f"{esc(_list_source_label(k))}: <b>{n}</b>" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
     wl_rows = "".join(
         f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td><td>{esc(str(r.get("email") or ""))}</td>'
-        f'<td>{esc(_LIST_SOURCES.get(r.get("source") or "", r.get("source") or ""))}</td></tr>' for r in waitlist)
+        f'<td>{esc(_list_source_label(r.get("source") or ""))}</td></tr>' for r in waitlist)
     wl_html = (f'<h2>Email lists <span class="note">({len(waitlist)} sign-ups, newest first)</span></h2>'
                + (paywall.beehiiv_status_html() if _HAS_PAYWALL else "")
                + (f'<div class="card">{count_html}</div>' if count_html else "")
@@ -8843,14 +8860,14 @@ def pricing_page():
                       ["All six areas checked: login, settings, data, API, pages, packages",
                        "Exposed keys, risky packages and who can see your data",
                        ("<strong>A fix prompt for every problem</strong>" if all_prompts_free() else
-                        "A fix prompt for the most serious problem (every problem from 1 December)") if light_on
+                        "A fix prompt for the most serious problem (from 1 December, fix prompts unlock for A$2.99 per app)") if light_on
                        else "Fix prompts for your AI builder",
                        "Up to 3 scans a day"], "Run a free scan", "/"),
         ("" if all_prompts_free() else
          _pricing_card("Verilay Pro", pro_price, pro_unit, pro_state, pro_ok,
                       ["<strong>A ready-to-paste fix prompt for every finding</strong>", "Fuller explanations",
                        "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November",
-                       "From 1 December, every fix prompt is included in the free scan"],
+                       "Ends 30 November. From 1 December, scans stay free and fix prompts unlock for A$2.99 per app"],
                       pro_btn, pro_href, star=True)),
         _pricing_card("Deep scan", "A$19", "one-off", "Available", True,
                       ["Up to 150 files read", "Every risky package named, with its fix"]
@@ -8860,13 +8877,28 @@ def pricing_page():
                       ["Daily checks for new package problems and exposed keys",
                        "AI re-review weekly (Basic) or daily (Active, about A$9.99)", "An email when your grade drops"],
                       "Join early access", "/monitoring"),
-        _pricing_card("Verilay Self Fix session", "A$29", "a session", "Planned", False,
+        _pricing_card("Verilay Self Fix", "from A$9.99", "per app", "Planned · early access", False,
                       ["Verilay guides you through fixing each problem with your AI builder",
-                       "Checks your builder's replies", "A rescan shows what is fixed"],
+                       "Checks your builder's replies, and a rescan shows what is fixed",
+                       "Light (A$9.99) or Full (A$29)", "Guided, not guaranteed"],
                       "Tell me when it opens", "#fix-interest"),
     ])
-    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay Self Fix session: early access</h2>'
-                '<p>Self Fix sessions are not open yet. Leave your email and we will tell you once when they open. Nothing else.</p>'
+    _opt = ('display:block;border:.5px solid #d3d1c7;border-radius:10px;padding:9px 11px;margin:0 0 8px;font-size:14px;cursor:pointer')
+    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay Self Fix: early access</h2>'
+                '<p>Not open yet. Tell us what you&rsquo;d want, and we&rsquo;ll email you once when it opens. Nothing else.</p>'
+                '<div style="font-weight:600;font-size:14px;margin:.4rem 0 .4rem">1. Which would you want?</div>'
+                f'<label style="{_opt}"><input type="radio" name="fix-opt" value="light"> <strong>Light, A$9.99 per app</strong><br>'
+                '<span style="font-size:13px;color:#6b6966">About 5 rounds, for the most serious problems. A short summary at the end.</span></label>'
+                f'<label style="{_opt}"><input type="radio" name="fix-opt" value="full"> <strong>Full, A$29 per app</strong><br>'
+                '<span style="font-size:13px;color:#6b6966">About 10 rounds, the whole report. A full fix record (fixed, protected, left on '
+                'purpose, not checked) you can show a client or IT team.</span></label>'
+                f'<label style="{_opt}"><input type="radio" name="fix-opt" value="neither"> Neither for now</label>'
+                '<div style="font-weight:600;font-size:14px;margin:.6rem 0 .4rem">2. What stage is your app at?</div>'
+                '<select id="fix-stage" style="width:100%;max-width:360px;padding:8px;border-radius:8px;border:.5px solid #d3d1c7;font-size:14px;'
+                'font-family:inherit;margin-bottom:.6rem"><option value="">Choose one</option><option value="idea">Just trying an idea</option>'
+                '<option value="testing">Testing with a few people</option><option value="real-users">Real users or clients</option>'
+                '<option value="paying">Paying customers</option></select>'
+                '<div style="font-weight:600;font-size:14px;margin:.2rem 0 .4rem">3. Your email</div>'
                 '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="fix-email" type="email" maxlength="254" autocomplete="email" '
                 'placeholder="you@example.com" style="flex:1;min-width:200px;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;'
                 'padding:8px 10px;font-size:14px;font-family:inherit">'
@@ -8875,9 +8907,10 @@ def pricing_page():
                 """<script>(function(){var b=document.getElementById('fix-join');if(!b)return;b.onclick=async function(){
 var st=document.getElementById('fix-status'),em=(document.getElementById('fix-email').value||'').trim();
 if(!em){st.textContent='Add your email so we can tell you when it opens.';return;}b.disabled=true;st.textContent='';
+var o=document.querySelector('input[name="fix-opt"]:checked'),sg=document.getElementById('fix-stage');
 try{var r=await fetch('/pro/early-access',{method:'POST',headers:{'Content-Type':'application/json'},
-body:JSON.stringify({email:em,product:'fix',src:new URLSearchParams(location.search).get('src')||'',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
-if(r.ok){st.textContent='You are on the list. We will email you once when Verilay Self Fix sessions open.';b.style.display='none';
+body:JSON.stringify({email:em,product:'fix',choice:o?o.value:'',stage:sg?sg.value:'',src:new URLSearchParams(location.search).get('src')||'',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
+if(r.ok){st.textContent='You are on the list. We will email you once when Verilay Self Fix opens.';b.style.display='none';
 try{if(typeof plausible==='function')plausible('Fix Early Access Join');}catch(e){}return;}st.textContent=r.error||'It could not be sent. Try again.';}
 catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};})();</script>""")
     body = ("""<style>.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:1rem 0}

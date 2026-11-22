@@ -1250,17 +1250,26 @@ def pro_early_access_submit():
     # product "fix": Verilay self fix (fix sessions, A$29), from its card on /pricing; same list, its own source.
     fix = body.get("product") == "fix"
     src = body.get("src") if body.get("src") in ("report", "compare", "footer") else ""     # which "what's next" link brought them
+    # 22 Nov 2026 (Moses: test Self Fix demand before building): which option (Light A$9.99 / Full A$29 / neither) and the
+    # app's stage, kept in the waitlist source as "fix-<choice>|<stage>" so no new table is needed.
+    choice = body.get("choice") if body.get("choice") in ("light", "full", "neither") else ""
+    stage = body.get("stage") if body.get("stage") in ("idea", "testing", "real-users", "paying") else ""
+    if fix and choice:
+        source = f"fix-{choice}" + (f"|{stage}" if stage else "") + (f"|{src}" if src else "")
+    else:
+        source = (("fix-session-" + src) if src else "fix-session") if fix else "pro-scan"
     sb = _sb()
     if sb is not None:
         try:
-            sb.table("waitlist").insert({"email": email, "analyses_count": 0,
-                                         "source": (("fix-session-" + src) if src else "fix-session") if fix else "pro-scan"}).execute()
+            sb.table("waitlist").insert({"email": email, "analyses_count": 0, "source": source}).execute()
         except Exception as e:
             print(f"[pro] waitlist insert skipped (a duplicate is fine): {e}", flush=True)
     if _mon_notify_ok():
         threading.Thread(target=notify.send_monitoring_interest_alert,
-                         args=(email, "", {"Interested in": "Verilay Self Fix session, A$29 (early access)" if fix
-                                           else "Verilay Pro scan, A$4.99 (early access)"},
+                         args=(email, "", ({"Interested in": "Verilay Self Fix (early access)",
+                                            "Option": {"light": "Light, A$9.99", "full": "Full, A$29", "neither": "Neither for now"}.get(choice, "not chosen"),
+                                            "App stage": stage or "not given"} if fix
+                                           else {"Interested in": "Verilay Pro scan, A$4.99 (early access)"}),
                                "From the Verilay Self Fix session card on the Pricing page." if fix
                                else "From the locked fix prompts after a light free scan."), daemon=True).start()
     return jsonify({"ok": True})
