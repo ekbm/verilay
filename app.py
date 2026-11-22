@@ -157,7 +157,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-19.1"
+ANALYSIS_VERSION = "2026-11-22.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -880,6 +880,11 @@ _PICK_CODE_EXT = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".go", ".
 _PICK_DATA_EXT = (".xml", ".csv", ".tsv", ".md", ".txt", ".json", ".geojson", ".svg", ".log", ".rst", ".html", ".htm")
 _PICK_CONFIG_WORDS = ("config", "setting", "env", "secret", "rule", "policy", "permission", "firebase", "supabase",
                       "vercel", "netlify", "manifest", "auth", "login", "admin")
+# Notes are never config, whatever their name says (22 Nov 2026, item 30: "AUTH_AND_SECURITY_CONFIG_NOTES.md" files
+# escaped the data penalty through the words "auth" and "config" and filled a ZIP scan's places).
+_PICK_NOTE_EXT = (".md", ".txt", ".rst", ".log")
+# Security rules files decide who can read or write the data: always worth reading (Firebase/Firestore/Storage).
+_PICK_RULES_FILES = ("firestore.rules", "storage.rules", "database.rules.json", "database.rules")
 
 
 def smart_file_selection(files, max_files=25):
@@ -945,8 +950,12 @@ def smart_file_selection(files, max_files=25):
                 score -= 10
             if name.endswith(_PICK_CODE_EXT):
                 score += 3
+            elif name.endswith(_PICK_NOTE_EXT):
+                score -= 4
             elif name.endswith(_PICK_DATA_EXT) and not any(k in base for k in _PICK_CONFIG_WORDS):
                 score -= 4
+            if base in _PICK_RULES_FILES:
+                score += 6
             if name.startswith('.github/workflows/') and name.endswith(('.yml', '.yaml')):
                 score += 5
             return score
@@ -1376,22 +1385,12 @@ def fetch_zip(zip_bytes, filename):
             and not any(n.endswith(ext) for ext in SKIP_EXTENSIONS)
             and not n.startswith('.')
         ]
-        # Prioritise important files
-        PRIORITY_PATTERNS = [
-            'auth','login','database','db','schema','config',
-            'env','api','route','server','app','main','index',
-            'package.json','requirements.txt','supabase'
-        ]
-        def priority_score(name):
-            name_lower = name.lower()
-            for i, pat in enumerate(PRIORITY_PATTERNS):
-                if pat in name_lower:
-                    return i
-            return len(PRIORITY_PATTERNS)
-
-        filtered_names.sort(key=priority_score)
-        # Limit to 50 most relevant files
-        filtered_names = filtered_names[:50]
+        # 22 Nov 2026 (change-list item 30): ZIPs used to be sorted by a simpler word list and cut to 50 names BEFORE
+        # choosing, so a ZIP full of notes and tests whose names held "auth" or "config" lost its server.ts and even
+        # package.json, and the report said "25 of 50" for a bigger ZIP. Now every file name is kept (up to 5,000) and
+        # ZIPs are ranked by the same picker as GitHub repos (smart_file_selection: manifests and entry files first,
+        # code before notes, tests last).
+        filtered_names = filtered_names[:5000]
         name_map = {strip(n): n for n in filtered_names}
         def read_zip(rel):
             if rel not in name_map: return None
@@ -1404,22 +1403,10 @@ def fetch_zip(zip_bytes, filename):
                 if len(raw) > 100000: return None
                 return raw.decode("utf-8","replace")[:MAX_FILE_CHARS]
             except: return None
-        for p in PRIORITY_FILES:
-            if p in name_map:
-                c = read_zip(p)
-                if c: files[p] = c
-        for rel in name_map:
-            if len(files) >= max_files_now(): break
-            if rel in files: continue
-            fname = rel.lower().split("/")[-1]
-            for ext in [".ts",".js",".py",".json"]: fname = fname.replace(ext,"")
-            if any(k in fname for k in KEYWORDS):
-                c = read_zip(rel)
-                if c: files[rel] = c
-        # Then the rest of the code, best first, until the reading limit (31 Oct 2026). Only files whose NAMES held a
-        # keyword used to be read: a 50-file Minecraft mod was graded on Config.java alone, and a 4-file website on
-        # index.html without the app.js that runs it. GitHub scans already fill every slot.
-        for rel in sorted((r for r in name_map if r not in files), key=zip_fill_rank):
+        # The whole ranking (no contents needed: the picker ranks by path), then read in that order until the limit is
+        # reached. A file that can't be read (too big, not text) simply makes room for the next one.
+        ranked = smart_file_selection({rel: None for rel in name_map}, max_files=len(name_map))
+        for rel in ranked:
             if len(files) >= max_files_now(): break
             c = read_zip(rel)
             if c: files[rel] = c
@@ -1855,6 +1842,37 @@ _FOREVER = "9999"          # counter bucket that the ask_usage clean-up never re
 
 def _pro_until():
     return (os.getenv("VERILAY_PRO_LAUNCH_UNTIL", "2026-11-30") or "2026-11-30").strip()
+
+
+def all_prompts_free(now=None):
+    """True once the free-Pro launch has ended (the day after VERILAY_PRO_LAUNCH_UNTIL, so from 1 Dec 2026): every fix
+    prompt is then part of the free scan and the Pro offer goes away (Moses, 22 Nov 2026: only 3 of 200 free Pro scans
+    were used; keep Pro, named as Pro, free until 30 Nov, then switch). VERILAY_ALL_PROMPTS_FREE=1 switches it on early."""
+    if (os.getenv("VERILAY_ALL_PROMPTS_FREE", "") or "").strip() == "1":
+        return True
+    return (now or datetime.utcnow()).strftime("%Y-%m-%d") > _pro_until()
+
+
+def launch_banner_html(now=None):
+    """The note at the top of the home page: before the switch, Pro free until 30 Nov and what happens on 1 Dec; after
+    it, that every fix prompt is now in the free scan. A new dismiss key, so visitors who closed the old banner see it."""
+    if all_prompts_free(now):
+        key, text = "vl_dismissed_allprompts_banner", ('&#10024; New: <strong>every fix prompt is now included in the free '
+                                                        'scan</strong>, one for each problem it finds.')
+        link = '<a href="/pricing" style="color:var(--put);text-decoration:underline;font-weight:600">See what&rsquo;s free &rarr;</a>'
+    else:
+        until = launch_until_text() or "30 November"
+        key, text = "vl_dismissed_profree_banner", (f'&#10024; <strong>Verilay Pro is free until {until}</strong>: a fix prompt for '
+                                                     'every problem, and up to 50 files read. From 1 December, every fix prompt '
+                                                     'will be included in the free scan.')
+        link = '<a href="/pricing#pro" style="color:var(--put);text-decoration:underline;font-weight:600">How to get it &rarr;</a>'
+    return (f'<div id="launch-banner" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);'
+            'padding:.65rem 2.25rem .65rem 1rem;text-align:center;margin-bottom:1.5rem;position:relative">'
+            f'<span style="font-size:13px;color:var(--put);font-weight:500">{text} {link}</span>'
+            f'<button onclick="document.getElementById(\'launch-banner\').style.display=\'none\';try{{localStorage.setItem(\'{key}\',\'1\')}}catch(e){{}}" '
+            'style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;'
+            'color:var(--put);font-size:18px;line-height:1;padding:6px" aria-label="Dismiss">&times;</button></div>'
+            f'<script>try{{if(localStorage.getItem(\'{key}\')){{var _b=document.getElementById(\'launch-banner\');if(_b)_b.style.display=\'none\';}}}}catch(e){{}}</script>')
 
 
 def _pro_cap():
@@ -4439,6 +4457,8 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             if lite_mode():
                 s1["scan_tier"] = "lite"     # the light free scan: one fix prompt, the rest with Pro (see run_step4)
+                if all_prompts_free():
+                    s1["all_fixes"] = True   # from 1 Dec 2026: every fix prompt is in the free scan
                 # Step 1 can write fix prompts too: keep only the most serious one (criticals first).
                 _tf = sorted(s1.get("top_fixes") or [], key=lambda f: 0 if (f or {}).get("severity") == "critical" else 1)
                 s1["top_fixes"] = _tf[:1]
@@ -4801,7 +4821,11 @@ def run_step4():
         # Say which part of the app (and which detected technology) each fix is about. A separate small step,
         # checked against closed lists; on any failure the fixes are left exactly as written (verilay_fixtags.py).
         with_model(_m4, fixtags.tag_fixes)(result.get("top_fixes"), data.get("stack"), call_claude_text, findings)
-        if "haiku" in _m4:
+        if "haiku" in _m4 and all_prompts_free():
+            # From 1 Dec 2026: every fix prompt is part of the free scan (no Pro offer)
+            result["second_opinion"] = {}
+            result["all_fixes"] = True
+        elif "haiku" in _m4:
             # Light free scan: one fix prompt (the most serious finding); every other prompt is part of Verilay Pro.
             result["top_fixes"] = (result.get("top_fixes") or [])[:1]
             result["second_opinion"] = {}
@@ -7985,7 +8009,7 @@ _CMP_Q2 = {"free_vs_pro": ("Was the Pro report worth it?", {"yes": "Yes", "somew
 
 
 def _compare_ask_open(data):
-    if pro_launch_state()["active"]:
+    if pro_launch_state()["active"] or all_prompts_free():
         return True
     return bool((data or {}).get("scan_tier") == "pro" or (data or {}).get("is_deep_scan"))
 
@@ -8818,12 +8842,16 @@ def pricing_page():
         _pricing_card("Free scan", "A$0", "", "Available", True,
                       ["All six areas checked: login, settings, data, API, pages, packages",
                        "Exposed keys, risky packages and who can see your data",
-                       "A fix prompt for the most serious problem" if light_on else "Fix prompts for your AI builder",
+                       ("<strong>A fix prompt for every problem</strong>" if all_prompts_free() else
+                        "A fix prompt for the most serious problem (every problem from 1 December)") if light_on
+                       else "Fix prompts for your AI builder",
                        "Up to 3 scans a day"], "Run a free scan", "/"),
-        _pricing_card("Verilay Pro", pro_price, pro_unit, pro_state, pro_ok,
+        ("" if all_prompts_free() else
+         _pricing_card("Verilay Pro", pro_price, pro_unit, pro_state, pro_ok,
                       ["<strong>A ready-to-paste fix prompt for every finding</strong>", "Fuller explanations",
-                       "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November"],
-                      pro_btn, pro_href, star=True),
+                       "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November",
+                       "From 1 December, every fix prompt is included in the free scan"],
+                      pro_btn, pro_href, star=True)),
         _pricing_card("Deep scan", "A$19", "one-off", "Available", True,
                       ["Up to 150 files read", "Every risky package named, with its fix"]
                       + (["Code fitness: what&rsquo;s making your app hard to change"] if code_health_public() else [])
@@ -9136,7 +9164,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                                      "deep": ("Deep scan report", "#E1F5EE", "#1D9E75", "#085041")}[_tier]
     _twhat = {"deep": "Up to 150 files read, every risky package named",
               "pro": "Up to 50 files read, a fix prompt for every finding",
-              "free": ("A quick check, with a fix prompt for the most serious problem" if data.get("scan_tier") == "lite"
+              "free": ("A quick check, with a fix prompt for every problem" if data.get("all_fixes") else
+                       "A quick check, with a fix prompt for the most serious problem" if data.get("scan_tier") == "lite"
                        else "A quick check of your code")}[_tier]
     # How the app was shared, next to the kind of scan (28 Oct 2026; same labels as app.js tierBandHTML).
     _tmethod = {"github": "GitHub", "zip": "ZIP", "url": "Live URL", "github_private": "Private repo"}.get(raw_data.get("input_method") or "", "")
@@ -9238,7 +9267,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _to_fix = (_hl.get("critical") or 0) + (_hl.get("warnings") or 0)
     if _to_fix == 0 and "critical" not in _hl and "warnings" not in _hl:      # no counts saved: go by the grade
         _to_fix = 0 if _hl.get("score") in (None, "A") else 1
-    if raw_data.get("scan_tier") == "lite" and not is_preview and _to_fix > 0:
+    if raw_data.get("scan_tier") == "lite" and not is_preview and _to_fix > 0 and not raw_data.get("all_fixes") and not all_prompts_free():
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
                    'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro gives a '
@@ -9540,7 +9569,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if not is_preview and not data.get("analysis_incomplete"):
         _kind = "deep" if raw_data.get("is_deep_scan") else ("pro" if raw_data.get("scan_tier") == "pro" else "free")
         out.append(whats_next_html(next_offer_for_report(_kind, h.get("score"), h.get("critical"), h.get("warnings")), "report"))
-    out.append(OPTIONS_FOOTER)
+    out.append(OPTIONS_FOOTER.replace("Pro &middot; ", "") if all_prompts_free() else OPTIONS_FOOTER)
     out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">' + ('' if is_preview else 'Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br>') + '<strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
@@ -10438,7 +10467,8 @@ def index():
                 .replace("__MONITORING_CTA__", monitoring_cta)
                 .replace("__SELFMONITOR_TABLE__", selfmon_table)
                 .replace("__SAMPLE_BUTTON__", _sample_button_html())
-                .replace("__SAMPLE_PREVIEW__", _sample_preview()))
+                .replace("__SAMPLE_PREVIEW__", _sample_preview())
+                .replace("__LAUNCH_BANNER__", launch_banner_html()))
     improved = appcount.improved_for_homepage(_sb) if _HAS_SUPABASE else ""
     return render_template_string(html, analysis_count=count if count > 0 else "", improved_count=improved)
 
@@ -10709,14 +10739,7 @@ a{transition:color var(--dur-base) ease,background-color var(--dur-base) var(--e
      visitor who's already seen it doesn't get nagged on every return
      visit. Rendered every time server-side; the inline script below
      hides it immediately if previously dismissed, before first paint. -->
-<div id="deep-scan-banner" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.65rem 2.25rem .65rem 1rem;text-align:center;margin-bottom:1.5rem;position:relative">
-  <span style="font-size:13px;color:var(--put);font-weight:500">
-    🎉 New: The deep scan is here — get exact package names, versions, and fixes for every dependency vulnerability.
-    <a href="/deep-scan" style="color:var(--put);text-decoration:underline;font-weight:600">See what's included &rarr;</a>
-  </span>
-  <button onclick="document.getElementById('deep-scan-banner').style.display='none';localStorage.setItem('vl_dismissed_deepscan_banner','1')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--put);font-size:18px;line-height:1;padding:6px" aria-label="Dismiss">&times;</button>
-</div>
-<script>if(localStorage.getItem('vl_dismissed_deepscan_banner')){var _b=document.getElementById('deep-scan-banner');if(_b)_b.style.display='none';}</script>
+__LAUNCH_BANNER__
 
 <!-- ── Hero ────────────────────────────────────────────────── -->
 <div id="hero-section">

@@ -707,7 +707,8 @@ function tierBandHTML(data) {
   var t = reportTier(data), c = _TIERS[t], m = _METHOD[data.input_method] || null;
   var what = t === 'deep' ? 'Up to 150 files read, every risky package named'
            : t === 'pro' ? 'Up to 50 files read, a fix prompt for every finding'
-           : (data.scan_tier === 'lite' ? 'A quick check, with a fix prompt for the most serious problem' : 'A quick check of your code');
+           : (data.all_fixes ? 'A quick check, with a fix prompt for every problem'
+              : data.scan_tier === 'lite' ? 'A quick check, with a fix prompt for the most serious problem' : 'A quick check of your code');
   if (data.input_method === 'url') what = 'What the site shows a browser, not the source code';
   return '<div id="tier-band" data-tier="' + t + '" data-method="' + esc(data.input_method || '') + '" style="background:' + c[1] + ';border-left:4px solid ' + c[2] + ';border-radius:var(--r);' +
     'padding:.55rem .9rem;margin-bottom:10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
