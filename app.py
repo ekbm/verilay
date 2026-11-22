@@ -569,6 +569,41 @@ def _is_deleted_report(data):
     return isinstance(data, dict) and bool(data.get("deleted"))
 
 
+# ── Email addresses in report text are masked (22 Nov 2026, change-list item 34) ──────────────────────────────────────
+# A finding quoted an app owner's hard-coded admin emails in full, and anyone with a report link can open it. Every email
+# address in the report's text is shown as "a***@gmail.com": the person can still recognise it, a stranger can't copy it.
+# A fixed rule, not the AI. Fields that ARE someone's contact address (kept private and never shown) are left alone.
+import re as _re_mail
+_EMAIL_IN_TEXT = _re_mail.compile(r"(?<![\w.+-])([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24})\b")
+_EMAIL_KEEP_KEYS = {"save_for_email", "feedback_email", "email", "owner_email", "_mgmt", "repo", "repo_url", "came_from"}
+
+
+def mask_email_text(text):
+    """'jane.doe@gmail.com' -> 'j***@gmail.com'. Anything else unchanged."""
+    return _EMAIL_IN_TEXT.sub(lambda m: f"{m.group(1)}***@{m.group(2)}", text) if isinstance(text, str) and "@" in text else text
+
+
+def mask_emails(obj, _key=None):
+    """Mask every email address in a report's text, in place for dicts and lists. Returns the object."""
+    if isinstance(obj, dict):
+        for k, v in list(obj.items()):
+            if k in _EMAIL_KEEP_KEYS:
+                continue
+            if isinstance(v, str):
+                obj[k] = mask_email_text(v)
+            elif isinstance(v, (dict, list)):
+                mask_emails(v, k)
+        return obj
+    if isinstance(obj, list):
+        for i, v in enumerate(obj):
+            if isinstance(v, str):
+                obj[i] = mask_email_text(v)
+            elif isinstance(v, (dict, list)):
+                mask_emails(v)
+        return obj
+    return obj
+
+
 def get_report_data(report_id):
     """A saved report by id, or None. A private report (private-repository beta) is shown only to the browser that ran the scan or to
     a signed-in admin; to everyone else it simply does not exist (verilay_private.gate). A deep scan of a repository that is
@@ -576,6 +611,9 @@ def get_report_data(report_id):
     data = _get_report_data_raw(report_id)
     if isinstance(data, dict) and data.get("is_deep_scan") and not data.get("owner_only") and not _deep_repo_is_public(data.get("repo")):
         data = dict(data, owner_only=True)
+    if isinstance(data, dict):
+        import copy as _copy
+        data = mask_emails(_copy.deepcopy(data))      # item 34: no full email addresses in report text
     return privatemod.gate(data, report_id)
 
 
@@ -4592,7 +4630,7 @@ def analyse_stream():
                         if s2_err:
                             yield json.dumps({"event":"step2_error","data":s2_err}) + "\n"
                         else:
-                            align_layer_status(s2.get("layers"))   # area colour = its worst finding (11 Nov 2026)
+                            align_layer_status(s2.get("layers")); mask_emails(s2)   # area colour = worst finding; emails masked (item 34)
                             yield json.dumps({"event":"step2","data":s2}) + "\n"
                         f2 = None
                     if f3 is not None and f3.done():
@@ -4604,7 +4642,7 @@ def analyse_stream():
                             yield json.dumps({"event":"step3_error","data":s3_err}) + "\n"
                         else:
                             s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
-                            align_layer_status(s3.get("layers"))   # area colour = its worst finding (11 Nov 2026)
+                            align_layer_status(s3.get("layers")); mask_emails(s3)   # area colour = worst finding; emails masked (item 34)
                             yield json.dumps({"event":"step3","data":s3}) + "\n"
                         f3 = None
                     if disc["done"] and not disc["sent"]:
@@ -4629,7 +4667,7 @@ def analyse_stream():
                 if f2 is not None:
                     try:
                         s2 = f2.result(timeout=10)
-                        align_layer_status(s2.get("layers"))   # area colour = its worst finding (11 Nov 2026)
+                        align_layer_status(s2.get("layers")); mask_emails(s2)   # area colour = worst finding; emails masked (item 34)
                         yield json.dumps({"event":"step2","data":s2}) + "\n"
                     except Exception as e:
                         s2_err = _layer_failure_text(e, _STEP2_LAYERS)
@@ -4638,7 +4676,7 @@ def analyse_stream():
                     try:
                         s3 = f3.result(timeout=10)
                         s3 = apply_osv_library_fallback(s3, osv_vulns, osv_checked)
-                        align_layer_status(s3.get("layers"))   # area colour = its worst finding (11 Nov 2026)
+                        align_layer_status(s3.get("layers")); mask_emails(s3)   # area colour = worst finding; emails masked (item 34)
                         yield json.dumps({"event":"step3","data":s3}) + "\n"
                     except Exception as e:
                         s3_err = _layer_failure_text(e, _STEP3_LAYERS)
@@ -4835,6 +4873,7 @@ def run_step4():
             result["second_opinion"] = {}
             result["lite"] = True
             result["pro_launch"] = pro_launch_state()
+        mask_emails(result)          # item 34: no full email addresses in fix titles, reasons or prompts
         if report_id and not _can_write_report(report_id):
             # The fix list is still returned to the person who asked for it, but it is only
             # stored on a report this browser (or signed-in account) created.
