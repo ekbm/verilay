@@ -24,6 +24,7 @@ from flask import (Blueprint, request, redirect, jsonify, session,
                    render_template_string, Response)
 
 import verilay_billing as billing
+import verilay_prompts as _prompts
 import verilay_accounts as accounts
 import verilay_deepscan as deepscan
 import verilay_notify as notify
@@ -765,13 +766,20 @@ def stripe_webhook():
             if obj.get("payment_status") != "paid":
                 print(f"[webhook] {eid} completed but unpaid — ignored.", flush=True)
                 return jsonify({"ok": True, "ignored": "unpaid"})
-            billing.record_purchase(_sb(), obj, eid)
+            if _prompts.is_prompt_session(obj):          # the A$2.99 fix-prompt unlock, never a deep scan
+                _record_prompt_unlock(obj, eid)
+            else:
+                billing.record_purchase(_sb(), obj, eid)
 
         elif etype == "checkout.session.async_payment_succeeded":
-            billing.record_purchase(_sb(), obj, eid)
+            if _prompts.is_prompt_session(obj):
+                _record_prompt_unlock(obj, eid)
+            else:
+                billing.record_purchase(_sb(), obj, eid)
 
         elif etype in ("charge.refunded", "charge.dispute.created"):
             _revoke_for_payment_intent(obj.get("payment_intent"), etype)
+            _prompts.revoke(_sb(), obj.get("payment_intent"), "refunded" if etype == "charge.refunded" else "disputed")
 
         else:
             return jsonify({"ok": True, "ignored": etype})
@@ -783,6 +791,18 @@ def stripe_webhook():
         return jsonify({"error": "handler failed"}), 500
 
     return jsonify({"ok": True})
+
+
+# The app sets this to its own function (record the unlock + open the report's prompts); until then the unlock is
+# still recorded, and the report opens when the buyer lands on the success page.
+PROMPT_PAID_HOOK = None
+
+
+def _record_prompt_unlock(session, event_id):
+    if PROMPT_PAID_HOOK:
+        PROMPT_PAID_HOOK(session, event_id)
+    else:
+        _prompts.record(_sb(), session, event_id)
 
 
 def _revoke_for_payment_intent(payment_intent, reason):
@@ -1204,7 +1224,8 @@ def monitoring_interest_submit():
 
 # The early-access offer that pops up after a complete A-grade scan (app.js showMonitoringOffer). Same list as the
 # /monitoring form: the plan is kept in the existing price answer, so no new table is needed. Prices are a test
-# (A$3.99 Basic, A$9.99 Active, decided 25 Oct 2026); nothing is for sale and nothing is charged.
+# (A$3.99 Basic, A$9.99 Active, decided 25 Oct 2026; from 22 Nov only the A$3.99 plan is offered, "active" is still
+# accepted from pages already open); nothing is for sale and nothing is charged.
 MONITORING_PLANS = {
     "basic": {"name": "Basic", "price": "A$3.99", "price_choice": "u5"},
     "active": {"name": "Active", "price": "A$9.99", "price_choice": "5-10"},

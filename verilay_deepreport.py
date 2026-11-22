@@ -799,7 +799,7 @@ def render_fixes_html(data, part="all"):
 
     ai_html = ""
     for i, f in enumerate(fixes):
-        prompt = f.get("lovable_prompt") or f.get("general_prompt") or fallback_prompt(f)
+        prompt = "" if f.get("locked") else (f.get("lovable_prompt") or f.get("general_prompt") or fallback_prompt(f))
         sev = (f.get("severity") or "warning").lower()
         tag = _fix_label(f)
         tag_html = (f'<span style="display:block;font-size:11px;font-weight:400;color:#6b6966;margin-top:2px">'
@@ -809,7 +809,10 @@ def render_fixes_html(data, part="all"):
                     f'<div style="font-size:13px;color:#555;margin:.5rem 0 .35rem">{_esc(f.get("why_it_matters", ""))}</div>'
                     f'<div style="font-size:13px;color:#444"><strong>How:</strong> {_esc(f.get("how_to_fix", ""))}</div>'
                     f'<div style="font-size:12px;color:#888">Effort: {_esc(f.get("estimated_effort", ""))}</div>'
-                    f'{_prompt_block(f"fp{i}", prompt) if prompt else ""}{_selfcheck.render_for_fix(f)}</details>')
+                    f'{_prompt_block(f"fp{i}", prompt) if prompt else ""}'
+                    + ('<div style="font-size:12.5px;color:#534AB7;font-weight:600;margin:.45rem 0">&#128274; Fix prompt (Step 1 + Step 2): '
+                       '<a href="#fixes-unlock" style="color:#534AB7">in the unlock below</a></div>' if f.get("locked") else "")
+                    + f'{_selfcheck.render_for_fix(f)}</details>')
 
     dep_html = ""
     if groups:

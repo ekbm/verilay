@@ -96,10 +96,12 @@ import verilay_discovery as discovery_mod
 try:
     import verilay_billing as billing
     import verilay_paywall as paywall
+    import verilay_prompts as prompts_unlock
     _HAS_PAYWALL = True
 except Exception as _paywall_err:
     billing = None
     paywall = None
+    prompts_unlock = None
     _HAS_PAYWALL = False
     print(f"⚠️  Paid path not loaded: {_paywall_err}", flush=True)
 try:
@@ -1844,11 +1846,11 @@ def _pro_until():
     return (os.getenv("VERILAY_PRO_LAUNCH_UNTIL", "2026-11-30") or "2026-11-30").strip()
 
 
-def all_prompts_free(now=None):
-    """True once the free-Pro launch has ended (the day after VERILAY_PRO_LAUNCH_UNTIL, so from 1 Dec 2026): every fix
-    prompt is then part of the free scan and the Pro offer goes away (Moses, 22 Nov 2026: only 3 of 200 free Pro scans
-    were used; keep Pro, named as Pro, free until 30 Nov, then switch). VERILAY_ALL_PROMPTS_FREE=1 switches it on early."""
-    if (os.getenv("VERILAY_ALL_PROMPTS_FREE", "") or "").strip() == "1":
+def after_pro_launch(now=None):
+    """True once the free-Pro launch has ended (the day after VERILAY_PRO_LAUNCH_UNTIL, so from 1 Dec 2026). Then the
+    Pro offer goes away and fix prompts unlock for A$2.99 per app (verilay_prompts.py; Moses, 22 Nov 2026: only 3 of 200
+    free Pro scans were used). VERILAY_PRICING_SWITCH_NOW=1 switches it on early (for testing on Railway)."""
+    if (os.getenv("VERILAY_PRICING_SWITCH_NOW", "") or os.getenv("VERILAY_ALL_PROMPTS_FREE", "") or "").strip() == "1":
         return True
     return (now or datetime.utcnow()).strftime("%Y-%m-%d") > _pro_until()
 
@@ -1856,7 +1858,7 @@ def all_prompts_free(now=None):
 def launch_banner_html(now=None):
     """The note at the top of the home page: before the switch, Pro free until 30 Nov and what happens on 1 Dec; after
     it, that every fix prompt is now in the free scan. A new dismiss key, so visitors who closed the old banner see it."""
-    if all_prompts_free(now):
+    if after_pro_launch(now):
         key, text = "vl_dismissed_scanfree_banner", ('&#10024; <strong>Scan free, as often as you need.</strong> See every '
                                                       'problem in plain English. Want ready-to-paste fixes? Unlock every fix '
                                                       'prompt for your app for A$2.99.')
@@ -4458,8 +4460,8 @@ def analyse_stream():
             s1 = analyse_step1(files, tree, repo_name, method)
             if lite_mode():
                 s1["scan_tier"] = "lite"     # the light free scan: one fix prompt, the rest with Pro (see run_step4)
-                if all_prompts_free():
-                    s1["all_fixes"] = True   # from 1 Dec 2026: every fix prompt is in the free scan
+                if after_pro_launch():
+                    s1["paid_prompts"] = True   # from 1 Dec 2026: fix prompts unlock for A$2.99 per app
                 # Step 1 can write fix prompts too: keep only the most serious one (criticals first).
                 _tf = sorted(s1.get("top_fixes") or [], key=lambda f: 0 if (f or {}).get("severity") == "critical" else 1)
                 s1["top_fixes"] = _tf[:1]
@@ -4822,10 +4824,11 @@ def run_step4():
         # Say which part of the app (and which detected technology) each fix is about. A separate small step,
         # checked against closed lists; on any failure the fixes are left exactly as written (verilay_fixtags.py).
         with_model(_m4, fixtags.tag_fixes)(result.get("top_fixes"), data.get("stack"), call_claude_text, findings)
-        if "haiku" in _m4 and all_prompts_free():
-            # From 1 Dec 2026: every fix prompt is part of the free scan (no Pro offer)
+        if "haiku" in _m4 and after_pro_launch():
+            # From 1 Dec 2026: every fix is kept, but the prompt text is locked until paid: A$2.99 per app for 7 days,
+            # re-scans included (verilay_prompts.py). The full fixes stay on the server in "locked_fixes".
             result["second_opinion"] = {}
-            result["all_fixes"] = True
+            _lock_or_unlock_fixes(result, report_id, repo_name)
         elif "haiku" in _m4:
             # Light free scan: one fix prompt (the most serious finding); every other prompt is part of Verilay Pro.
             result["top_fixes"] = (result.get("top_fixes") or [])[:1]
@@ -4848,6 +4851,9 @@ def run_step4():
                 "security_score":result.get("security_score",{}),
                 "second_opinion":result.get("second_opinion",{}),
             }
+            for _k in ("locked_fixes", "prompts_locked", "prompts_unlocked_until"):
+                if _k in result:
+                    p2_data[_k] = result[_k]
             if _HAS_SUPABASE:
                 try:
                     res = _sb.table("reports").select("data").eq("id", report_id).execute()
@@ -4866,6 +4872,7 @@ def run_step4():
                 _reports[report_id]["data"].update(p2_data)
 
         result = dict(result)   # a copy: the "Check it yourself" steps below are drawn fresh and never saved
+        result.pop("locked_fixes", None)       # the locked prompt text never goes to the browser
         result["top_fixes"] = _fixes_with_checks(result.get("top_fixes"))
         result["part2_loaded"] = True
         return jsonify(result)
@@ -4888,6 +4895,165 @@ def _fixes_with_checks(fixes):
     return out
 
 
+# ── A$2.99 fix-prompt unlock (from 1 Dec 2026, verilay_prompts.py) ─────────────────────────────────────────────────
+def _nice_date(iso):
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%-d %B" if os.name != "nt" else "%#d %B")
+    except Exception:
+        return str(iso)[:10]
+
+
+def _visitor_unlock(key):
+    """An active unlock of this app that this visitor may use (their browser paid, or they are signed in with the
+    paying email), or None."""
+    if not prompts_unlock or not key or not _HAS_SUPABASE:
+        return None
+    sids = []
+    email = None
+    try:
+        from flask import session as _fs
+        sids = list(_fs.get("prompt_unlocks") or [])
+    except Exception:
+        pass
+    try:
+        import verilay_accounts as _acc
+        _me = _acc.current_user()
+        email = (_me or {}).get("email")
+    except Exception:
+        pass
+    return prompts_unlock.active_unlock(_sb, key, sids, email)
+
+
+def _lock_or_unlock_fixes(result, report_id, repo_name):
+    """Step 4 after the switch: keep every fix; lock the prompt text unless this visitor has unlocked this app."""
+    if not prompts_unlock:
+        return
+    rep = (get_report_data(report_id) if report_id else None) or {}
+    key = prompts_unlock.app_key(rep or {"input_method": "zip", "repo": repo_name},
+                                 billing.normalise_repo if billing else (lambda x: None))
+    unl = _visitor_unlock(key)
+    if unl:
+        result["prompts_unlocked_until"] = unl.get("expires_at")
+        result["prompts_locked"] = False
+        return
+    stubs, full = prompts_unlock.lock(result.get("top_fixes"))
+    result["top_fixes"] = stubs
+    result["locked_fixes"] = full
+    result["prompts_locked"] = bool(full)
+    result["unlock_price"] = prompts_unlock.price_label()
+    result["unlock_days"] = prompts_unlock.UNLOCK_DAYS
+
+
+def unlock_box_html(report_id, n):
+    """The "Unlock every fix prompt for this app" box on a saved report (a plain form: works without JavaScript)."""
+    price = prompts_unlock.price_label() if prompts_unlock else "A$2.99"
+    days = prompts_unlock.UNLOCK_DAYS if prompts_unlock else 7
+    esc = _htmlmod.escape
+    return ('<div class="card" id="fixes-unlock" style="border:2px solid #534AB7;background:#EEEDFE">'
+            f'<div style="font-size:17px;font-weight:700;color:#3C3489">Unlock every fix prompt for this app: {esc(price)}</div>'
+            '<ul style="font-size:13.5px;color:#3C3489;margin:.4rem 0 .7rem;padding-left:1.1rem;line-height:1.6">'
+            f'<li>A ready-to-paste prompt for all {int(n)} problem{"" if n == 1 else "s"}, each with &ldquo;explain first&rdquo; and &ldquo;go ahead&rdquo; steps</li>'
+            f'<li>Unlocked for <strong>{days} days</strong>: re-scan after each fix and the new report&rsquo;s prompts are unlocked too</li>'
+            '<li>Right here on this report: no second scan, no sign-up</li></ul>'
+            f'<form method="post" action="/prompts/checkout" style="margin:0"><input type="hidden" name="report_id" value="{esc(report_id)}">'
+            f'<button type="submit" style="background:#534AB7;color:#fff;border:0;border-radius:10px;padding:10px 18px;font-size:15px;'
+            f'font-weight:600;font-family:inherit;cursor:pointer">Unlock for {esc(price)} &rarr;</button>'
+            '<span style="font-size:12px;color:#3C3489;margin-left:8px">One-off payment, card or Apple/Google Pay</span></form>'
+            '<div style="font-size:12.5px;color:#3C3489;margin-top:10px;opacity:.85">Scanning stays free for everyone. Fix prompts keep '
+            'Verilay running and improving.</div></div>')
+
+
+def apply_unlock_to_report(report_id, row):
+    """After a paid unlock: put the full fixes back on that report (for good) and note until when the app is unlocked."""
+    rid = str(report_id or "")
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid):
+        return
+    try:
+        data = None
+        if _HAS_SUPABASE:
+            res = _sb.table("reports").select("data").eq("id", rid).execute()
+            data = dict(res.data[0]["data"]) if res.data else None
+        elif rid in _reports:
+            data = dict(_reports[rid]["data"])
+        if not data:
+            return
+        if data.get("locked_fixes"):
+            data["top_fixes"] = data["locked_fixes"]
+        data.pop("locked_fixes", None)
+        data["prompts_locked"] = False
+        data["prompts_unlocked_until"] = (row or {}).get("expires_at")
+        if _HAS_SUPABASE:
+            _sb.table("reports").update({"data": data}).eq("id", rid).execute()
+        if rid in _reports:
+            _reports[rid]["data"] = data
+    except Exception as e:
+        print(f"[prompts] could not unlock report {rid}: {e}", flush=True)
+
+
+def _on_prompt_paid(session, event_id=None):
+    """Webhook and success page: record the unlock once, then open that report's prompts."""
+    row = prompts_unlock.record(_sb if _HAS_SUPABASE else None, session, event_id)
+    if row:
+        apply_unlock_to_report(row.get("report_id"), row)
+    return row
+
+
+if paywall is not None:
+    paywall.PROMPT_PAID_HOOK = _on_prompt_paid
+
+
+@app.route("/prompts/checkout", methods=["POST"])
+def prompts_checkout():
+    rid = (request.form.get("report_id") or (request.get_json(silent=True) or {}).get("report_id") or "").strip()
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid):
+        return redirect("/")
+    data = get_report_data(rid)
+    if not data or not data.get("prompts_locked"):
+        return redirect(f"/report/{rid}")
+    if not (prompts_unlock and billing and billing.PAYWALL_ENABLED and billing.configured()):
+        return redirect(f"/report/{rid}?unlock=unavailable")
+    allowed, _ = check_rate_limit("unlock:" + get_ip())
+    if not allowed:
+        return redirect(f"/report/{rid}?unlock=busy")
+    key = prompts_unlock.app_key(data, billing.normalise_repo)
+    if not key:
+        return redirect(f"/report/{rid}")
+    email = None
+    try:
+        import verilay_accounts as _acc
+        email = (_acc.current_user() or {}).get("email")
+    except Exception:
+        pass
+    try:
+        url = prompts_unlock.create_checkout(billing._stripe, billing.BASE_URL, rid, key, email)
+    except Exception as e:
+        print(f"[prompts] checkout create failed for {rid}: {e}", flush=True)
+        return redirect(f"/report/{rid}?unlock=failed")
+    return redirect(url, code=303)
+
+
+@app.route("/prompts/unlocked")
+def prompts_unlocked():
+    sid = (request.args.get("session_id") or "").strip()
+    s = billing.retrieve_paid_session(sid) if (billing and sid) else None
+    if not s or not prompts_unlock.is_prompt_session(s):
+        return redirect("/?unlock=notfound")
+    row = None
+    try:
+        row = _on_prompt_paid(s)
+    except Exception as e:
+        print(f"[prompts] success-page record failed (the webhook will retry): {e}", flush=True)
+    try:
+        from flask import session as _fs
+        lst = [x for x in (_fs.get("prompt_unlocks") or []) if x != s.get("id")]
+        _fs["prompt_unlocks"] = (lst + [s.get("id")])[-20:]
+        _fs.permanent = True
+    except Exception:
+        pass
+    rid = ((s.get("metadata") or {}).get("report_id") or (row or {}).get("report_id") or "")
+    return redirect(f"/report/{rid}?unlocked=1" if _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid) else "/")
+
+
 @app.route("/report-data/<report_id>")
 def report_data(report_id):
     """Return report JSON for loading in history view."""
@@ -4898,7 +5064,7 @@ def report_data(report_id):
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
                                                        "improvement_story", "pro_survey", "compare_feedback", "country", "rescan_feedback",
-                                                       "save_for_email")}
+                                                       "save_for_email", "locked_fixes")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -8010,7 +8176,7 @@ _CMP_Q2 = {"free_vs_pro": ("Was the Pro report worth it?", {"yes": "Yes", "somew
 
 
 def _compare_ask_open(data):
-    if pro_launch_state()["active"] or all_prompts_free():
+    if pro_launch_state()["active"] or after_pro_launch():
         return True
     return bool((data or {}).get("scan_tier") == "pro" or (data or {}).get("is_deep_scan"))
 
@@ -8859,11 +9025,14 @@ def pricing_page():
         _pricing_card("Free scan", "A$0", "", "Available", True,
                       ["All six areas checked: login, settings, data, API, pages, packages",
                        "Exposed keys, risky packages and who can see your data",
-                       ("<strong>A fix prompt for every problem</strong>" if all_prompts_free() else
+                       ("Every problem explained, with &ldquo;check it yourself&rdquo; steps; re-scans free" if after_pro_launch() else
                         "A fix prompt for the most serious problem (from 1 December, fix prompts unlock for A$2.99 per app)") if light_on
                        else "Fix prompts for your AI builder",
                        "Up to 3 scans a day"], "Run a free scan", "/"),
-        ("" if all_prompts_free() else
+        (_pricing_card("Fix prompts", prompts_unlock.price_label() if prompts_unlock else "A$2.99", "per app", "Available", True,
+                       ["<strong>Every fix prompt</strong>, Step 1 and Step 2", f"For {prompts_unlock.UNLOCK_DAYS if prompts_unlock else 7} days, re-scans included",
+                        "Unlocked right on your report, no second scan", "One-off, no subscription"],
+                       "Run a free scan", "/", star=True) if after_pro_launch() else
          _pricing_card("Verilay Pro", pro_price, pro_unit, pro_state, pro_ok,
                       ["<strong>A ready-to-paste fix prompt for every finding</strong>", "Fuller explanations",
                        "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November",
@@ -8875,7 +9044,7 @@ def pricing_page():
                       + ["Up to 6 similar projects", "Re-scans of the same app for 30 days"], "See the deep scan", "/deep-scan"),
         _pricing_card("Monitoring", "A$3.99", "a month", "Planned · early access", False,
                       ["Daily checks for new package problems and exposed keys",
-                       "AI re-review weekly (Basic) or daily (Active, about A$9.99)", "An email when your grade drops"],
+                       "AI re-review once a week when your code changed", "An email when your grade drops"],
                       "Join early access", "/monitoring"),
         _pricing_card("Verilay Self Fix", "from A$9.99", "per app", "Planned · early access", False,
                       ["Verilay guides you through fixing each problem with your AI builder",
@@ -9197,7 +9366,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                                      "deep": ("Deep scan report", "#E1F5EE", "#1D9E75", "#085041")}[_tier]
     _twhat = {"deep": "Up to 150 files read, every risky package named",
               "pro": "Up to 50 files read, a fix prompt for every finding",
-              "free": ("A quick check, with a fix prompt for every problem" if data.get("all_fixes") else
+              "free": ("A quick check of every area; fix prompts unlock for A$2.99" if data.get("paid_prompts") else
                        "A quick check, with a fix prompt for the most serious problem" if data.get("scan_tier") == "lite"
                        else "A quick check of your code")}[_tier]
     # How the app was shared, next to the kind of scan (28 Oct 2026; same labels as app.js tierBandHTML).
@@ -9300,7 +9469,13 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     _to_fix = (_hl.get("critical") or 0) + (_hl.get("warnings") or 0)
     if _to_fix == 0 and "critical" not in _hl and "warnings" not in _hl:      # no counts saved: go by the grade
         _to_fix = 0 if _hl.get("score") in (None, "A") else 1
-    if raw_data.get("scan_tier") == "lite" and not is_preview and _to_fix > 0 and not raw_data.get("all_fixes") and not all_prompts_free():
+    if raw_data.get("prompts_locked") and raw_data.get("locked_fixes") and not is_preview and _to_fix > 0:
+        out.append(unlock_box_html(report_id, len(raw_data.get("locked_fixes") or [])))
+    elif raw_data.get("prompts_unlocked_until") and not is_preview:
+        out.append('<div class="card" style="background:#E1F5EE;border-color:#9FE1CB"><div style="font-size:13px;color:#085041">'
+                   f'&#10003; <strong>Fix prompts unlocked for this app until {_htmlmod.escape(_nice_date(raw_data["prompts_unlocked_until"]))}.</strong> '
+                   'Re-scan after each fix: the new report&rsquo;s prompts are unlocked too.</div></div>')
+    if raw_data.get("scan_tier") == "lite" and not is_preview and _to_fix > 0 and not raw_data.get("paid_prompts") and not after_pro_launch():
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'
                    'line-height:1.55">This free scan includes a fix prompt for the most serious problem. Verilay Pro gives a '
@@ -9602,7 +9777,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if not is_preview and not data.get("analysis_incomplete"):
         _kind = "deep" if raw_data.get("is_deep_scan") else ("pro" if raw_data.get("scan_tier") == "pro" else "free")
         out.append(whats_next_html(next_offer_for_report(_kind, h.get("score"), h.get("critical"), h.get("warnings")), "report"))
-    out.append(OPTIONS_FOOTER.replace("Pro &middot; ", "") if all_prompts_free() else OPTIONS_FOOTER)
+    out.append(OPTIONS_FOOTER.replace("Pro &middot; ", "") if after_pro_launch() else OPTIONS_FOOTER)
     out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">' + ('' if is_preview else 'Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br>') + '<strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 
