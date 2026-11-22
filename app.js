@@ -1099,7 +1099,9 @@ function init() {
       var note = document.createElement('div');
       note.id = 'pro-ready';
       note.style.cssText = 'background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:1rem;font-size:14px;color:var(--put);line-height:1.55';
-      note.innerHTML = '<strong>Your free Verilay Pro scan is unlocked.</strong> ' +
+      var _bigger = sessionStorage.getItem('verilay_pro_kind') === 'bigger';
+      note.innerHTML = (_bigger ? '<strong>Your bigger scan is paid for.</strong> It reads up to 50 files with the stronger AI. '
+                                : '<strong>Your free Verilay Pro scan is unlocked.</strong> ') +
         (proMethod === 'zip' ? 'Choose your ZIP file again, then press Analyse.'
          : proMethod === 'github_private' ? 'Verilay gave up its access to your private repository after the free scan, so connect it again: ' +
            'the Pro scan starts as soon as you choose the repository. This uses your second private scan today, and the Pro report stays private to this browser. ' +
@@ -3640,6 +3642,12 @@ function renderPart2(data) {
     html += '</div></details>';
   });
   if (data.prompts_locked) html += unlockBoxHTML(data);
+  var _cr = currentReport || {};
+  if (data.bigger_offer && savedReportId) html += '<div id="bigger-scan" style="border:.5px solid var(--pu);border-radius:12px;padding:.85rem 1rem;margin:.6rem 0;background:var(--sur)">' +
+    '<div style="font-size:15px;font-weight:700;color:var(--put)">This scan read ' + (_cr.files_read || 25) + ' of your ' + (_cr.files_total || '') + ' files. Want a bigger scan? ' + esc(data.bigger_price || 'A$4.99') + '</div>' +
+    '<div style="font-size:13.5px;color:var(--mut);margin:.35rem 0 .6rem;line-height:1.55">Runs again reading <strong>up to 50 files</strong> with Verilay&rsquo;s <strong>stronger AI</strong>, and includes <strong>every fix prompt</strong> for this app for 7 days. It opens as a new report.</div>' +
+    '<form method="post" action="/bigger/checkout" style="margin:0"><input type="hidden" name="report_id" value="' + esc(savedReportId) + '">' +
+    '<button type="submit" style="background:var(--sur);color:var(--pu);border:1.5px solid var(--pu);border-radius:10px;padding:8px 16px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Run a bigger scan, ' + esc(data.bigger_price || 'A$4.99') + ' &rarr;</button></form></div>';
   else if (data.prompts_unlocked_until) html += '<div style="background:var(--grl);color:var(--grt);border-radius:8px;padding:.5rem .8rem;font-size:13px;margin:.6rem 0">&#10003; <strong>Fix prompts unlocked for this app.</strong> Re-scan after each fix: the new report&rsquo;s prompts are unlocked too.</div>';
 
   // Light free scan: the other fix prompts are part of Verilay Pro (a folded, locked row, then the Pro card).

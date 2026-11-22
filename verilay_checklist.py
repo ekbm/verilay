@@ -17,11 +17,11 @@ Rules it follows (decided with Moses, 2026-10-20):
 from html import escape
 
 TITLE = "Vibe Coding Security Checklist: 10 Questions for Your AI-Built App"          # the page heading
-SEO_TITLE = "Vibe Coding Security Checklist: 10 Plain Questions | Verilay"            # the browser and search-result title (kept under 60 characters)
+SEO_TITLE = "Free Vibe Coding Security Checklist (10 Questions) | Verilay"            # the browser and search-result title (kept under 60 characters)
 BLOG_TITLE = "Vibe Coding Security Checklist: 10 Questions to Ask Before You Launch"   # the blog post
 SLUG = "10-point-security-checklist-ai-built-app"
-DESCRIPTION = ("A free vibe coding security checklist for Lovable, Replit and Bolt apps: ten plain questions to ask before launch, "
-               "each with a way to check it yourself.")
+DESCRIPTION = ("Free vibe coding security checklist for Lovable, Replit and Bolt apps: 10 questions to ask before launch, "
+               "each with a quick self-check. No sign-up.")
 NOT_A_STANDARD = "General good practice. Not a standard, and not a guarantee."
 
 # coverage kind -> (chip text, chip colours)

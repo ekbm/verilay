@@ -27,10 +27,23 @@ TAX_CODE = (os.getenv("DEEP_SCAN_TAX_CODE", "txcd_10103001") or "txcd_10103001")
 PROMPT_KEYS = ("general_prompt", "lovable_prompt", "replit_prompt", "fix_prompt")
 TABLE = "prompt_unlocks"
 
+# The bigger scan (Moses, 22 Nov 2026): for apps with more than 25 files, A$4.99 runs the scan again reading up to 50
+# files with the stronger AI, and includes the fix prompts (the same 7-day unlock of the app, recorded in the same table).
+BIGGER_PRODUCT = "bigger_scan_v1"
+BIGGER_PRICE_CENTS = int((os.getenv("BIGGER_SCAN_PRICE_CENTS", "499") or "499").strip())
+
+
+def _label(amount_cents):
+    whole, cents = amount_cents // 100, amount_cents % 100
+    return f"A${whole}" + (f".{cents:02d}" if cents else "") if CURRENCY == "aud" else f"{whole}.{cents:02d} {CURRENCY.upper()}"
+
 
 def price_label():
-    whole, cents = PRICE_CENTS // 100, PRICE_CENTS % 100
-    return f"A${whole}" + (f".{cents:02d}" if cents else "") if CURRENCY == "aud" else f"{whole}.{cents:02d} {CURRENCY.upper()}"
+    return _label(PRICE_CENTS)
+
+
+def bigger_price_label():
+    return _label(BIGGER_PRICE_CENTS)
 
 
 def app_key(data, normalise_repo):
@@ -98,20 +111,25 @@ def active_unlock(sb, key, session_ids=(), email=None, now=None):
     return None
 
 
-def create_checkout(stripe, base_url, report_id, key, email=None):
-    """A hosted Stripe Checkout session for one unlock. Returns its URL. Raises on failure (caller shows a message)."""
+def create_checkout(stripe, base_url, report_id, key, email=None, bigger=False):
+    """A hosted Stripe Checkout session for one unlock (or, with bigger=True, one bigger scan). Returns its URL. Raises on
+    failure (caller shows a message)."""
+    product = BIGGER_PRODUCT if bigger else PRODUCT
+    name, desc, amount, success = (
+        ("Verilay bigger scan", "One scan of your app reading up to 50 files with the stronger AI, plus every fix prompt "
+         f"for {UNLOCK_DAYS} days.", BIGGER_PRICE_CENTS, "/bigger/ready") if bigger else
+        ("Verilay fix prompts", f"Every fix prompt for one app, for {UNLOCK_DAYS} days, re-scans included.", PRICE_CENTS,
+         "/prompts/unlocked"))
     kwargs = {
         "mode": "payment",
         "line_items": [{"quantity": 1, "price_data": {
-            "currency": CURRENCY, "unit_amount": PRICE_CENTS,
-            "product_data": {"name": "Verilay fix prompts",
-                             "description": f"Every fix prompt for one app, for {UNLOCK_DAYS} days, re-scans included.",
-                             "tax_code": TAX_CODE}}}],
-        "success_url": f"{base_url}/prompts/unlocked?session_id={{CHECKOUT_SESSION_ID}}",
+            "currency": CURRENCY, "unit_amount": amount,
+            "product_data": {"name": name, "description": desc, "tax_code": TAX_CODE}}}],
+        "success_url": f"{base_url}{success}?session_id={{CHECKOUT_SESSION_ID}}",
         "cancel_url": f"{base_url}/report/{report_id}?unlock=cancelled",
         "allow_promotion_codes": True,
-        "metadata": {"product": PRODUCT, "report_id": report_id, "app_key": key},
-        "payment_intent_data": {"metadata": {"product": PRODUCT, "report_id": report_id, "app_key": key}},
+        "metadata": {"product": product, "report_id": report_id, "app_key": key},
+        "payment_intent_data": {"metadata": {"product": product, "report_id": report_id, "app_key": key}},
     }
     if email:
         kwargs["customer_email"] = email.strip().lower()
@@ -119,7 +137,12 @@ def create_checkout(stripe, base_url, report_id, key, email=None):
 
 
 def is_prompt_session(session):
-    return ((session or {}).get("metadata") or {}).get("product") == PRODUCT
+    """A fix-prompt unlock OR a bigger scan (which includes the unlock): both are recorded in prompt_unlocks."""
+    return ((session or {}).get("metadata") or {}).get("product") in (PRODUCT, BIGGER_PRODUCT)
+
+
+def is_bigger_session(session):
+    return ((session or {}).get("metadata") or {}).get("product") == BIGGER_PRODUCT
 
 
 def record(sb, session, event_id=None, now=None):

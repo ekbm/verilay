@@ -1893,19 +1893,35 @@ def after_pro_launch(now=None):
     return (now or datetime.utcnow()).strftime("%Y-%m-%d") > _pro_until()
 
 
+def was_pro_note(now=None):
+    """December 2026 only (Moses, 22 Nov 2026): the Bigger scan says it was Verilay Pro, so people who tried Pro in
+    November see it is the same scan, now paid with the Fix pack included. Gone by itself on 1 Jan 2027."""
+    return after_pro_launch(now) and (now or datetime.utcnow()).strftime("%Y-%m-%d") < "2027-01-01"
+
+
+# Home-page lines about fix prompts (22 Nov 2026, Moses): they change by themselves on 1 Dec, when fix prompts become
+# A$2.99 per app. Before then they say what is true today.
+HOME_PROMPT_TEXT_BEFORE = {'__HERO_SUB__': "Paste a GitHub link. Verilay reads your code and explains every layer in plain English, with fix prompts you can paste straight into Lovable, Replit or Bolt. It's free, with no sign-up and no login.", '__TILE_FIX__': '<div class="hx-st"><b>Fix prompts</b><span>paste-ready, for your top fixes</span></div>', '__HOW_FIX__': 'Copy the ready-to-paste fix prompt, apply it in Lovable or Replit, then re-run Verilay to confirm the issue is resolved and your score improves.', '__PART2_NOTE__': 'Two ways to fix what\'s found: Part 2\'s prompts are free to copy into your own AI, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.'}
+HOME_PROMPT_TEXT_AFTER = {'__HERO_SUB__': 'Paste a GitHub link. Verilay reads your code and explains every layer in plain English. The scan is free, with no sign-up and no login. Ready-to-paste fix prompts for Lovable, Replit or Bolt are an optional extra when you want them.', '__TILE_FIX__': '<div class="hx-st"><b>Fix prompts</b><span>paste-ready, A$2.99 per app</span></div>', '__HOW_FIX__': 'Unlock the ready-to-paste fix prompts (A$2.99 per app), apply them in Lovable or Replit one at a time, then re-run Verilay for free to confirm the issue is resolved and your score improves.', '__PART2_NOTE__': 'Two ways to fix what\'s found: unlock the fix prompts (A$2.99 per app) and paste them into your AI builder, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.'}
+
+
+def home_prompt_text(now=None):
+    return HOME_PROMPT_TEXT_AFTER if after_pro_launch(now) else HOME_PROMPT_TEXT_BEFORE
+
+
 def launch_banner_html(now=None):
     """The note at the top of the home page: before the switch, Pro free until 30 Nov and what happens on 1 Dec; after
     it, that every fix prompt is now in the free scan. A new dismiss key, so visitors who closed the old banner see it."""
     if after_pro_launch(now):
         key, text = "vl_dismissed_scanfree_banner", ('&#10024; <strong>Scan free, as often as you need.</strong> See every '
-                                                      'problem in plain English. Want ready-to-paste fixes? Unlock every fix '
-                                                      'prompt for your app for A$2.99.')
+                                                      'problem in plain English. Want ready-to-paste fixes? Add the '
+                                                      '<strong>Fix pack</strong>: A$2.99 per app.')
         link = '<a href="/pricing" style="color:var(--put);text-decoration:underline;font-weight:600">See pricing &rarr;</a>'
     else:
         until = launch_until_text() or "30 November"
         key, text = "vl_dismissed_profree2_banner", (f'&#10024; <strong>Verilay Pro is free until {until}.</strong> From 1 '
-                                                      'December, scans and re-scans stay free, and every fix prompt for your app '
-                                                      'unlocks for A$2.99.')
+                                                      'December, scans and re-scans stay free. Ready-made fix prompts become the '
+                                                      '<strong>Fix pack</strong>, A$2.99 per app.')
         link = '<a href="/pricing#pro" style="color:var(--put);text-decoration:underline;font-weight:600">How to get it &rarr;</a>'
     return (f'<div id="launch-banner" style="background:var(--pul);border:0.5px solid var(--pu);border-radius:var(--r);'
             'padding:.65rem 2.25rem .65rem 1rem;text-align:center;margin-bottom:1.5rem;position:relative">'
@@ -4488,7 +4504,8 @@ def analyse_stream():
 
             # Daily limits, checked here: everything above is free (reading files, the key/package/access checks, a
             # reused result), and step 1 is the first AI call. See free_ai_gate.
-            _gate_msg = pro_gate() if _pro else free_ai_gate(ip, method, _is_admin or _is_eval)
+            _gate_msg = (None if (_pro and _pro.get("email_hash") == "paid") else pro_gate() if _pro
+                         else free_ai_gate(ip, method, _is_admin or _is_eval))
             if _gate_msg:
                 _refund_rate_limit(ip)      # no AI was used, so the hourly allowance is given back
                 yield json.dumps({"event":"error","data":_gate_msg}) + "\n"
@@ -4981,6 +4998,9 @@ def _lock_or_unlock_fixes(result, report_id, repo_name):
     result["prompts_locked"] = bool(full)
     result["unlock_price"] = prompts_unlock.price_label()
     result["unlock_days"] = prompts_unlock.UNLOCK_DAYS
+    if bigger_scan_offered(rep):
+        result["bigger_offer"] = True
+        result["bigger_price"] = prompts_unlock.bigger_price_label()
 
 
 def unlock_box_html(report_id, n):
@@ -5039,6 +5059,103 @@ def _on_prompt_paid(session, event_id=None):
 
 if paywall is not None:
     paywall.PROMPT_PAID_HOOK = _on_prompt_paid
+
+
+def bigger_scan_offered(data):
+    """The A$4.99 bigger scan is offered on a free scan of a GitHub or ZIP app with more files than the free scan reads,
+    from 1 Dec 2026, when payments are on."""
+    d = data or {}
+    try:
+        total, read = int(d.get("files_total") or 0), int(d.get("files_read") or 0)
+    except (TypeError, ValueError):
+        return False
+    return bool(prompts_unlock and billing and billing.PAYWALL_ENABLED and after_pro_launch()
+                and d.get("scan_tier") == "lite" and not d.get("is_deep_scan") and d.get("input_method") in ("github", "zip")
+                and total > MAX_FILES and read <= MAX_FILES and not d.get("analysis_incomplete"))
+
+
+def bigger_box_html(report_id, data):
+    esc = _htmlmod.escape
+    price = prompts_unlock.bigger_price_label()
+    total, read = int(data.get("files_total") or 0), int(data.get("files_read") or 0)
+    return ('<div class="card" id="bigger-scan" style="border:.5px solid #534AB7;background:#fff">'
+            f'<div style="font-size:15px;font-weight:700;color:#3C3489">This scan read {read} of your {total} files. '
+            f'Want a bigger scan? {esc(price)}</div>'
+            '<div style="font-size:13.5px;color:#444;margin:.35rem 0 .6rem;line-height:1.55">Runs again reading <strong>up to 50 '
+            'files</strong> with Verilay&rsquo;s <strong>stronger AI</strong>, and includes <strong>every fix prompt</strong> '
+            f'for this app for 7 days. It opens as a new report.'
+            + (' (This is the scan that was called Verilay Pro.)' if was_pro_note() else '')
+            + (' You&rsquo;ll choose your ZIP file again.' if data.get("input_method") == "zip" else '') + '</div>'
+            f'<form method="post" action="/bigger/checkout" style="margin:0"><input type="hidden" name="report_id" value="{esc(report_id)}">'
+            f'<button type="submit" style="background:#fff;color:#534AB7;border:1.5px solid #534AB7;border-radius:10px;padding:8px 16px;'
+            f'font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Run a bigger scan, {esc(price)} &rarr;</button></form>'
+            '<div style="font-size:12px;color:#6b6966;margin-top:8px">For the whole app (up to 150 files), see the '
+            '<a href="/deep-scan" style="color:#534AB7">deep scan</a>.</div></div>')
+
+
+def make_paid_pro_ticket(report_id, session):
+    """The one scan a bigger-scan payment buys: the same ticket every time this payment's success page is opened (so a
+    reload cannot buy a second scan), valid for 24 hours after paying."""
+    created = int((session or {}).get("created") or time.time())
+    payload = f"{report_id}|paid|{created + 24 * 3600}"
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=") + "." + _pro_sign(payload)
+
+
+@app.route("/bigger/checkout", methods=["POST"])
+def bigger_checkout():
+    rid = (request.form.get("report_id") or "").strip()
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid):
+        return redirect("/")
+    data = get_report_data(rid)
+    if not data or not bigger_scan_offered(data) or not billing.configured():
+        return redirect(f"/report/{rid}?bigger=unavailable")
+    allowed, _ = check_rate_limit("bigger:" + get_ip())
+    if not allowed:
+        return redirect(f"/report/{rid}?bigger=busy")
+    key = prompts_unlock.app_key(data, billing.normalise_repo)
+    if not key:
+        return redirect(f"/report/{rid}")
+    try:
+        url = prompts_unlock.create_checkout(billing._stripe, billing.BASE_URL, rid, key, None, bigger=True)
+    except Exception as e:
+        print(f"[bigger] checkout create failed for {rid}: {e}", flush=True)
+        return redirect(f"/report/{rid}?bigger=failed")
+    return redirect(url, code=303)
+
+
+@app.route("/bigger/ready")
+def bigger_ready():
+    """After paying for a bigger scan: record it (it includes the fix-prompt unlock), then hand this browser a one-scan
+    ticket and send it to the home page to run the scan (the same pickup the free Pro scan used)."""
+    sid = (request.args.get("session_id") or "").strip()
+    s = billing.retrieve_paid_session(sid) if (billing and sid) else None
+    if not s or not prompts_unlock.is_bigger_session(s):
+        return redirect("/?unlock=notfound")
+    try:
+        _on_prompt_paid(s)
+    except Exception as e:
+        print(f"[bigger] record failed (the webhook will retry): {e}", flush=True)
+    try:
+        from flask import session as _fs
+        lst = [x for x in (_fs.get("prompt_unlocks") or []) if x != s.get("id")]
+        _fs["prompt_unlocks"] = (lst + [s.get("id")])[-20:]
+        _fs.permanent = True
+    except Exception:
+        pass
+    rid = str((s.get("metadata") or {}).get("report_id") or "")
+    data = get_report_data(rid) if _re.fullmatch(r"[A-Za-z0-9_-]{1,40}", rid) else None
+    if not data:
+        return redirect("/")
+    ticket = make_paid_pro_ticket(rid, s)
+    method = "zip" if data.get("input_method") == "zip" else "github"
+    scan = ("https://github.com/" + str(data.get("repo") or "")) if method == "github" else ""
+    body = ('<p style="font-family:-apple-system,sans-serif;padding:2rem">Payment received. Taking you to run your bigger scan&hellip;</p>'
+            "<script>try{sessionStorage.setItem('verilay_pro_ticket'," + json.dumps(ticket) + ");"
+            "sessionStorage.setItem('verilay_pro_method'," + json.dumps(method) + ");"
+            "sessionStorage.setItem('verilay_pro_kind','bigger');}catch(e){}"
+            "location.replace('/?pro=1" + ("&scan=' + encodeURIComponent(" + json.dumps(scan) + ")" if scan else "'") + ");</script>")
+    return Response("<!DOCTYPE html><meta charset='utf-8'><title>Bigger scan</title>" + body, mimetype="text/html",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.route("/prompts/checkout", methods=["POST"])
@@ -5815,6 +5932,7 @@ Also check the whole app for the same kind of problem, and list every place you 
     {
         "slug": checklist.SLUG,
         "title": checklist.BLOG_TITLE,
+        "seo_title": "How to Use a Vibe Coding Security Checklist Before Launch",
         "date": "October 20, 2026",
         "category": "Guide",
         "excerpt": "Ten plain-English questions to ask before real users or payments arrive, with a way to check each one yourself and an honest note on what a scan can and can't cover.",
@@ -6072,9 +6190,10 @@ Also check the whole app for the same kind of problem, and list every place you 
     {
         "slug": "free-first-check-for-employee-built-ai-apps",
         "title": "Your Staff Are Building Apps With AI. Here&rsquo;s a Free First Check Before You Say Yes",
+        "seo_title": "How IT Can Review Employee-Built AI Apps Before They Go Live",
         "date": "October 5, 2026",
         "category": "Security",
-        "excerpt": "98% of AI-built apps have a security flaw, and staff are building them faster than IT can see. A light first-pass process for IT teams, and a free IT Review Pack in Verilay to help.",
+        "excerpt": "How IT can review and approve apps staff build with AI before they go live: a light first-pass process, what to check, and a free IT Review Pack in Verilay to help.",
         "medium_url": None,
         "read_time": "7 min read",
         "featured": False,
@@ -9040,6 +9159,34 @@ btn.onclick=async function(){
 })();</script>""")
 
 
+def _pricing_intro_after():
+    """The pricing page's top from 1 Dec 2026: what's free, why fixes cost something, and which scan fits an app's size."""
+    tick = 'style="background:#E1F5EE;border-radius:8px;padding:8px 10px"'
+    row = lambda size, scan, what: (f'<tr><td style="padding:8px 10px;border-top:.5px solid #e5e3dc;font-weight:600;white-space:nowrap">{size}</td>'
+                                     f'<td style="padding:8px 10px;border-top:.5px solid #e5e3dc"><strong>{scan}</strong></td>'
+                                     f'<td style="padding:8px 10px;border-top:.5px solid #e5e3dc;color:#444">{what}</td></tr>')
+    return ('<h1>Scan free. Pay only for ready-made fixes.</h1>'
+            '<p>Scanning stays free for everyone: every problem, explained, with a way to check it yourself. The ready-to-paste '
+            'fix prompts are A$2.99 for your app. That&rsquo;s what keeps Verilay running and improving.</p>'
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;font-size:13px;margin:.6rem 0 1rem">'
+            f'<div {tick}>&#10003; <strong>Every problem shown free</strong>, in plain English</div>'
+            f'<div {tick}>&#10003; <strong>Check it yourself</strong> steps for each one</div>'
+            f'<div {tick}>&#10003; <strong>Re-scans free</strong>, to see what&rsquo;s fixed</div>'
+            f'<div {tick}>&#10003; <strong>Checked every week</strong> against 24 practice apps before any update</div></div>'
+            '<h2 style="font-size:18px;margin:1.2rem 0 .3rem">Which scan fits your app?</h2>'
+            '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:14px;background:#fff;border:.5px solid #e5e3dc;border-radius:10px">'
+            '<tr><th style="text-align:left;padding:8px 10px;font-size:12px;color:#6b6966">Your app</th>'
+            '<th style="text-align:left;padding:8px 10px;font-size:12px;color:#6b6966">Scan</th>'
+            '<th style="text-align:left;padding:8px 10px;font-size:12px;color:#6b6966">What it reads</th></tr>'
+            + row("Up to 25 files", "Free scan", "Every file: the whole app is checked, free.")
+            + row("26 to 50 files", f"Bigger scan, {prompts_unlock.bigger_price_label() if prompts_unlock else 'A$4.99'}",
+                  "Up to 50 files, with the stronger AI. Fix pack included.")
+            + row("50 files or more", "Deep scan, A$19", "Up to 150 files, every risky package named, re-scans for 30 days.")
+            + '</table></div>'
+            '<p style="font-size:13px;color:#6b6966">Not sure how many files your app has? Run the free scan: your report says how '
+            'many it has, how many were read, and offers the bigger scan only when it would read more.</p>')
+
+
 @app.route("/pricing")
 def pricing_page():
     light_on = "haiku" in free_model()
@@ -9060,25 +9207,45 @@ def pricing_page():
     else:
         pro_price, pro_unit, pro_state, pro_ok = "A$4.99", "a scan", "Coming soon", False
         pro_btn, pro_href = "Join early access", "/#analyse"
-    cards = "".join([
+    _cl = [
         _pricing_card("Free scan", "A$0", "", "Available", True,
                       ["All six areas checked: login, settings, data, API, pages, packages",
                        "Exposed keys, risky packages and who can see your data",
                        ("Every problem explained, with &ldquo;check it yourself&rdquo; steps; re-scans free" if after_pro_launch() else
                         "A fix prompt for the most serious problem (from 1 December, fix prompts unlock for A$2.99 per app)") if light_on
                        else "Fix prompts for your AI builder",
-                       "Up to 3 scans a day"], "Run a free scan", "/"),
-        (_pricing_card("Fix prompts", prompts_unlock.price_label() if prompts_unlock else "A$2.99", "per app", "Available", True,
-                       ["<strong>Every fix prompt</strong>, Step 1 and Step 2", f"For {prompts_unlock.UNLOCK_DAYS if prompts_unlock else 7} days, re-scans included",
+                       "Up to 3 scans a day"] + (["Reads up to 25 files: the whole app, if it&rsquo;s small",
+                                                  "2 Ask Verilay questions per report, and comparing two scans",
+                                                  "Ready-made fix prompts: add the <strong>Fix pack</strong> (A$2.99 per app)"] if after_pro_launch() else []),
+                      "Run a free scan", "/"),
+        (_pricing_card("Fix pack", prompts_unlock.price_label() if prompts_unlock else "A$2.99", "per app", "Available", True,
+                       ["<strong>Every fix prompt</strong>, Step 1 and Step 2",
+                        "<strong>Unlimited Ask Verilay</strong> questions about your reports",
+                        "<strong>Ask about what changed</strong> between two scans",
+                        f"For {prompts_unlock.UNLOCK_DAYS if prompts_unlock else 7} days, re-scans included",
                         "Unlocked right on your report, no second scan", "One-off, no subscription"],
-                       "Run a free scan", "/", star=True) if after_pro_launch() else
+                       "Run a free scan", "/") if after_pro_launch() else
          _pricing_card("Verilay Pro", pro_price, pro_unit, pro_state, pro_ok,
                       ["<strong>A ready-to-paste fix prompt for every finding</strong>", "Fuller explanations",
                        "Up to 50 files read", "One free Pro scan per email during the launch, until 30 November",
                        "Ends 30 November. From 1 December, scans stay free and fix prompts unlock for A$2.99 per app"],
                       pro_btn, pro_href, star=True)),
+        (_pricing_card("Bigger scan", prompts_unlock.bigger_price_label() if prompts_unlock else "A$4.99", "per scan",
+                       "Available · Fix pack included", True,
+                       (['<span style="color:#6b6966">Was <strong>Verilay Pro</strong>: same 50-file scan, now with the Fix pack</span>']
+                        if was_pro_note() else [])
+                       + ["<strong>Everything in the Free scan, plus:</strong>",
+                        "<strong>Fix pack included</strong> (worth A$2.99): every fix prompt and unlimited Ask Verilay, for 7 days",
+                        "For apps with <strong>more than 25 files</strong>", "Up to 50 files read, with the stronger AI",
+                        "Offered on your free report when your app is bigger"],
+                       "Run a free scan first", "/", star=True) if after_pro_launch() else ""),
         _pricing_card("Deep scan", "A$19", "one-off", "Available", True,
-                      ["Up to 150 files read", "Every risky package named, with its fix"]
+                      (["<strong>Everything in the Bigger scan, plus:</strong>", "For bigger apps, <strong>50 files or more</strong>"]
+                       if after_pro_launch() else [])
+                      + ["Up to 150 files read",
+                         ("<strong>Fix pack included</strong>: every fix prompt and unlimited Ask Verilay" if after_pro_launch()
+                          else "Every fix prompt and unlimited Ask Verilay included"),
+                         "Every risky package named, with its fix"]
                       + (["Code fitness: what&rsquo;s making your app hard to change"] if code_health_public() else [])
                       + ["Up to 6 similar projects", "Re-scans of the same app for 30 days"], "See the deep scan", "/deep-scan"),
         _pricing_card("Monitoring", "A$3.99", "a month", "Planned · early access", False,
@@ -9090,7 +9257,20 @@ def pricing_page():
                        "Checks your builder's replies, and a rescan shows what is fixed",
                        "Light (A$9.99) or Full (A$29)", "Guided, not guaranteed"],
                       "Tell me when it opens", "#fix-interest"),
-    ])
+    ]
+    cards = "".join(_cl)
+    if after_pro_launch():
+        # From 1 Dec 2026 (Moses, 22 Nov: "so there is no confusion"): scans, then add-ons, then what's coming.
+        # _cl order: 0 Free, 1 Fix prompts, 2 Bigger scan, 3 Deep scan, 4 Monitoring, 5 Self Fix.
+        _h = lambda t, sub: (f'<h2 style="font-size:18px;margin:1.4rem 0 .15rem">{t}</h2>'
+                             f'<p style="font-size:13px;color:#6b6966;margin:0 0 .2rem">{sub}</p>')
+        cards = (_h("Scans", "Pick by the size of your app. Every scan shows every problem, explained.")
+                 + f'<div class="pgrid">{_cl[0]}{_cl[2]}{_cl[3]}</div>'
+                 + _h("Add-on", "For a free scan&rsquo;s report: ready-made fixes and as many questions as you like. "
+                                        "The bigger and deep scans already include it.")
+                 + f'<div class="pgrid">{_cl[1]}</div>'
+                 + _h("Coming soon", "Not on sale yet. Join early access and we&rsquo;ll tell you once when they open.")
+                 + f'<div class="pgrid">{_cl[4]}{_cl[5]}</div>')
     _opt = ('display:block;border:.5px solid #d3d1c7;border-radius:10px;padding:9px 11px;margin:0 0 8px;font-size:14px;cursor:pointer')
     fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay Self Fix: early access</h2>'
                 '<p>Not open yet. Tell us what you&rsquo;d want, and we&rsquo;ll email you once when it opens. Nothing else.</p>'
@@ -9132,9 +9312,12 @@ catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};}
 .psurvey .opts{display:flex;gap:6px;flex-wrap:wrap}.pro-opt{border:.5px solid #534AB7;background:#fff;color:#3C3489;border-radius:20px;padding:5px 12px;font-size:13px;font-family:inherit;cursor:pointer}
 .pro-opt[aria-pressed="true"]{background:#534AB7;color:#fff}.psurvey textarea,.psurvey input[type=email]{width:100%;box-sizing:border-box;border:.5px solid #d3d1c7;border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit}
 .psurvey .chk{display:flex;gap:8px;font-size:13px;margin-top:.5rem;cursor:pointer}.psurvey .pnote{font-size:13px;background:#fff;border-radius:8px;padding:.55rem .75rem}.psurvey .btn{margin-top:.8rem}#pro-status{font-size:13px;margin-top:.4rem}</style>
-<div class="eyebrow">Pricing</div><h1>Free to start, pay for depth</h1>
-<p>Every scan starts free. Pay only when you want more detail, every fix prompt, or someone keeping watch.</p>"""
-            f'<div class="pgrid" id="pro">{cards}</div>{survey}{fix_form}'
+<div class="eyebrow">Pricing</div>"""
+            + (_pricing_intro_after() if after_pro_launch() else
+               '<h1>Free to start, pay for depth</h1><p>Every scan starts free. Pay only when you want more detail, every fix '
+               'prompt, or someone keeping watch.</p>')
+            + (f'<div id="pro">{cards}</div>' if after_pro_launch() else f'<div class="pgrid" id="pro">{cards}</div>')
+            + f'{survey}{fix_form}'
             + (paywall.newsletter_box_html("pricing") if _HAS_PAYWALL else "") +
             '<p class="note">Prices in Australian dollars, plus any applicable tax at checkout. Planned products are not on sale yet: '
             'their details are our plan and may change before they open.</p>')
@@ -9510,6 +9693,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         _to_fix = 0 if _hl.get("score") in (None, "A") else 1
     if raw_data.get("prompts_locked") and raw_data.get("locked_fixes") and not is_preview and _to_fix > 0:
         out.append(unlock_box_html(report_id, len(raw_data.get("locked_fixes") or [])))
+    if bigger_scan_offered(raw_data) and not is_preview:
+        out.append(bigger_box_html(report_id, raw_data))
     elif raw_data.get("prompts_unlocked_until") and not is_preview:
         out.append('<div class="card" style="background:#E1F5EE;border-color:#9FE1CB"><div style="font-size:13px;color:#085041">'
                    f'&#10003; <strong>Fix prompts unlocked for this app until {_htmlmod.escape(_nice_date(raw_data["prompts_unlocked_until"]))}.</strong> '
@@ -10716,6 +10901,8 @@ def index():
                 .replace("__SAMPLE_BUTTON__", _sample_button_html())
                 .replace("__SAMPLE_PREVIEW__", _sample_preview())
                 .replace("__LAUNCH_BANNER__", launch_banner_html()))
+    for _k, _v in home_prompt_text().items():
+        html = html.replace(_k, _v)
     improved = appcount.improved_for_homepage(_sb) if _HAS_SUPABASE else ""
     return render_template_string(html, analysis_count=count if count > 0 else "", improved_count=improved)
 
@@ -11019,7 +11206,7 @@ __LAUNCH_BANNER__
     <div class="hx-pill"><i class="ti ti-shield-check" style="font-size:14px"></i> Free security check for AI-built apps</div>
     <h1>Is your AI-built app <em>safe to launch?</em></h1>
     <p class="hx-sub">
-      Paste a GitHub link. Verilay reads your code and explains every layer in plain English, with fix prompts you can paste straight into Lovable, Replit or Bolt. It's free, with no sign-up and no login.
+      __HERO_SUB__
     </p>
     <form id="hero-scan" class="hx-box" action="#" autocomplete="off">
       <input id="hero-url" type="text" inputmode="url" aria-label="GitHub link or live app address" placeholder="Paste your GitHub link or live app address" spellcheck="false" autocapitalize="off">
@@ -11045,7 +11232,7 @@ __LAUNCH_BANNER__
       {% endif %}
       <div class="hx-st"><b>6 layers</b><span>explained: login, database, API, frontend, settings, libraries</span></div>
       <div class="hx-st"><b>Every file</b><span>scanned for exposed keys and passwords</span></div>
-      <div class="hx-st"><b>Fix prompts</b><span>paste-ready, for your top fixes</span></div>
+      __TILE_FIX__
     </div>
     __SAMPLE_PREVIEW__
     <p class="hx-fine">
@@ -11119,7 +11306,7 @@ __LAUNCH_BANNER__
       <div style="background:var(--sur);border:0.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.1rem">
         <div style="width:28px;height:28px;border-radius:50%;background:var(--pu);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:.65rem">4</div>
         <div style="font-size:14px;font-weight:500;margin-bottom:.3rem">Fix and re-run</div>
-        <div style="font-size:13px;color:var(--mut);line-height:1.55">Copy the ready-to-paste fix prompt, apply it in Lovable or Replit, then re-run Verilay to confirm the issue is resolved and your score improves.</div>
+        <div style="font-size:13px;color:var(--mut);line-height:1.55">__HOW_FIX__</div>
       </div>
 
     </div>
@@ -11634,7 +11821,7 @@ __LAUNCH_BANNER__
       <div style="flex:1">
         <div style="font-size:15px;font-weight:600;color:var(--put);margin-bottom:4px">Part 1 complete - ready for Part 2?</div>
         <div style="font-size:13px;color:var(--put);line-height:1.55;margin-bottom:.85rem">Part 2 adds the fix list with effort estimates, second opinion prompts, and security checklist. Takes another 15-20 seconds.</div>
-        <div style="font-size:12px;color:var(--put);opacity:.85;line-height:1.5;margin-bottom:.85rem">Two ways to fix what's found: Part 2's prompts are free to copy into your own AI, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.</div>
+        <div style="font-size:12px;color:var(--put);opacity:.85;line-height:1.5;margin-bottom:.85rem">__PART2_NOTE__</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-sm" id="btn-p2">Yes, run Part 2</button>
           <button id="btn-skip" style="padding:7px 16px;border-radius:20px;border:0.5px solid var(--pu);background:transparent;color:var(--put);font-size:13px;cursor:pointer">Skip for now</button>
