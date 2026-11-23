@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-23.1"
+ANALYSIS_VERSION = "2026-11-23.2"   # .2: item 33 rule taken out again (more false criticals in v13/v14)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -3586,7 +3586,6 @@ def analyse_step2(files, repo_name, scan_block=""):
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
         "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
-        "- Admin (or another privileged role) given to any email that CONTAINS a word such as admin or treasurer, or matches only part of an address, or given from a value the person picks at sign-up: CRITICAL, never a warning. Anyone can sign up as admin123@anymail.com and become an admin: that is account takeover (change-list item 33, 23 Nov 2026). Exact, full email addresses checked on the server are fine\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -3756,7 +3755,6 @@ def analyse_step3(files, repo_name, osv_block=""):
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
         "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
-        "- Admin (or another privileged role) given to any email that CONTAINS a word such as admin or treasurer, or matches only part of an address, or given from a value the person picks at sign-up: CRITICAL, never a warning. Anyone can sign up as admin123@anymail.com and become an admin: that is account takeover (change-list item 33, 23 Nov 2026). Exact, full email addresses checked on the server are fine\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -4027,7 +4025,6 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
         "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
-        "- Admin (or another privileged role) given to any email that CONTAINS a word such as admin or treasurer, or matches only part of an address, or given from a value the person picks at sign-up: CRITICAL, never a warning. Anyone can sign up as admin123@anymail.com and become an admin: that is account takeover (change-list item 33, 23 Nov 2026). Exact, full email addresses checked on the server are fine\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
