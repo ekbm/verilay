@@ -707,7 +707,7 @@ function tierBandHTML(data) {
   var t = reportTier(data), c = _TIERS[t], m = _METHOD[data.input_method] || null;
   var what = t === 'deep' ? 'Up to 150 files read, every risky package named'
            : t === 'pro' ? 'Up to 50 files read, a fix prompt for every finding'
-           : (data.paid_prompts ? 'A quick check of every area; fix prompts unlock for A$2.99'
+           : (data.paid_prompts ? 'A quick check of every area; fix prompts come with the Fix pack, A$2.99'
               : data.scan_tier === 'lite' ? 'A quick check, with a fix prompt for the most serious problem' : 'A quick check of your code');
   if (data.input_method === 'url') what = 'What the site shows a browser, not the source code';
   return '<div id="tier-band" data-tier="' + t + '" data-method="' + esc(data.input_method || '') + '" style="background:' + c[1] + ';border-left:4px solid ' + c[2] + ';border-radius:var(--r);' +
@@ -2613,16 +2613,17 @@ function unlockBoxHTML(data) {
   var n = (data.top_fixes || []).filter(function(f) { return f && f.locked; }).length;
   var price = esc(data.unlock_price || 'A$2.99'), days = data.unlock_days || 7, rid = esc(savedReportId || '');
   return '<div id="fixes-unlock" style="border:2px solid var(--pu);background:var(--pul);border-radius:14px;padding:1rem 1.1rem;margin:.9rem 0">' +
-    '<div style="font-size:17px;font-weight:700;color:var(--put)">Unlock every fix prompt for this app: ' + price + '</div>' +
+    '<div style="font-size:17px;font-weight:700;color:var(--put)">Get the Fix pack for this app: ' + price + '</div>' +
     '<ul style="font-size:13.5px;color:var(--put);margin:.4rem 0 .7rem;padding-left:1.1rem;line-height:1.6">' +
     '<li>A ready-to-paste prompt for all ' + n + ' problem' + (n === 1 ? '' : 's') + ', each with &ldquo;explain first&rdquo; and &ldquo;go ahead&rdquo; steps</li>' +
-    '<li>Unlocked for <strong>' + days + ' days</strong>: re-scan after each fix and the new report&rsquo;s prompts are unlocked too</li>' +
+    '<li><strong>Unlimited Ask Verilay</strong> questions about this app&rsquo;s reports, and about what changed between two scans</li>' +
+    '<li>For <strong>' + days + ' days</strong>: re-scan after each fix and the new report is unlocked too</li>' +
     '<li>Right here on this report: no second scan, no sign-up</li></ul>' +
     (rid ? '<form method="post" action="/prompts/checkout" style="margin:0"><input type="hidden" name="report_id" value="' + rid + '">' +
-           '<button type="submit" style="background:var(--pu);color:#fff;border:0;border-radius:10px;padding:10px 18px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer">Unlock for ' + price + ' &rarr;</button>' +
+           '<button type="submit" style="background:var(--pu);color:#fff;border:0;border-radius:10px;padding:10px 18px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer">Get the Fix pack, ' + price + ' &rarr;</button>' +
            '<span style="font-size:12px;color:var(--put);margin-left:8px">One-off payment, card or Apple/Google Pay</span></form>'
          : '<div style="font-size:13px;color:var(--put)">Saving your report&hellip; the unlock button appears in a moment.</div>') +
-    '<div style="font-size:12.5px;color:var(--put);margin-top:10px;opacity:.85">Scanning stays free for everyone. Fix prompts keep Verilay running and improving.</div></div>';
+    '<div style="font-size:12.5px;color:var(--put);margin-top:10px;opacity:.85">Scanning stays free for everyone. The Fix pack keeps Verilay running and improving.</div></div>';
 }
 function startHereHTML(data, h, hasLayers, isPreview) {
   if (isPreview) return '';
@@ -3669,7 +3670,7 @@ function renderPart2(data) {
     '<div style="font-size:13.5px;color:var(--mut);margin:.35rem 0 .6rem;line-height:1.55">Runs again reading <strong>up to 50 files</strong> with Verilay&rsquo;s <strong>stronger AI</strong>, and includes <strong>every fix prompt</strong> for this app for 7 days. It opens as a new report.</div>' +
     '<form method="post" action="/bigger/checkout" style="margin:0"><input type="hidden" name="report_id" value="' + esc(savedReportId) + '">' +
     '<button type="submit" style="background:var(--sur);color:var(--pu);border:1.5px solid var(--pu);border-radius:10px;padding:8px 16px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Run a bigger scan, ' + esc(data.bigger_price || 'A$4.99') + ' &rarr;</button></form></div>';
-  else if (data.prompts_unlocked_until) html += '<div style="background:var(--grl);color:var(--grt);border-radius:8px;padding:.5rem .8rem;font-size:13px;margin:.6rem 0">&#10003; <strong>Fix prompts unlocked for this app.</strong> Re-scan after each fix: the new report&rsquo;s prompts are unlocked too.</div>';
+  else if (data.prompts_unlocked_until) html += '<div style="background:var(--grl);color:var(--grt);border-radius:8px;padding:.5rem .8rem;font-size:13px;margin:.6rem 0">&#10003; <strong>Fix pack active for this app.</strong> Every fix prompt and unlimited questions. Re-scan after each fix: the new report is unlocked too.</div>';
 
   // Light free scan: the other fix prompts are part of Verilay Pro (a folded, locked row, then the Pro card).
   if (data.lite) {

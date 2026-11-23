@@ -1843,7 +1843,7 @@ def _ask_purge_old(now=None):
         print(f"Ask counter cleanup skipped: {type(_e).__name__}", flush=True)
 
 
-def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
+def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT, bucket=None):
     """Per-visitor hourly limit via Supabase. Returns (allowed: bool, remaining: int).
     Fails OPEN (allows) if Supabase is unavailable — see note to maintainer.
 
@@ -1853,7 +1853,9 @@ def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT):
     if not _HAS_SUPABASE:
         return True, limit  # no store available → don't block users
     now = datetime.utcnow()
-    bucket = now.strftime("%Y-%m-%dT%H")  # one bucket per hour (UTC)
+    # One bucket per hour (UTC), or a fixed one ("life", item 35: 2 free questions per report). "h1|life|..." sorts after
+    # every dated bucket, so the hourly clean-up never deletes it.
+    bucket = bucket or now.strftime("%Y-%m-%dT%H")
     key = _ask_key(ip, scope, bucket)
     try:
         res = _sb.table("ask_usage").select("count").eq("id", key).execute()
@@ -1912,7 +1914,7 @@ def was_pro_note(now=None):
 # Home-page lines about fix prompts (22 Nov 2026, Moses): they change by themselves on 1 Dec, when fix prompts become
 # A$2.99 per app. Before then they say what is true today.
 HOME_PROMPT_TEXT_BEFORE = {'__HERO_SUB__': "Paste a GitHub link. Verilay reads your code and explains every layer in plain English, with fix prompts you can paste straight into Lovable, Replit or Bolt. It's free, with no sign-up and no login.", '__TILE_FIX__': '<div class="hx-st"><b>Fix prompts</b><span>paste-ready, for your top fixes</span></div>', '__HOW_FIX__': 'Copy the ready-to-paste fix prompt, apply it in Lovable or Replit, then re-run Verilay to confirm the issue is resolved and your score improves.', '__PART2_NOTE__': 'Two ways to fix what\'s found: Part 2\'s prompts are free to copy into your own AI, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.'}
-HOME_PROMPT_TEXT_AFTER = {'__HERO_SUB__': 'Paste a GitHub link. Verilay reads your code and explains every layer in plain English. The scan is free, with no sign-up and no login. Ready-to-paste fix prompts for Lovable, Replit or Bolt are an optional extra when you want them.', '__TILE_FIX__': '<div class="hx-st"><b>Fix prompts</b><span>paste-ready, A$2.99 per app</span></div>', '__HOW_FIX__': 'Unlock the ready-to-paste fix prompts (A$2.99 per app), apply them in Lovable or Replit one at a time, then re-run Verilay for free to confirm the issue is resolved and your score improves.', '__PART2_NOTE__': 'Two ways to fix what\'s found: unlock the fix prompts (A$2.99 per app) and paste them into your AI builder, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.'}
+HOME_PROMPT_TEXT_AFTER = {'__HERO_SUB__': 'Paste a GitHub link. Verilay reads your code and explains every layer in plain English. The scan is free, with no sign-up and no login. Ready-to-paste fix prompts for Lovable, Replit or Bolt are an optional extra when you want them.', '__TILE_FIX__': '<div class="hx-st"><b>Fix pack</b><span>every fix prompt, A$2.99 per app</span></div>', '__HOW_FIX__': 'Add the Fix pack (A$2.99 per app) to unlock the ready-to-paste fix prompts, apply them in Lovable or Replit one at a time, then re-run Verilay for free to confirm the issue is resolved and your score improves.', '__PART2_NOTE__': 'Two ways to fix what\'s found: add the Fix pack (A$2.99 per app) and paste its fix prompts into your AI builder, which investigates and finds the exact issues itself — or skip the investigation with the <a href="/deep-scan" style="color:var(--put);text-decoration:underline">deep scan</a>, which hands you the exact vulnerabilities and fixes already found.'}
 
 
 def home_prompt_text(now=None):
@@ -2614,14 +2616,26 @@ def ask_verilay_report(report_id):
             question = question[:1000]
 
         ip = _client_ip()
-        allowed, remaining = ask_rate_check(ip, scope=f"report:{report_id}", limit=ASK_REPORT_RATE_LIMIT)
-        if not allowed:
-            return jsonify({
-                "ok": False,
-                "limit_reached": True,
-                "error": f"You've reached the free limit of {ASK_REPORT_RATE_LIMIT} questions per hour "
-                         f"about this report. General Ask Verilay still works, or check back in a bit."
-            }), 429
+        if after_pro_launch():
+            if fix_pack_active(data):
+                allowed, remaining = ask_rate_check(ip, scope=f"report:{report_id}", limit=FIX_PACK_ASK_PER_HOUR)
+                if not allowed:
+                    return jsonify({"ok": False, "limit_reached": True,
+                                    "error": "That's a lot of questions in one hour. Please try again in a little while."}), 429
+            else:
+                allowed, remaining = ask_rate_check(ip, scope=f"report:{report_id}", limit=FREE_ASK_PER_REPORT, bucket="life")
+                if not allowed:
+                    return jsonify({"ok": False, "limit_reached": True, "fix_pack": True,
+                                    "error": FREE_ASK_USED_TEXT.format(n=FREE_ASK_PER_REPORT, price=_fix_pack_price())}), 429
+        else:
+            allowed, remaining = ask_rate_check(ip, scope=f"report:{report_id}", limit=ASK_REPORT_RATE_LIMIT)
+            if not allowed:
+                return jsonify({
+                    "ok": False,
+                    "limit_reached": True,
+                    "error": f"You've reached the free limit of {ASK_REPORT_RATE_LIMIT} questions per hour "
+                             f"about this report. General Ask Verilay still works, or check back in a bit."
+                }), 429
 
         context, prompt = build_report_ask_parts(data, question)
         answer = ask_claude_call(ASK_VERILAY_REPORT_SYSTEM, prompt, max_tokens=1500, context=context)
@@ -5011,6 +5025,37 @@ def _nice_date(iso):
         return str(iso)[:10]
 
 
+# Item 35, the Fix pack (Moses, 22 Nov 2026), from 1 Dec: the A$2.99 unlock is every fix prompt + unlimited Ask Verilay
+# about that app's reports + Ask Verilay about a comparison, for 7 days. Free: 2 Ask questions per report; the comparison
+# page itself stays free. Deep scans and paid bigger scans include the Fix pack.
+FREE_ASK_PER_REPORT = 2
+FIX_PACK_ASK_PER_HOUR = 30          # "unlimited" for people; a safety cap against scripts
+FREE_ASK_USED_TEXT = ("You've used your {n} free questions about this report. The Fix pack ({price} for this app, 7 days) "
+                      "unlocks unlimited questions and every fix prompt.")
+
+
+def _fix_pack_price():
+    return prompts_unlock.price_label() if prompts_unlock else "A$2.99"
+
+
+def fix_pack_active(data):
+    """True when this report's app has the Fix pack for this visitor: a deep scan, a paid bigger (Pro) scan, a report
+    unlocked by a payment that is still running, or an active unlock of the same app by this browser or signed-in email."""
+    d = data or {}
+    if d.get("is_deep_scan") or d.get("scan_tier") == "pro":
+        return True
+    until = str(d.get("prompts_unlocked_until") or "")
+    if until and until[:19] > datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"):
+        return True
+    if not prompts_unlock:
+        return False
+    try:
+        key = prompts_unlock.app_key(d, billing.normalise_repo if billing else (lambda x: None))
+        return bool(_visitor_unlock(key))
+    except Exception:
+        return False
+
+
 def _visitor_unlock(key):
     """An active unlock of this app that this visitor may use (their browser paid, or they are signed in with the
     paying email), or None."""
@@ -5064,16 +5109,17 @@ def unlock_box_html(report_id, n):
     days = prompts_unlock.UNLOCK_DAYS if prompts_unlock else 7
     esc = _htmlmod.escape
     return ('<div class="card" id="fixes-unlock" style="border:2px solid #534AB7;background:#EEEDFE">'
-            f'<div style="font-size:17px;font-weight:700;color:#3C3489">Unlock every fix prompt for this app: {esc(price)}</div>'
+            f'<div style="font-size:17px;font-weight:700;color:#3C3489">Get the Fix pack for this app: {esc(price)}</div>'
             '<ul style="font-size:13.5px;color:#3C3489;margin:.4rem 0 .7rem;padding-left:1.1rem;line-height:1.6">'
             f'<li>A ready-to-paste prompt for all {int(n)} problem{"" if n == 1 else "s"}, each with &ldquo;explain first&rdquo; and &ldquo;go ahead&rdquo; steps</li>'
-            f'<li>Unlocked for <strong>{days} days</strong>: re-scan after each fix and the new report&rsquo;s prompts are unlocked too</li>'
+            '<li><strong>Unlimited Ask Verilay</strong> questions about this app&rsquo;s reports, and about what changed between two scans</li>'
+            f'<li>For <strong>{days} days</strong>: re-scan after each fix and the new report is unlocked too</li>'
             '<li>Right here on this report: no second scan, no sign-up</li></ul>'
             f'<form method="post" action="/prompts/checkout" style="margin:0"><input type="hidden" name="report_id" value="{esc(report_id)}">'
             f'<button type="submit" style="background:#534AB7;color:#fff;border:0;border-radius:10px;padding:10px 18px;font-size:15px;'
-            f'font-weight:600;font-family:inherit;cursor:pointer">Unlock for {esc(price)} &rarr;</button>'
+            f'font-weight:600;font-family:inherit;cursor:pointer">Get the Fix pack, {esc(price)} &rarr;</button>'
             '<span style="font-size:12px;color:#3C3489;margin-left:8px">One-off payment, card or Apple/Google Pay</span></form>'
-            '<div style="font-size:12.5px;color:#3C3489;margin-top:10px;opacity:.85">Scanning stays free for everyone. Fix prompts keep '
+            '<div style="font-size:12.5px;color:#3C3489;margin-top:10px;opacity:.85">Scanning stays free for everyone. The Fix pack keeps '
             'Verilay running and improving.</div></div>')
 
 
@@ -8454,7 +8500,9 @@ _CMP_Q2 = {"free_vs_pro": ("Was the Pro report worth it?", {"yes": "Yes", "somew
 
 
 def _compare_ask_open(data):
-    if pro_launch_state()["active"] or after_pro_launch():
+    if after_pro_launch():
+        return fix_pack_active(data)            # item 35: asking about a comparison is part of the Fix pack
+    if pro_launch_state()["active"]:
         return True
     return bool((data or {}).get("scan_tier") == "pro" or (data or {}).get("is_deep_scan"))
 
@@ -8488,10 +8536,17 @@ def compare_page(report_id):
             chips = "".join(f'<button type="button" class="opt ask-chip">{esc(q)}</button>' for q in _compare_suggestions(sit, result))
             body += ('<div class="ccard" id="cmp-ask"><h2>Ask Verilay about these two scans</h2>'
                      '<p class="sub">Plain-English answers about what changed and what to do next.'
-                     + (' Part of Verilay Pro, free during the launch.' if pro_launch_state()["active"] else '') + '</p>'
+                     + (' Included in your Fix pack.' if after_pro_launch() else
+                        ' Part of Verilay Pro, free during the launch.' if pro_launch_state()["active"] else '') + '</p>'
                      f'<div class="opts">{chips}</div><div class="arow"><input id="ask-q" maxlength="1000" placeholder="Type your question..." '
                      'aria-label="Your question"><button type="button" id="ask-go" class="btn">Ask</button></div>'
                      '<div id="ask-out"></div></div>')
+        elif after_pro_launch():
+            body += ('<div class="ccard" id="cmp-ask"><h2>Ask Verilay about these two scans</h2><p class="sub">Part of the '
+                     f'<strong>Fix pack</strong> ({esc(_fix_pack_price())} for this app, 7 days): ask what changed and what to fix '
+                     'first, with every fix prompt and unlimited questions about your reports. '
+                     f'<a href="/report/{esc(report_id)}#fixes-unlock" style="color:#534AB7;font-weight:600">Get the Fix pack on your report '
+                     '&rarr;</a></p></div>')
         else:
             body += ('<div class="ccard" id="cmp-ask"><h2>Ask Verilay about these two scans</h2><p class="sub">Part of Verilay Pro: '
                      'run a Pro scan of this app and you can ask Verilay what changed and what to fix first. '
@@ -8563,7 +8618,9 @@ def compare_ask(report_id):
         if not data or data.get("private") or not (data.get("comparison") or {}).get("comparable"):
             return jsonify({"ok": False, "error": "There is no comparison on this report."}), 404
         if not _compare_ask_open(data):
-            return jsonify({"ok": False, "error": "Asking about a comparison is part of Verilay Pro."}), 403
+            return jsonify({"ok": False, "fix_pack": after_pro_launch(),
+                            "error": ("Asking about a comparison is part of the Fix pack." if after_pro_launch()
+                                      else "Asking about a comparison is part of Verilay Pro.")}), 403
         question = str((request.get_json(silent=True) or {}).get("question") or "").strip()[:1000]
         if not question:
             return jsonify({"ok": False, "error": "Please type a question."}), 400
@@ -9821,8 +9878,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
         out.append(bigger_box_html(report_id, raw_data))
     elif raw_data.get("prompts_unlocked_until") and not is_preview:
         out.append('<div class="card" style="background:#E1F5EE;border-color:#9FE1CB"><div style="font-size:13px;color:#085041">'
-                   f'&#10003; <strong>Fix prompts unlocked for this app until {_htmlmod.escape(_nice_date(raw_data["prompts_unlocked_until"]))}.</strong> '
-                   'Re-scan after each fix: the new report&rsquo;s prompts are unlocked too.</div></div>')
+                   f'&#10003; <strong>Fix pack active for this app until {_htmlmod.escape(_nice_date(raw_data["prompts_unlocked_until"]))}.</strong> '
+                   'Every fix prompt and unlimited questions. Re-scan after each fix: the new report is unlocked too.</div></div>')
     if raw_data.get("scan_tier") == "lite" and not is_preview and _to_fix > 0 and not raw_data.get("paid_prompts") and not after_pro_launch():
         out.append('<div class="card" style="background:#EEEDFE;border-color:#c9c5f2"><div style="font-size:14px;font-weight:600;'
                    'color:#3C3489">More fix prompts with Verilay Pro</div><div style="font-size:13px;color:#3C3489;margin-top:3px;'

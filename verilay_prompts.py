@@ -118,7 +118,7 @@ def create_checkout(stripe, base_url, report_id, key, email=None, bigger=False):
     name, desc, amount, success = (
         ("Verilay bigger scan", "One scan of your app reading up to 50 files with the stronger AI, plus every fix prompt "
          f"for {UNLOCK_DAYS} days.", BIGGER_PRICE_CENTS, "/bigger/ready") if bigger else
-        ("Verilay fix prompts", f"Every fix prompt for one app, for {UNLOCK_DAYS} days, re-scans included.", PRICE_CENTS,
+        ("Verilay Fix pack", f"Every fix prompt and unlimited Ask Verilay for one app, for {UNLOCK_DAYS} days, re-scans included.", PRICE_CENTS,
          "/prompts/unlocked"))
     kwargs = {
         "mode": "payment",
