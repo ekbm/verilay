@@ -5056,6 +5056,23 @@ def fix_pack_active(data):
         return False
 
 
+# Posts written when every free report came with a fix prompt (Moses, 23 Nov 2026: an honest note, not a quiet edit).
+FIX_PACK_NOTE_SLUGS = ("why-ai-app-builders-burn-credits-as-your-app-grows", "you-can-fix-it-with-ai",
+                       "scanner-and-ai-builder-disagree-github-sync", "is-your-lovable-or-replit-app-safe-free-check-no-sign-up",
+                       "560000-new-apps-how-yours-gets-noticed")
+
+
+def fix_pack_blog_note(slug):
+    if slug not in FIX_PACK_NOTE_SLUGS:
+        return ""
+    return ('<div class="fixpack-note" style="background:#FEF9C3;border:0.5px solid #EAB308;border-radius:10px;padding:.7rem 1rem;'
+            'margin-top:1rem;font-size:14px;color:#854D0E;line-height:1.6"><strong>Update, 23 November 2026:</strong> since this post, how '
+            'fix prompts work has changed. From 1 December, scanning stays free and every problem is still explained in plain English, '
+            'with a way to check it yourself. The ready-to-paste fix prompts are part of the <a href="/pricing" style="color:#854D0E;'
+            'font-weight:600">Fix pack</a> (A$2.99 per app, for 7 days). Where this post mentions the fix prompts in your report, '
+            'that&rsquo;s what it means now.</div>')
+
+
 def _visitor_unlock(key):
     """An active unlock of this app that this visitor may use (their browser paid, or they are signed in with the
     paying email), or None."""
@@ -6081,6 +6098,7 @@ Also check the whole app for the same kind of problem, and list every place you 
 
 <h2>Coming soon: fixing it end to end, with Verilay</h2>
 <p>Verilay will always give you the free prompt. If you&rsquo;re comfortable working with your builder, that&rsquo;s all you need.</p>
+<p style="background:#FEF9C3;border-radius:8px;padding:.6rem .8rem;font-size:15px"><em><strong>Update, 23 November 2026:</strong> I couldn&rsquo;t keep that promise as written. From 1 December, scanning, re-scanning and the plain-English explanation of every problem stay free, but the ready-made fix prompts are part of the <a href="/pricing">Fix pack</a>. I&rsquo;d rather say so here than quietly change the line above.</em></p>
 <p>For everyone else, I&rsquo;m building <strong>fix sessions</strong>: a guided way to see a problem through to the end, as a paid option alongside the free prompt.</p>
 <ul>
 <li>Verilay checks your GitHub code is up to date, then sorts the problems into what your visitors get, what&rsquo;s exposed on your backend, and what&rsquo;s only a build tool.</li>
@@ -7350,6 +7368,7 @@ def render_post(post):
     <p style="font-size:17px;color:#6b6966;line-height:1.6">""" + post.get("excerpt", "") + """</p>
     """ + _share_bar(post) + """
     """ + blogseries.box_html(post["slug"], BLOG_POSTS) + """
+    """ + fix_pack_blog_note(post["slug"]) + """
   </div>
   <hr>
 """ + _externalise_links(post.get("body", "")) + """
@@ -7738,7 +7757,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     </a>
     <a href="https://verilay.dev" style="display:block;text-decoration:none;background:#EEEDFE;border:0.5px solid #534AB7;border-radius:10px;padding:1rem">
       <div style="font-weight:600;font-size:14px;color:#534AB7;margin-bottom:.25rem">Verilay &#x2713; You are here</div>
-      <div style="font-size:12px;color:#3C3489;line-height:1.5">Free security analysis for AI-built apps. Plain-English findings and advice prompts.</div>
+      <div style="font-size:12px;color:#3C3489;line-height:1.5">Free security analysis for AI-built apps: every problem explained in plain English.</div>
     </a>
   </div>
 
@@ -8461,8 +8480,8 @@ _NEXT = {
     "fix": ("#EEEDFE", "#3C3489", "#534AB7", "&#128295;", "/pricing?src={src}#fix-interest"),
     "monitor": ("#E1F5EE", "#085041", "#1D9E75", "&#128737;", "/monitoring?src={src}#form"),
 }
-_NEXT_TEXT = {("fix", "report"): """<strong>Not sure how to fix these?</strong> A <strong>Verilay Self Fix session</strong> walks you through each fix with your AI builder, checks its replies, and rescans to confirm. Coming soon.""", ("monitor", "report"): """<strong>Keep it that way.</strong> <strong>Monitoring</strong> re-checks your app on a schedule and emails you when something new turns up: a new package problem, an exposed key, or a grade change. Coming soon.""",
-              ("monitor", "compare"): """<strong>Nice work.</strong> Want Verilay to keep watching so it stays this way? <strong>Monitoring</strong> emails you when something new turns up. Coming soon.""", ("fix", "compare"): """<strong>Some problems are still there or new.</strong> A <strong>Verilay Self Fix session</strong> would walk you through each fix with your AI builder and rescan to confirm. Coming soon."""}
+_NEXT_TEXT = {("fix", "report"): """<strong>Not sure how to fix these?</strong> <strong>Verilay Self Fix</strong> walks you through each fix with your AI builder, checks its replies, and rescans to confirm. Coming soon.""", ("monitor", "report"): """<strong>Keep it that way.</strong> <strong>Monitoring</strong> re-checks your app on a schedule and emails you when something new turns up: a new package problem, an exposed key, or a grade change. Coming soon.""",
+              ("monitor", "compare"): """<strong>Nice work.</strong> Want Verilay to keep watching so it stays this way? <strong>Monitoring</strong> emails you when something new turns up. Coming soon.""", ("fix", "compare"): """<strong>Some problems are still there or new.</strong> <strong>Verilay Self Fix</strong> would walk you through each fix with your AI builder and rescan to confirm. Coming soon."""}
 
 
 def next_offer_for_report(kind, score, critical, warnings):
@@ -8485,7 +8504,7 @@ def whats_next_html(offer, src):
 
 
 OPTIONS_FOOTER = ('<div class="options-footer" style="text-align:center;font-size:12px;color:#6b6966;margin:1rem 0 .25rem">What else Verilay can do: '
-                  'Pro &middot; Self Fix sessions &middot; Monitoring &middot; <a href="/pricing?src=footer" style="color:#534AB7;font-weight:600">'
+                  'Pro &middot; Self Fix &middot; Monitoring &middot; <a href="/pricing?src=footer" style="color:#534AB7;font-weight:600">'
                   'See all options &rarr;</a><br><a href="/newsletter" style="color:#534AB7">Get the monthly newsletter</a></div>')
 
 
@@ -9769,7 +9788,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
                                      "deep": ("Deep scan report", "#E1F5EE", "#1D9E75", "#085041")}[_tier]
     _twhat = {"deep": "Up to 150 files read, every risky package named",
               "pro": "Up to 50 files read, a fix prompt for every finding",
-              "free": ("A quick check of every area; fix prompts unlock for A$2.99" if data.get("paid_prompts") else
+              "free": ("A quick check of every area; fix prompts come with the Fix pack, A$2.99" if data.get("paid_prompts") else
                        "A quick check, with a fix prompt for the most serious problem" if data.get("scan_tier") == "lite"
                        else "A quick check of your code")}[_tier]
     # How the app was shared, next to the kind of scan (28 Oct 2026; same labels as app.js tierBandHTML).
@@ -10182,7 +10201,7 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
     if not is_preview and not data.get("analysis_incomplete"):
         _kind = "deep" if raw_data.get("is_deep_scan") else ("pro" if raw_data.get("scan_tier") == "pro" else "free")
         out.append(whats_next_html(next_offer_for_report(_kind, h.get("score"), h.get("critical"), h.get("warnings")), "report"))
-    out.append(OPTIONS_FOOTER.replace("Pro &middot; ", "") if after_pro_launch() else OPTIONS_FOOTER)
+    out.append(OPTIONS_FOOTER.replace("Pro &middot; ", "Bigger scan &middot; Fix pack &middot; ") if after_pro_launch() else OPTIONS_FOOTER)
     out.append('<div style="background:#f8f8fc;border-radius:10px;padding:.85rem 1rem;margin:1rem 0;font-size:12px;color:#888;line-height:1.6;text-align:center">' + ('' if is_preview else 'Scores may vary slightly between runs as findings are AI-generated. A meaningful improvement (e.g. C &rarr; B) after applying fixes indicates real progress.<br><br>') + '<strong style=\'color:var(--txt)\'>AI disclaimer:</strong> Analysis is generated by Claude AI and may contain false positives or miss issues. Always verify findings with your AI builder before making changes. This is not a professional security audit. <a href=\'/terms\' style=\'color:#534AB7\'>See full terms</a>.</div>')
     out.append(f'<div class="footer">Generated by <a href="https://verilay.dev" style="color:#534AB7">Verilay</a> on {scan_when} &nbsp;·&nbsp; <a href="https://verilay.dev" style="color:#534AB7">Analyse your own app &rarr;</a> &nbsp;·&nbsp; <a href="https://github.com/ekbm/verilay" style="color:#534AB7">&#11088; Star on GitHub</a></div></div></body></html>')
 

@@ -54,7 +54,7 @@ Tools like CodeRabbit and Snyk answer these questions — for developers, in dev
 
 **Production verdict** — is this app ready to ship?
 
-**Fix list** — your top issues in priority order with ready-to-paste fix prompts for Lovable and Replit
+**Fix list** — your top issues in priority order, each explained in plain English. Ready-to-paste fix prompts for Lovable and Replit come with the Fix pack (A$2.99 per app, from 1 December 2026)
 
 **Second opinion prompts** — copy into Claude or ChatGPT for independent verification
 

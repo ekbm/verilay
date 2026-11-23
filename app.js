@@ -2547,7 +2547,7 @@ function whatsNextHTML(data, h) {
   if (offer === 'fix') {
     line = '<div class="whats-next" data-offer="fix" style="display:flex;gap:10px;align-items:flex-start;background:var(--pul);color:var(--put);' +
       'border-radius:10px;padding:.7rem .9rem;margin:.85rem 0;font-size:14px;line-height:1.5"><span style="font-size:18px;line-height:1.2">&#128295;</span>' +
-      '<span><strong>Not sure how to fix these?</strong> A <strong>Verilay Self Fix session</strong> walks you through each fix with your AI builder, checks its replies, and rescans to confirm. Coming soon. <a href="/pricing?src=report#fix-interest" target="_blank" rel="noopener" ' +
+      '<span><strong>Not sure how to fix these?</strong> <strong>Verilay Self Fix</strong> walks you through each fix with your AI builder, checks its replies, and rescans to confirm. Coming soon. <a href="/pricing?src=report#fix-interest" target="_blank" rel="noopener" ' +
       'style="color:var(--pu);font-weight:600;white-space:nowrap">Get early access &rarr;</a></span></div>';
   } else if (offer === 'monitor') {
     line = '<div class="whats-next" data-offer="monitor" style="display:flex;gap:10px;align-items:flex-start;background:#E1F5EE;color:#085041;' +
@@ -2556,7 +2556,7 @@ function whatsNextHTML(data, h) {
       'style="color:#1D9E75;font-weight:600;white-space:nowrap">Get early access &rarr;</a></span></div>';
   }
   return line + '<div class="options-footer" style="text-align:center;font-size:12px;color:var(--mut);margin:.85rem 0 .25rem">What else Verilay can do: ' +
-    'Pro &middot; Self Fix sessions &middot; Monitoring &middot; <a href="/pricing?src=footer" target="_blank" rel="noopener" style="color:var(--pu);font-weight:600">' +
+    (data && data.paid_prompts ? 'Bigger scan &middot; Fix pack' : 'Pro') + ' &middot; Self Fix &middot; Monitoring &middot; <a href="/pricing?src=footer" target="_blank" rel="noopener" style="color:var(--pu);font-weight:600">' +
     'See all options &rarr;</a><br><a href="/newsletter" target="_blank" rel="noopener" style="color:var(--pu)">Get the monthly newsletter</a></div>';
 }
 
