@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-22.1"
+ANALYSIS_VERSION = "2026-11-23.1"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -1077,6 +1077,12 @@ _REPEAT_PATH = _re.compile(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){3,}\b")
 # check app 13: "API: ... comments.js builds markup via innerHTML" and "Frontend: comments.js ... innerHTML"). Two findings
 # that name the same unsafe display function and mention the same code file are one problem.
 _REPEAT_SINKS = ("innerhtml", "outerhtml", "dangerouslysetinnerhtml", "insertadjacenthtml", "document.write", "v-html")
+# Item 32 (23 Nov 2026): one leaked password in one file became a Config critical AND a Database critical with different
+# titles. Two findings about a secret in the same file are one problem.
+_REPEAT_SECRET = _re.compile(r"(?i)password|secret|credential|api[ _-]?key|private key|connection string|\btokens?\b")
+_TEST_FILE = _re.compile(r"(?i)(?:^|/)(?:tests?|__tests__|spec|fixtures?)/|(?:^|/)test_[^/]+$|[._-](?:test|spec)\.\w+$")
+TEST_FILE_SECRET_NOTE = ("It is in a test file, so it may be a made-up value: check whether it is a real password before "
+                         "treating it as leaked.")
 _REPEAT_CODE_FILE = _re.compile(r"[\w\-/]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|html|htm|py|rb|php)\b")
 
 
@@ -1156,13 +1162,17 @@ def mark_repeated_findings(layers):
             low = f"{text} {f.get('file', '')}".lower()
             sinks = {s for s in _REPEAT_SINKS if s in low}
             files = {p.split("/")[-1] for p in _REPEAT_CODE_FILE.findall(low)}
-            for other, ofile, onames, oquoted, osinks, ofiles in seen:
+            secret = bool(_REPEAT_SECRET.search(str(f.get("title") or "")))
+            if secret and _TEST_FILE.search(str(f.get("file") or "")) and TEST_FILE_SECRET_NOTE not in str(f.get("detail") or ""):
+                f["detail"] = (str(f.get("detail") or "").rstrip() + " " + TEST_FILE_SECRET_NOTE).strip()
+            for other, ofile, onames, oquoted, osinks, ofiles, osecret in seen:
                 if other != name and ((quoted & oquoted) or (fname and fname == ofile and names & onames)
-                                      or (sinks & osinks and files & ofiles)):
+                                      or (sinks & osinks and files & ofiles)
+                                      or (fname and fname == ofile and secret and osecret)):
                     f["repeat_of"] = other
                     break
             else:
-                seen.append((name, fname, names, quoted, sinks, files))
+                seen.append((name, fname, names, quoted, sinks, files, secret))
     return layers
 
 
@@ -3364,6 +3374,35 @@ def build_module_purpose_rows_html(stack, layers):
     return "".join(rows)
 
 
+# Item 31 (23 Nov 2026): Step 1 was given only build files (package.json, vite.config...) and the first 60 paths, so its
+# summary, builder and verdict were guesses, and it told visitors "the source was not provided". It now also sees a few
+# main entry files and builder markers, and a longer file list. Cost: about 8k more input tokens on the free model.
+_STEP1_ENTRY = _re.compile(r"(?i)(?:^|/)(?:index\.html|(?:main|app|server|index|manage|bot|cli)\.(?:py|js|jsx|ts|tsx|mjs|go|rb|php)"
+                           r"|firebase(?:-applet)?-config\.json|firebase\.json|\.replit|replit\.nix|netlify\.toml|vercel\.json"
+                           r"|supabase/config\.toml|readme\.md)$")
+_STEP1_ENTRY_MAX = 6
+_STEP1_ENTRY_CHARS = 5000
+_STEP1_TREE_MAX = 300
+# A REASON that talks about which files were or weren't seen (against the rule) is not shown to the visitor.
+_STEP1_FILES_TALK = _re.compile(r"(?i)\b(?:not|only|wasn'?t|weren'?t|never)\b.{0,80}?\b(?:provided|given|shared|supplied|"
+                                r"available|visible|readable|included)\b|partial view|limited view|file tree")
+
+
+def step1_entry_files(files, stack_keys):
+    """A few main entry files and builder markers for Step 1 (item 31): shortest paths first, so the app's own
+    index.html beats one buried in node_modules or a test folder."""
+    picked = [k for k in sorted(files, key=lambda k: (k.count("/"), len(k)))
+              if k not in stack_keys and _STEP1_ENTRY.search(k) and "node_modules" not in k]
+    return picked[:_STEP1_ENTRY_MAX]
+
+
+def clean_step1_reason(reason):
+    """Drop sentences about which files Step 1 saw; '' when nothing else is left (item 31)."""
+    parts = [x for x in _re.split(r"(?<=[.!?])\s+", str(reason or "").strip()) if x]
+    kept = [x for x in parts if not _STEP1_FILES_TALK.search(x)]
+    return " ".join(kept)
+
+
 def analyse_step1(files, tree, repo_name, method):
     # Limit files for ZIP uploads to keep analysis fast
     if method == "zip" and len(files) > 20:
@@ -3374,11 +3413,20 @@ def analyse_step1(files, tree, repo_name, method):
         ))[:20]
         files = {k: files[k] for k in priority_keys}
 
-    tree_str = "\n".join(tree[:60]) if tree else "Not available"
+    if tree:
+        _paths = [t.get("path") if isinstance(t, dict) else t for t in tree]
+        _paths = [x for x in _paths if isinstance(x, str)]
+        tree_str = "\n".join(_paths[:_STEP1_TREE_MAX]) + (f"\n(and {len(_paths) - _STEP1_TREE_MAX} more files)"
+                                                         if len(_paths) > _STEP1_TREE_MAX else "")
+    else:
+        tree_str = "Not available"
     stack_keys = [k for k in files if any(sf in k for sf in
         ["package.json","requirements","Procfile","vite","tsconfig",".gitignore","Dockerfile"])]
     ftext = files_for(files, stack_keys) or files_for(files, list(files.keys())[:3])
     ftext = ftext[:250000]
+    _entry = step1_entry_files(files, stack_keys)
+    if _entry:
+        ftext += "\n" + files_for({k: str(files[k])[:_STEP1_ENTRY_CHARS] for k in _entry}, _entry)
     is_surface = method == "url"
 
     prompt = (
@@ -3489,7 +3537,7 @@ def analyse_step1(files, tree, repo_name, method):
         "prod_ready": {
             "verdict": lines.get("VERDICT", "needs_work"),
             "confidence": lines.get("CONFIDENCE", "medium"),
-            "reason": lines.get("REASON", ""),
+            "reason": clean_step1_reason(lines.get("REASON", "")),
             "static_recommendation": lines.get("STATIC_RECOMMENDATION", "no"),
             "static_reason": lines.get("STATIC_REASON", "")
         },
@@ -3538,6 +3586,7 @@ def analyse_step2(files, repo_name, scan_block=""):
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
         "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
+        "- Admin (or another privileged role) given to any email that CONTAINS a word such as admin or treasurer, or matches only part of an address, or given from a value the person picks at sign-up: CRITICAL, never a warning. Anyone can sign up as admin123@anymail.com and become an admin: that is account takeover (change-list item 33, 23 Nov 2026). Exact, full email addresses checked on the server are fine\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -3707,6 +3756,7 @@ def analyse_step3(files, repo_name, osv_block=""):
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
         "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
+        "- Admin (or another privileged role) given to any email that CONTAINS a word such as admin or treasurer, or matches only part of an address, or given from a value the person picks at sign-up: CRITICAL, never a warning. Anyone can sign up as admin123@anymail.com and become an admin: that is account takeover (change-list item 33, 23 Nov 2026). Exact, full email addresses checked on the server are fine\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -3977,6 +4027,7 @@ def analyse_step4(repo_name, built_with, findings_summary):
         "PLATFORM AWARENESS — NEVER FLAG these correct patterns:\n"
         "- Supabase anon key in frontend: by design, security from RLS not hiding key\n"
         "- verify_jwt=false in config.toml: fine BY ITSELF (Lovable Cloud default) for public endpoints or functions that verify auth in their own code. EXCEPTION — DO flag as CRITICAL when verify_jwt=false AND the function uses the service-role key AND has no in-code auth/secret check AND performs data-modifying or destructive operations (e.g. a cron-triggered delete/cleanup). That specific combination is a real unauthenticated-access vulnerability, not a platform default\n"
+        "- Admin (or another privileged role) given to any email that CONTAINS a word such as admin or treasurer, or matches only part of an address, or given from a value the person picks at sign-up: CRITICAL, never a warning. Anyone can sign up as admin123@anymail.com and become an admin: that is account takeover (change-list item 33, 23 Nov 2026). Exact, full email addresses checked on the server are fine\n"
         "- try/catch on Supabase: wrong pattern, use {data,error}\n"
         "- TanStack Query loading states: built in\n"
         "- Replit Auth isAuthenticated/isAdmin/requireAuth: valid OIDC\n"
@@ -4532,6 +4583,10 @@ def analyse_stream():
             if private_scan is not None:
                 s1["private"] = True      # kept private: never cached, never listed, shown only to this browser
             s1["files_total"] = len(tree) if tree else len(files)
+            s1["code_files_total"] = code_files_count(tree if tree else list(files.keys()))
+            _adv = size_advice(dict(s1, input_method=method))      # item 42: the scan that would see more of this app
+            if _adv:
+                s1["size_advice"] = _adv
             s1["file_breakdown"] = categorise_files(tree if tree else list(files.keys()))
             s1["files_analysed"] = sorted(files.keys())
             # Attach the scan here, not just to the saved report — otherwise the
@@ -4998,6 +5053,9 @@ def _lock_or_unlock_fixes(result, report_id, repo_name):
     result["prompts_locked"] = bool(full)
     result["unlock_price"] = prompts_unlock.price_label()
     result["unlock_days"] = prompts_unlock.UNLOCK_DAYS
+    _adv = size_advice(rep)
+    if _adv:
+        result["size_advice"] = _adv
     if bigger_scan_offered(rep):
         result["bigger_offer"] = True
         result["bigger_price"] = prompts_unlock.bigger_price_label()
@@ -5061,6 +5119,64 @@ if paywall is not None:
     paywall.PROMPT_PAID_HOOK = _on_prompt_paid
 
 
+def code_files_count(paths):
+    """How many of the app's files are code (item 42, 23 Nov 2026): a 519-file repository can be mostly images and notes."""
+    n = 0
+    for p in paths or []:
+        name = (p.get("path") if isinstance(p, dict) else p) or ""
+        if isinstance(name, str) and name.lower().endswith(_PICK_CODE_EXT):
+            n += 1
+    return n
+
+
+def small_share_read(data):
+    """(files read, files in the app) when the AI read less than half of the app, else None (item 41, 23 Nov 2026: a
+    25-of-519 scan said "Safe to Launch" at the top). The grade is unchanged; only the headline says how much was read."""
+    d = data or {}
+    try:
+        read, total = int(d.get("files_read") or 0), int(d.get("files_total") or 0)
+    except (TypeError, ValueError):
+        return None
+    return (read, total) if read > 0 and total > read and read * 2 < total else None
+
+
+def size_advice(data):
+    """Which scan would let Verilay see more of this app (item 42, Moses 23 Nov 2026), matching the pricing table:
+    up to 25 files nothing (the free scan read it all), 26-50 the bigger scan, more than 50 the deep scan.
+    Returns {"kind": "bigger"|"pro"|"deep", "text": ...} or None."""
+    d = data or {}
+    if d.get("is_deep_scan") or d.get("preview_only") or d.get("input_method") not in ("github", "zip"):
+        return None
+    try:
+        read = int(d.get("files_read") or 0)
+        total = int(d.get("files_total") or 0)
+        code = int(d.get("code_files_total") or 0)
+    except (TypeError, ValueError):
+        return None
+    size = code if 0 < code <= total else total
+    if read <= 0 or size <= read or size <= MAX_FILES:
+        return None
+    if size <= 50 and read < 50:
+        if after_pro_launch():
+            return {"kind": "bigger", "text": "To see more, a bigger scan reads up to 50 files with the stronger AI (A$4.99)."}
+        return {"kind": "pro", "text": "To see more, Verilay Pro reads up to 50 files, free until " + (launch_until_text() or "30 November") + "."}
+    if size > 150:
+        return {"kind": "deep", "text": f"To see more, a deep scan reads the 150 most important of your {size} {'code ' if code else ''}files (A$19)."}
+    return {"kind": "deep", "text": f"To see more, a deep scan reads your whole app, up to 150 files (A$19)."}
+
+
+def coverage_verdict(score, data):
+    """(label, reason) for an A or B when only a small part of the app was read, else None (item 41)."""
+    share = small_share_read(data)
+    if score not in ("A", "B") or not share:
+        return None
+    read, total = share
+    adv = size_advice(data)
+    return (f"{score} · based on {read} of {total} files",
+            "Nothing serious in the files Verilay read, but that was only part of your app, so this is not the full answer."
+            + (" " + adv["text"] if adv else ""))
+
+
 def bigger_scan_offered(data):
     """The A$4.99 bigger scan is offered on a free scan of a GitHub or ZIP app with more files than the free scan reads,
     from 1 Dec 2026, when payments are on."""
@@ -5078,9 +5194,15 @@ def bigger_box_html(report_id, data):
     esc = _htmlmod.escape
     price = prompts_unlock.bigger_price_label()
     total, read = int(data.get("files_total") or 0), int(data.get("files_read") or 0)
+    adv = size_advice(data)
+    deep_line = ('<div style="font-size:13.5px;color:#085041;background:#E1F5EE;border-radius:8px;padding:.45rem .7rem;margin:.4rem 0 .5rem">'
+                 f'<strong>For an app this size, the deep scan fits best.</strong> {esc(adv["text"].replace("To see more, a", "A"))} '
+                 '<a href="/deep-scan" style="color:#085041;font-weight:600">See the deep scan &rarr;</a> '
+                 '</div><div style="font-size:13px;color:#6b6966;margin:.2rem 0 0">Or, cheaper: the bigger scan, '
+                 f'{esc(price)}.</div>') if adv and adv["kind"] == "deep" else ''
     return ('<div class="card" id="bigger-scan" style="border:.5px solid #534AB7;background:#fff">'
             f'<div style="font-size:15px;font-weight:700;color:#3C3489">This scan read {read} of your {total} files. '
-            f'Want a bigger scan? {esc(price)}</div>'
+            + ('</div>' if deep_line else f'Want a bigger scan? {esc(price)}</div>') + deep_line +
             '<div style="font-size:13.5px;color:#444;margin:.35rem 0 .6rem;line-height:1.55">Runs again reading <strong>up to 50 '
             'files</strong> with Verilay&rsquo;s <strong>stronger AI</strong>, and includes <strong>every fix prompt</strong> '
             f'for this app for 7 days. It opens as a new report.'
@@ -5089,8 +5211,8 @@ def bigger_box_html(report_id, data):
             f'<form method="post" action="/bigger/checkout" style="margin:0"><input type="hidden" name="report_id" value="{esc(report_id)}">'
             f'<button type="submit" style="background:#fff;color:#534AB7;border:1.5px solid #534AB7;border-radius:10px;padding:8px 16px;'
             f'font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Run a bigger scan, {esc(price)} &rarr;</button></form>'
-            '<div style="font-size:12px;color:#6b6966;margin-top:8px">For the whole app (up to 150 files), see the '
-            '<a href="/deep-scan" style="color:#534AB7">deep scan</a>.</div></div>')
+            + ('' if deep_line else '<div style="font-size:12px;color:#6b6966;margin-top:8px">For the whole app (up to 150 files), '
+                    'see the <a href="/deep-scan" style="color:#534AB7">deep scan</a>.</div>') + '</div>')
 
 
 def make_paid_pro_ticket(report_id, session):
@@ -7626,6 +7748,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #534AB7;outline-offset:2p
     <div style="font-weight:600;margin-bottom:.35rem">&#x2709; General enquiries &amp; feedback</div>
     <div style="font-size:13px;color:#6b6966;margin-bottom:.5rem">Questions about Verilay, feature requests, or want to share what score your app got?</div>
     <a href="mailto:moses@verilay.dev?subject=Verilay%20Enquiry" style="font-size:13px;color:#534AB7">moses@verilay.dev</a>
+    <div id="lang-note" style="font-size:13px;color:#6b6966;margin-top:.6rem">Reports are in English for now. Want yours in another language? <a href="mailto:moses@verilay.dev?subject=Report%20language%20request" style="color:#534AB7">Tell me which one</a>.</div>
   </div>
   <div style="background:#fff;border:0.5px solid #e8e6e0;border-radius:10px;padding:1.25rem;margin-bottom:.75rem">
     <div style="font-weight:600;margin-bottom:.35rem">&#x1F4BC; Commercial licensing</div>
@@ -9484,6 +9607,10 @@ Run a new analysis &rarr;</a>
         score_color = "#999"
     else:
         verdict_label, verdict_color, verdict_reason = verdict_from_score(h.get("score", "C"))
+        _cov = coverage_verdict(h.get("score"), raw_data)
+        if _cov:
+            verdict_label, verdict_reason = _cov
+            verdict_color = "#4A90D9"
         # With zero critical findings (e.g. after a dev-only "critical" is capped),
         # "address the critical findings" would be wrong; the grade comes from warnings.
         if not h.get("critical") and h.get("score") in ("C", "D"):
@@ -10108,6 +10235,9 @@ def build_markdown(data):
     h = data.get("health",{})
     pr = data.get("prod_ready",{})
     md_label, _mdc, md_reason = verdict_from_score(h.get("score","C"))
+    _cov = coverage_verdict(h.get("score"), data)
+    if _cov:
+        md_label, md_reason = _cov
     lines = [f"# Verilay Report: {repo}",
              f"Generated: {data.get('generated_at','')}","",
              "## Production Verdict",
@@ -11493,7 +11623,8 @@ __LAUNCH_BANNER__
   <!-- CTA -->
   <div style="text-align:center;background:var(--pul);border-radius:var(--r);padding:1.75rem 1.5rem;margin-bottom:2rem">
     <div class="vl-display" style="font-size:22px;margin-bottom:.4rem">Ready to see what's inside your app?</div>
-    <div style="font-size:14px;color:var(--mut);margin-bottom:1.1rem">Free. No sign-up, no login. Usually one to three minutes.</div>
+    <div style="font-size:14px;color:var(--mut);margin-bottom:.35rem">Free. No sign-up, no login. Usually one to three minutes.</div>
+    <div id="lang-note" style="font-size:12.5px;color:var(--mut);margin-bottom:1.1rem">Reports are in English for now. Want yours in another language? <a href="mailto:moses@verilay.dev?subject=Report%20language%20request" style="color:var(--pu)">Email moses@verilay.dev</a></div>
     <button id="btn-hero-cta" style="display:inline-flex;align-items:center;gap:7px;padding:12px 28px;border-radius:var(--r);background:var(--pu);color:#fff;font-size:15px;font-weight:500;border:none;cursor:pointer">
       <i class="ti ti-search" style="font-size:16px"></i> Analyse my app
     </button>

@@ -51,12 +51,12 @@ CHECKS = {
         "limit": "Never paste a real key into a chat, an email or a website while checking.",
     },
     "key_in_repo": {
-        "title": "Is a secret saved in your GitHub repository?", "minutes": 3,
-        "steps": ["Open your repository on GitHub.",
+        "title": "Is a secret saved in your code?", "minutes": 3,
+        "steps": ["Open your project: on GitHub, or the folder you zipped.",
                   "Open the file and line that Verilay named in this report.",
                   "Decide whether the value is real, or an example or placeholder."],
         "good": "It's an example, a placeholder, or a value that is meant to be public.",
-        "bad": "It's a real key. Make a new key in the service's dashboard and switch to it. Deleting the file isn't enough, because the old key stays in the repository's history.",
+        "bad": "It's a real key. Make a new key in the service's dashboard and switch to it. If your code is on GitHub, deleting the file isn't enough, because the old key stays in its history.",
         "limit": "Never paste a real key into a chat, an email or a website while checking.",
     },
     "old_packages": {
@@ -141,7 +141,10 @@ _NEEDS_PERSON_RE = re.compile(r"(?i)\bssrf\b|server-side request|path traversal|
 _FIX_RULES = (
     ("key_in_browser", re.compile(r"(?i)(?:front-?end|browser|client[- ]side|bundle)[^.]{0,60}(?:secret|api key|key|credential|token)"
                                   r"|(?:secret|api key|credential)[^.]{0,60}(?:front-?end|browser|client[- ]side|bundle)")),
-    ("key_in_repo", re.compile(r"(?i)private key|hard-?coded|\bsecrets?\b|api key|credentials?\b|\.env\b|committed (?:key|secret)")),
+    # A key or password WRITTEN INTO the code (23 Nov 2026: "trusts a shared secret", a signing problem, got this card).
+    ("key_in_repo", re.compile(r"(?i)private key|hard-?coded|\.env\b|committed (?:key|secret)|exposed (?:api )?keys?"
+                               r"|(?:secrets?|api keys?|keys?|passwords?|credentials?|tokens?)\b[^.]{0,40}\b(?:in|into|inside) (?:the |your )?"
+                               r"(?:source|code|repo|repository|files?|commits?|git|config(?:uration)? files?|readme)")),
     ("odd_characters", re.compile(r"(?i)sql injection|nosql|\binjection\b")),
     ("typed_html", re.compile(r"(?i)\bxss\b|cross-site scripting|innerhtml|unescaped|unsanitized|dom-based")),
     ("upload_wrong_file", re.compile(r"(?i)file upload|\bupload")),

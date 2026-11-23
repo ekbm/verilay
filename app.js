@@ -1923,6 +1923,16 @@ function limitedCoverageHTML(data) {
     ' files could be read.</strong> So this report can&rsquo;t give an A: nothing found here doesn&rsquo;t mean nothing is wrong in the ' +
     'files that weren&rsquo;t read.</div>';
 }
+// Item 41 (23 Nov 2026): an A or B from less than half of the app says so in its headline (app.py small_share_read).
+function smallShareRead(d) {
+  var read = parseInt((d && d.files_read) || 0, 10), total = parseInt((d && d.files_total) || 0, 10);
+  return (read > 0 && total > read && read * 2 < total) ? [read, total] : null;
+}
+// Item 42: which scan would let Verilay see more (app.py size_advice); the server sends it with Part 2 as size_advice.
+function sizeAdviceText(d) {
+  var a = d && d.size_advice;
+  return (a && a.text) ? a.text : '';
+}
 // An A needs enough of the code read: half the files, or 10 when there are more than 20 (app.py enough_read_for_a).
 function enoughReadForA(data) {
   var read = parseInt((data && data.files_read) || 0, 10), total = parseInt((data && data.files_total) || 0, 10);
@@ -2638,7 +2648,12 @@ function startHereHTML(data, h, hasLayers, isPreview) {
     '<div style="display:flex;gap:14px;align-items:center;margin:.55rem 0 .15rem">' +
     '<div style="width:64px;height:64px;border-radius:16px;background:' + tone[0] + ';color:' + tone[1] + ';font-size:36px;font-weight:800;display:flex;' +
     'align-items:center;justify-content:center;flex-shrink:0">' + esc(s) + '</div><div style="min-width:0">' +
-    '<div style="font-size:19px;font-weight:700;line-height:1.3">' + esc(_VERDICT_SHORT[s] || 'Your result') + '</div>' +
+    '<div style="font-size:19px;font-weight:700;line-height:1.3">' + esc(((s === 'A' || s === 'B') && smallShareRead(currentReport))
+        ? s + ' \u00b7 based on ' + smallShareRead(currentReport)[0] + ' of ' + smallShareRead(currentReport)[1] + ' files'
+        : (_VERDICT_SHORT[s] || 'Your result')) + '</div>' +
+    (((s === 'A' || s === 'B') && smallShareRead(currentReport))
+      ? '<div id="coverage-note" style="font-size:13px;color:var(--mut);line-height:1.5;margin:.1rem 0 .2rem">Nothing serious in the files Verilay read, ' +
+        'but that was only part of your app, so this is not the full answer. ' + esc(sizeAdviceText(currentReport)) + '</div>' : '') +
     '<div style="font-size:13px;color:var(--mut)">' + areasCheckedText() + ' areas checked &middot; ' + crit + ' critical &middot; ' + warn + ' warning' + (warn === 1 ? '' : 's') + '</div>' +
     '<a href="#" onclick="var t=document.getElementById(\'start-why\');t.style.display=t.style.display===\'block\'?\'none\':\'block\';return false;" ' +
     'style="font-size:13px;color:var(--pu);font-weight:600">Why this grade?</a></div></div>' +
@@ -3643,8 +3658,14 @@ function renderPart2(data) {
   });
   if (data.prompts_locked) html += unlockBoxHTML(data);
   var _cr = currentReport || {};
+  var _sa = data.size_advice || _cr.size_advice, _deepAdv = (_sa && _sa.kind === 'deep') ? _sa : null;   // item 42
   if (data.bigger_offer && savedReportId) html += '<div id="bigger-scan" style="border:.5px solid var(--pu);border-radius:12px;padding:.85rem 1rem;margin:.6rem 0;background:var(--sur)">' +
-    '<div style="font-size:15px;font-weight:700;color:var(--put)">This scan read ' + (_cr.files_read || 25) + ' of your ' + (_cr.files_total || '') + ' files. Want a bigger scan? ' + esc(data.bigger_price || 'A$4.99') + '</div>' +
+    '<div style="font-size:15px;font-weight:700;color:var(--put)">This scan read ' + (_cr.files_read || 25) + ' of your ' + (_cr.files_total || '') + ' files.' +
+    (_deepAdv ? '</div><div style="font-size:13.5px;color:#085041;background:#E1F5EE;border-radius:8px;padding:.45rem .7rem;margin:.4rem 0 .2rem">' +
+      '<strong>For an app this size, the deep scan fits best.</strong> ' + esc(_deepAdv.text.replace('To see more, a', 'A')) +
+      ' <a href="/deep-scan" style="color:#085041;font-weight:600">See the deep scan &rarr;</a></div>' +
+      '<div style="font-size:13px;color:var(--mut)">Or, cheaper: the bigger scan, ' + esc(data.bigger_price || 'A$4.99') + '.</div>'
+      : ' Want a bigger scan? ' + esc(data.bigger_price || 'A$4.99') + '</div>') +
     '<div style="font-size:13.5px;color:var(--mut);margin:.35rem 0 .6rem;line-height:1.55">Runs again reading <strong>up to 50 files</strong> with Verilay&rsquo;s <strong>stronger AI</strong>, and includes <strong>every fix prompt</strong> for this app for 7 days. It opens as a new report.</div>' +
     '<form method="post" action="/bigger/checkout" style="margin:0"><input type="hidden" name="report_id" value="' + esc(savedReportId) + '">' +
     '<button type="submit" style="background:var(--sur);color:var(--pu);border:1.5px solid var(--pu);border-radius:10px;padding:8px 16px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Run a bigger scan, ' + esc(data.bigger_price || 'A$4.99') + ' &rarr;</button></form></div>';
