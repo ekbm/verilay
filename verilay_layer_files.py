@@ -132,9 +132,12 @@ def pick(files, layers, manifests=False, legacy_words=()):
     Every layer keeps its top file even when another layer's files score higher. Any slots left over go to files
     the old name-only rule would have picked (legacy_words), so nothing it used to show is lost."""
     chosen, seen = [], set()
-    for p in sorted(files, key=lambda k: (k.count("/"), k)):
-        if p.lower().split("/")[-1] in _ACCESS_RULES and not _skip(p) and len(chosen) < 2:
-            chosen.append(p); seen.add(p)
+    # Only the Login / Database call (24 Nov 2026, accuracy v17-v18): given the rules too, the API call read correct
+    # owner-only rules as a problem and practice app 06 dropped from B to C in 3 of 4 scans.
+    if any(L in ("Auth", "Database") for L in layers):
+        for p in sorted(files, key=lambda k: (k.count("/"), k)):
+            if p.lower().split("/")[-1] in _ACCESS_RULES and not _skip(p) and len(chosen) < 2:
+                chosen.append(p); seen.add(p)
     ranked = {L: rank(files, L) for L in layers}
     if manifests:   # the dependency list, so the Libraries part has something to read
         for p in files:

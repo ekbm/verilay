@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-24.2"   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
+ANALYSIS_VERSION = "2026-11-24.3"   # .3: rules files to Login/Database only (app 06 false criticals)  # .2   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -1123,7 +1123,9 @@ _COVERAGE_NOTE = _re.compile(r"(?i)\b(?:not|never|couldn'?t|could not|cannot|can
                              r"\bnot enough (?:code|files)\b|\bpartial (?:view|review)\b|"
                              # item 53 (24 Nov 2026): "Only part of the browser page code was read"
                              r"\bonly (?:part|some|a portion|a fraction) of\b.{0,60}\b(?:read|reviewed|shown|seen|visible)\b|"
-                             r"\bpartly (?:read|reviewed)\b")
+                             r"\bpartly (?:read|reviewed|confirmed)\b|"
+                             # 24 Nov 2026, Verilay's own deep scan: "Much of the main server file was not read"
+                             r"\b(?:was|were|wasn'?t|weren'?t)\s+not\s+read\b|\b(?:wasn'?t|weren'?t)\s+read\b")
 
 
 def demote_coverage_notes(layers):
@@ -12467,6 +12469,7 @@ if _HAS_PAYWALL:
         categorise_files=categorise_files,
         grade_from_counts=grade_from_counts,
         mark_repeated_findings=mark_repeated_findings,   # one problem, one count (9 Nov 2026)
+        demote_coverage_notes=demote_coverage_notes,     # "not fully read" is a note, not a warning (24 Nov 2026)
         rls_tables_note=rls_tables_note,                 # row level security note for the API/Frontend pass
         align_layer_status=align_layer_status,           # area colour = its worst finding (11 Nov 2026)
         save_report_data=save_report_data,
