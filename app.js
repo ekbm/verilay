@@ -291,7 +291,8 @@ function saveToHistory(report) {
       critical: (report.health || {}).critical || 0,
       warnings: (report.health || {}).warnings || 0,
       timestamp: new Date().toISOString(),
-      method: report.input_method || 'github'
+      method: report.input_method || 'github',
+      fp: report.code_fingerprint || ''          // item 48: same code as the last scan?
     };
     // Remove duplicate if same repo
     history = history.filter(function(h) { return h.repo !== entry.repo; });
@@ -357,6 +358,16 @@ async function showCompareOffer() {
   var best = cands[0];
   var card = document.createElement('div');
   card.id = 'compare-card';
+  // Item 48 (24 Nov 2026): the same files again gives the same result, which can look like "my fixes did nothing".
+  var fp = currentReport && currentReport.code_fingerprint;
+  if (best._same && best.fp && fp && best.fp === fp) {
+    card.style.cssText = 'font-size:13.5px;color:#854D0E;background:#FEF9C3;border:0.5px solid #EAB308;border-radius:8px;' +
+      'padding:.55rem .85rem;margin-bottom:10px;line-height:1.5';
+    card.innerHTML = '<strong>Same code as your scan on ' + esc(_compareWhen(best.timestamp)) + ', so the same result.</strong> ' +
+      'If you have made fixes, upload the updated files (or push them to GitHub first), then scan again.';
+    anchor.parentNode.insertBefore(card, anchor.nextSibling);
+    return;
+  }
   // One small line (25 Oct 2026): the comparison opens on its own page, in a new tab, so this report stays as it is.
   card.style.cssText = 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:#444441;background:#F1EFE8;' +
     'border-radius:8px;padding:.5rem .8rem;margin-bottom:10px';

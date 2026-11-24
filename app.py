@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-23.2"   # .2: item 33 rule taken out again (more false criticals in v13/v14)
+ANALYSIS_VERSION = "2026-11-24.1"   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -614,6 +614,7 @@ def get_report_data(report_id):
     if isinstance(data, dict):
         import copy as _copy
         data = mask_emails(_copy.deepcopy(data))      # item 34: no full email addresses in report text
+        note_test_file_secrets(data.get("layers"))    # item 46: the test-file note, also on reports saved without it
     return privatemod.gate(data, report_id)
 
 
@@ -1083,6 +1084,50 @@ _REPEAT_SECRET = _re.compile(r"(?i)password|secret|credential|api[ _-]?key|priva
 _TEST_FILE = _re.compile(r"(?i)(?:^|/)(?:tests?|__tests__|spec|fixtures?)/|(?:^|/)test_[^/]+$|[._-](?:test|spec)\.\w+$")
 TEST_FILE_SECRET_NOTE = ("It is in a test file, so it may be a made-up value: check whether it is a real password before "
                          "treating it as leaked.")
+def _note_test_file_secret(f):
+    """Add the "may be a made-up value" note to a secret found in a test file (item 32). Safe to run twice."""
+    if (isinstance(f, dict) and f.get("severity") in ("critical", "warning")
+            and _REPEAT_SECRET.search(str(f.get("title") or "")) and _TEST_FILE.search(str(f.get("file") or ""))
+            and TEST_FILE_SECRET_NOTE not in str(f.get("detail") or "")):
+        f["detail"] = (str(f.get("detail") or "").rstrip() + " " + TEST_FILE_SECRET_NOTE).strip()
+
+
+def note_test_file_secrets(layers):
+    """Item 46 (24 Nov 2026): a live scan saved its findings without the note, so the note is also added whenever a report
+    is opened. Older reports get it too."""
+    for layer in layers or []:
+        if isinstance(layer, dict):
+            for f in (layer.get("expert") or {}).get("findings") or []:
+                _note_test_file_secret(f)
+    return layers
+
+
+# Item 45 (24 Nov 2026): "Frontend source not fully reviewed" was counted as a warning. A finding that only says an area
+# could not be (fully) reviewed is a note about coverage, not a problem in the app.
+_COVERAGE_NOTE = _re.compile(r"(?i)\b(?:not|never|couldn'?t|could not|cannot|can'?t)\b[^.]{0,30}\b(?:fully\s+)?"
+                             r"(?:reviewed|checked|provided|available|visible|confirmed|assessed|analy[sz]ed)\b|"
+                             r"\bnot enough (?:code|files)\b|\bpartial (?:view|review)\b")
+
+
+def demote_coverage_notes(layers):
+    """Turn findings that only say "not (fully) reviewed" into notes (severity 'info'). An area left with no real finding
+    is shown as Not checked rather than with a warning colour or a "no issues seen" it hasn't earned."""
+    for layer in layers or []:
+        if not isinstance(layer, dict):
+            continue
+        fs = (layer.get("expert") or {}).get("findings") or []
+        had = False
+        for f in fs:
+            if (isinstance(f, dict) and f.get("severity") in ("critical", "warning")
+                    and _COVERAGE_NOTE.search(str(f.get("title") or ""))):
+                f["severity"] = "info"
+                f["coverage_note"] = True
+                had = True
+        if had and not any(isinstance(f, dict) and f.get("severity") in ("critical", "warning") for f in fs):
+            layer["status"] = "not_checked"
+    return layers
+
+
 _REPEAT_CODE_FILE = _re.compile(r"[\w\-/]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|html|htm|py|rb|php)\b")
 
 
@@ -1163,8 +1208,7 @@ def mark_repeated_findings(layers):
             sinks = {s for s in _REPEAT_SINKS if s in low}
             files = {p.split("/")[-1] for p in _REPEAT_CODE_FILE.findall(low)}
             secret = bool(_REPEAT_SECRET.search(str(f.get("title") or "")))
-            if secret and _TEST_FILE.search(str(f.get("file") or "")) and TEST_FILE_SECRET_NOTE not in str(f.get("detail") or ""):
-                f["detail"] = (str(f.get("detail") or "").rstrip() + " " + TEST_FILE_SECRET_NOTE).strip()
+            _note_test_file_secret(f)
             for other, ofile, onames, oquoted, osinks, ofiles, osecret in seen:
                 if other != name and ((quoted & oquoted) or (fname and fname == ofile and names & onames)
                                       or (sinks & osinks and files & ofiles)
@@ -2134,7 +2178,8 @@ def pro_unlock_route():
     nice["Updates when Pro and fix sessions open"] = "yes" if survey["optin_launch"] else "no"
     nice["Emails about new Verilay features"] = "yes" if survey["optin_features"] else "no"
     threading.Thread(target=notify.send_monitoring_interest_alert,
-                     args=(email, survey["repo"], nice, "Free Pro scan unlocked (launch survey)."), daemon=True).start()
+                     args=(email, survey["repo"], nice, "Free Pro scan unlocked (launch survey)."),
+                     kwargs={"kind": "pro"}, daemon=True).start()
     method = str((data or {}).get("input_method") or "github")
     repo = str((data or {}).get("repo") or "")
     scan = repo if method == "github" and _re.fullmatch(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}", repo) else ""
@@ -4595,6 +4640,7 @@ def analyse_stream():
                 s1["private"] = True      # kept private: never cached, never listed, shown only to this browser
             s1["files_total"] = len(tree) if tree else len(files)
             s1["code_files_total"] = code_files_count(tree if tree else list(files.keys()))
+            s1["code_fingerprint"] = code_fingerprint(files)        # item 48: "same code as your last scan"
             _adv = size_advice(dict(s1, input_method=method))      # item 42: the scan that would see more of this app
             if _adv:
                 s1["size_advice"] = _adv
@@ -4812,6 +4858,7 @@ def analyse_stream():
             # and the grade is a deterministic result of counting, not a re-rolled judgment.
             _crit = _warn = _pass = 0
             cap_example_file_findings(partial["layers"], scan_findings)   # placeholders in .env.example: not critical (item 27)
+            demote_coverage_notes(partial["layers"])                      # "not fully reviewed" is a note, not a warning (item 45)
             align_layer_status(partial["layers"])
             mark_repeated_findings(partial["layers"])
             for _layer in partial["layers"]:
@@ -5177,6 +5224,15 @@ def _on_prompt_paid(session, event_id=None):
 
 if paywall is not None:
     paywall.PROMPT_PAID_HOOK = _on_prompt_paid
+
+
+def code_fingerprint(files):
+    """A short fingerprint of the code a scan read (item 48, 24 Nov 2026): two scans with the same fingerprint read the
+    same files with the same contents. Only the fingerprint is kept, never the code."""
+    h = _hashlib.sha256()
+    for k in sorted((files or {}).keys()):
+        h.update(str(k).encode("utf-8", "replace") + b"\0" + str(files[k]).encode("utf-8", "replace") + b"\1")
+    return h.hexdigest()[:16] if files else ""
 
 
 def code_files_count(paths):
@@ -9255,14 +9311,30 @@ def admin_users():
         acc_html = '<div class="card">The account list could not be read just now (see the Railway log line "/admin/users").</div>'
     else:
         new_week = sum(1 for e_, j, l, i in accounts if j[:10] >= week_ago)
+        # Item 49 (24 Nov 2026): which lists each person chose to join, so nobody who said "no" gets an email by accident.
+        lists_of = {}
+        for r in waitlist:
+            em = str(r.get("email") or "").strip().lower()
+            if em:
+                lab = _list_source_label(r.get("source") or "")
+                if lab not in lists_of.setdefault(em, []):
+                    lists_of[em].append(lab)
+        def _ok_to_email(em):
+            labs = lists_of.get(str(em or "").strip().lower())
+            return ('<span style="color:#085041">' + esc("; ".join(labs)) + '</span>') if labs else \
+                   '<span style="color:#A32D2D">No: only about their own scans or purchases</span>'
         rows = "".join(
             f'<tr><td>{esc(e_)}</td><td>{esc(j)}</td><td>{esc(l or "never")}</td><td>{per_user.get(i, 0)}</td>'
-            f'<td>{priv_user.get(i, 0) or ""}</td><td>{bought.get(e_.lower(), 0) or ""}</td></tr>' for e_, j, l, i in accounts)
+            f'<td>{priv_user.get(i, 0) or ""}</td><td>{bought.get(e_.lower(), 0) or ""}</td><td>{_ok_to_email(e_)}</td></tr>'
+            for e_, j, l, i in accounts)
         acc_html = (f'<h2>Accounts <span class="note">({len(accounts)} in total, {new_week} new in the last 7 days)</span></h2>'
                     '<p class="note">People who signed in with an email link: deep-scan buyers, private-repo users, and anyone who '
                     'signed in from the login page.</p><div style="overflow-x:auto"><table><tr><th>Email</th><th>Joined (UTC)</th>'
-                    '<th>Last sign-in (UTC)</th><th>Scans saved</th><th>Private reports</th><th>Deep scans bought</th></tr>'
-                    + (rows or '<tr><td colspan="6" class="note">No accounts yet.</td></tr>') + '</table></div>')
+                    '<th>Last sign-in (UTC)</th><th>Scans saved</th><th>Private reports</th><th>Deep scans bought</th>'
+                    '<th>OK to email about</th></tr>'
+                    + (rows or '<tr><td colspan="7" class="note">No accounts yet.</td></tr>') + '</table></div>'
+                    '<p class="note">"OK to email about" comes from the lists each person chose to join (below). "No" means they '
+                    'joined none: only write to them about their own scans or purchases.</p>')
     counts = {}
     for r in waitlist:
         counts[r.get("source") or "?"] = counts.get(r.get("source") or "?", 0) + 1

@@ -29,11 +29,13 @@ LAYERS_STEP3 = ("API", "Frontend")
 
 _NAME_WORDS = {
     "Auth": ["auth", "login", "session", "password", "token", "jwt", "oauth", "signin", "signup", "sign-in", "sign-up",
-             "account", "passport", "clerk", "guard", "permission", "role"],
+             "account", "passport", "clerk", "guard", "permission", "role",
+             # 24 Nov 2026 (item 44): Firebase security rules decide who may read and write: Login must see them too
+             "firestore.rules", "storage.rules", "database.rules"],
     "Config": [".env", "config", "setting", "dockerfile", "procfile", "vite.", "next.config", "nuxt.config",
                "tsconfig", "railway", "vercel", "netlify", "wrangler"],
     "Database": ["supabase", "database", "db", "schema", "prisma", "migration", "model", "drizzle", "orm", "sql",
-                 "store", "repository"],
+                 "store", "repository", "firestore", ".rules"],
     "API": ["route", "api", "server", "main.py", "app.py", "endpoint", "handler", "controller", "webhook", "view",
             "functions/"],   # Firebase / Supabase server functions (5 Nov 2026)
     "Frontend": [],
@@ -69,6 +71,11 @@ _SIGNALS = {
         r"(?:document\.|window\.|queryselector|addeventlistener|innerhtml|usestate|useeffect|react|classname=|"
         r"<div|<button|<form|<input|\.style\.|fetch\(|localstorage|getelementbyid|render\()", _I),
 }
+
+# Item 44 (24 Nov 2026): the database's own access rules answer "can a signed-in user change their role?" or "can the
+# browser write here?". A Pro scan read firestore.rules, yet three findings said the rules "were not among the files
+# read": the file wasn't in the calls that needed it. They are short, so every call gets them, first.
+_ACCESS_RULES = ("firestore.rules", "storage.rules", "database.rules.json", "database.rules")
 
 _MANIFESTS = ("package.json", "requirements.txt", "pyproject.toml", "pipfile", "go.mod", "gemfile",
               "composer.json", "cargo.toml")
@@ -125,6 +132,9 @@ def pick(files, layers, manifests=False, legacy_words=()):
     Every layer keeps its top file even when another layer's files score higher. Any slots left over go to files
     the old name-only rule would have picked (legacy_words), so nothing it used to show is lost."""
     chosen, seen = [], set()
+    for p in sorted(files, key=lambda k: (k.count("/"), k)):
+        if p.lower().split("/")[-1] in _ACCESS_RULES and not _skip(p) and len(chosen) < 2:
+            chosen.append(p); seen.add(p)
     ranked = {L: rank(files, L) for L in layers}
     if manifests:   # the dependency list, so the Libraries part has something to read
         for p in files:

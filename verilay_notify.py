@@ -367,14 +367,16 @@ def send_private_repo_interest_alert(email, answers, notes=""):
         return False
 
 
-def send_monitoring_interest_alert(email, repo, answers, notes=""):
+def send_monitoring_interest_alert(email, repo, answers, notes="", kind="monitoring"):
     """Tell Moses someone registered interest in monitoring. Best-effort, returns True/False, never raises.
     `answers` is an ordered {question: answer} dict of already-readable text."""
     to = MONITORING_INTEREST_NOTIFY_EMAIL
     if not configured() or not to:
         print("[notify] ZEPTOMAIL_TOKEN or recipient not set, skipping monitoring-interest alert", flush=True)
         return False
-    lines = [f"Someone registered interest in Verilay monitoring.", "", f"Email: {_one_line(email, 254)}"]
+    # Item 50 (24 Nov 2026): the Pro launch survey uses this alert too, and was labelled "monitoring interest".
+    what = "unlocked a free Verilay Pro scan (launch survey)" if kind == "pro" else "registered interest in Verilay monitoring"
+    lines = [f"Someone {what}.", "", f"Email: {_one_line(email, 254)}"]
     if repo:
         lines.append(f"Repository: {_one_line(repo, 120)}")
     for question, answer in (answers or {}).items():
@@ -383,7 +385,7 @@ def send_monitoring_interest_alert(email, repo, answers, notes=""):
         lines += ["", "Notes:", str(notes)[:300]]
     lines += ["", "All sign-ups: verilay.dev/account (Monitoring interest).", "", "— Verilay"]
     msg = MIMEText("\n".join(lines))
-    msg["Subject"] = _one_line(f"New monitoring interest: {email}", 120)
+    msg["Subject"] = _one_line((f"Pro survey: {email}" if kind == "pro" else f"New monitoring interest: {email}"), 120)
     msg["From"] = FROM_ADDRESS
     msg["To"] = to
     try:
