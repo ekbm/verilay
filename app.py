@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-24.3"   # .3: rules files to Login/Database only (app 06 false criticals)  # .2   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
+ANALYSIS_VERSION = "2026-11-24.4"   # .4: item 55 (one missing setting under two names counts once)  # .3   # .3: rules files to Login/Database only (app 06 false criticals)  # .2   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -1098,6 +1098,10 @@ _REPEAT_SECRET = _re.compile(r"(?i)password|secret|credential|api[ _-]?key|priva
 _TEST_FILE = _re.compile(r"(?i)(?:^|/)(?:tests?|__tests__|spec|fixtures?)/|(?:^|/)test_[^/]+$|[._-](?:test|spec)\.\w+$")
 TEST_FILE_SECRET_NOTE = ("It is in a test file, so it may be a made-up value: check whether it is a real password before "
                          "treating it as leaked.")
+_MISSING_SETTING = _re.compile(r"(?i)\bmissing\s+(?:\w+\s+){0,2}(?:settings?|keys?|secrets?|variables?|env\w*)\b|"
+                              r"\bnot set\b|\bunset\b|falls? back|fallback|fail(?:s)? quietly|only (?:prints|warn)|random key")
+
+
 def _note_test_file_secret(f):
     """Add the "may be a made-up value" note to a secret found in a test file (item 32). Safe to run twice."""
     if (isinstance(f, dict) and f.get("severity") in ("critical", "warning")
@@ -1228,14 +1232,19 @@ def mark_repeated_findings(layers):
             files = {p.split("/")[-1] for p in _REPEAT_CODE_FILE.findall(low)}
             secret = bool(_REPEAT_SECRET.search(str(f.get("title") or "")))
             _note_test_file_secret(f)
-            for other, ofile, onames, oquoted, osinks, ofiles, osecret in seen:
+            # Item 55 (24 Nov 2026): "Sign-in cookie signing key is only warned about" (Auth, app.py) and "Missing settings
+            # fail quietly" (Config, another file) were both about SECRET_KEY missing: the same setting, missing or falling
+            # back, in two areas is one problem.
+            missing = bool(_MISSING_SETTING.search(str(f.get("title") or "")))
+            for other, ofile, onames, oquoted, osinks, ofiles, osecret, omissing in seen:
                 if other != name and ((quoted & oquoted) or (fname and fname == ofile and names & onames)
                                       or (sinks & osinks and files & ofiles)
-                                      or (fname and fname == ofile and secret and osecret)):
+                                      or (fname and fname == ofile and secret and osecret)
+                                      or (names & onames and missing and omissing)):
                     f["repeat_of"] = other
                     break
             else:
-                seen.append((name, fname, names, quoted, sinks, files, secret))
+                seen.append((name, fname, names, quoted, sinks, files, secret, missing))
     return layers
 
 
@@ -1906,6 +1915,29 @@ def _ask_purge_old(now=None):
         print(f"Ask counter cleanup skipped: {type(_e).__name__}", flush=True)
 
 
+def _counter_take(key, limit, tries=4):
+    """Take one from a counter in the ask_usage table, safely when two requests arrive at the same moment (item 54,
+    24 Nov 2026: read-then-write let simultaneous scans both pass). The count only goes up if it is still the value just
+    read; otherwise read again. Returns (allowed, count before this one). Raises on a database error (callers fail open)."""
+    used = 0
+    for _ in range(tries):
+        rows = _sb.table("ask_usage").select("count").eq("id", key).execute().data or []
+        used = rows[0]["count"] if rows else 0
+        if used >= limit:
+            return False, used
+        if rows:
+            upd = _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).eq("count", used).execute()
+            if upd.data:
+                return True, used
+        else:
+            try:
+                _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
+                return True, 0
+            except Exception:
+                pass          # someone else created it a moment ago: read it again
+    return True, used          # very busy: let this one through rather than block a real person
+
+
 def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT, bucket=None):
     """Per-visitor hourly limit via Supabase. Returns (allowed: bool, remaining: int).
     Fails OPEN (allows) if Supabase is unavailable — see note to maintainer.
@@ -1921,15 +1953,9 @@ def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT, bucket=None):
     bucket = bucket or now.strftime("%Y-%m-%dT%H")
     key = _ask_key(ip, scope, bucket)
     try:
-        res = _sb.table("ask_usage").select("count").eq("id", key).execute()
-        rows = res.data or []
-        used = rows[0]["count"] if rows else 0
-        if used >= limit:
+        ok, used = _counter_take(key, limit)
+        if not ok:
             return False, 0
-        if rows:
-            _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
-        else:
-            _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
         _ask_purge_old(now)
         return True, max(0, limit - (used + 1))
     except Exception:
@@ -2076,15 +2102,9 @@ def _counter(key, limit):
     if not _HAS_SUPABASE:
         return True, 0
     try:
-        res = _sb.table("ask_usage").select("count").eq("id", key).execute()
-        rows = res.data or []
-        used = rows[0]["count"] if rows else 0
-        if used >= limit:
+        ok, used = _counter_take(key, limit)
+        if not ok:
             return False, used
-        if rows:
-            _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
-        else:
-            _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
         return True, used
     except Exception:
         return True, 0
@@ -2242,15 +2262,9 @@ def daily_scan_check(ip, limit=None, now=None):
     day = (now or datetime.utcnow()).strftime("%Y-%m-%d")
     key = _ask_key(ip, "free-scan-day", day)
     try:
-        res = _sb.table("ask_usage").select("count").eq("id", key).execute()
-        rows = res.data or []
-        used = rows[0]["count"] if rows else 0
-        if used >= limit:
+        ok, used = _counter_take(key, limit)
+        if not ok:
             return False, used
-        if rows:
-            _sb.table("ask_usage").update({"count": used + 1}).eq("id", key).execute()
-        else:
-            _sb.table("ask_usage").insert({"id": key, "count": 1}).execute()
         return True, used
     except Exception:
         return True, 0
