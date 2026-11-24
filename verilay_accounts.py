@@ -97,7 +97,25 @@ def seconds_since_last_send(email):
     return (time.time() - hits[-1]) if hits else None
 
 
+# Set by app.py: (scope, key, cap) -> bool, a counter shared by every worker (item 52d). None: memory only.
+SHARED_LIMIT_CHECK = None
+
+
 def _allow_send(email, ip):
+    if not _allow_send_memory(email, ip):
+        return False
+    if SHARED_LIMIT_CHECK:
+        try:
+            if not SHARED_LIMIT_CHECK("signin-email", email, MAX_PER_EMAIL_HOUR):
+                return False
+            if not SHARED_LIMIT_CHECK("signin-ip", ip or "unknown", MAX_PER_IP_HOUR):
+                return False
+        except Exception:
+            pass          # the memory limit above still applies
+    return True
+
+
+def _allow_send_memory(email, ip):
     now = time.time()
     with _send_lock:
         for store, key, cap in ((_sent_by_email, email, MAX_PER_EMAIL_HOUR),

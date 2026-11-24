@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-24.1"   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
+ANALYSIS_VERSION = "2026-11-24.2"   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -171,6 +171,9 @@ app = Flask(__name__)
 # every deploy would log everyone out. Set it in Railway and never change it.
 _SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 _SECRET_KEY_IS_EPHEMERAL = not _SECRET_KEY
+if _SECRET_KEY_IS_EPHEMERAL:   # item 52c: loud in the log as well as on /platform-health (which already fails on it)
+    print("⚠️  SECRET_KEY is NOT set: sign-in cookies use a random key per worker, so people will be signed out at "
+          "random. Set SECRET_KEY on Railway.", flush=True)
 app.secret_key = _SECRET_KEY or _secrets.token_hex(32)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max upload
 
@@ -797,6 +800,17 @@ def check_rate_limit(ip):
     if len(hits) >= 10:
         _rate_limit[ip] = hits
         return False, int(3600 - (now - min(hits)))
+    # Item 52a (24 Nov 2026, Verilay's own deep scan): each worker kept its own count and a redeploy emptied it, so the
+    # cap was weaker than it looked. The database counter (the Ask limiter's table, keyed by a hash, never the address)
+    # is shared by every worker and survives a redeploy. If the database can't answer, the memory count still applies.
+    _g = globals()
+    if _g.get("_HAS_SUPABASE") and callable(_g.get("ask_rate_check")):   # safe however this function is loaded
+        try:
+            db_ok, _left = _g["ask_rate_check"](ip, scope="scan-hour", limit=10)
+        except Exception:
+            db_ok = True                                    # never block a scan because the counter failed
+        if not db_ok:
+            return False, int(3600 - (now % 3600))
     hits.append(now)
     _rate_limit[ip] = hits
     # Drop addresses with nothing left in the window, otherwise every visitor we
@@ -1106,7 +1120,10 @@ def note_test_file_secrets(layers):
 # could not be (fully) reviewed is a note about coverage, not a problem in the app.
 _COVERAGE_NOTE = _re.compile(r"(?i)\b(?:not|never|couldn'?t|could not|cannot|can'?t)\b[^.]{0,30}\b(?:fully\s+)?"
                              r"(?:reviewed|checked|provided|available|visible|confirmed|assessed|analy[sz]ed)\b|"
-                             r"\bnot enough (?:code|files)\b|\bpartial (?:view|review)\b")
+                             r"\bnot enough (?:code|files)\b|\bpartial (?:view|review)\b|"
+                             # item 53 (24 Nov 2026): "Only part of the browser page code was read"
+                             r"\bonly (?:part|some|a portion|a fraction) of\b.{0,60}\b(?:read|reviewed|shown|seen|visible)\b|"
+                             r"\bpartly (?:read|reviewed)\b")
 
 
 def demote_coverage_notes(layers):
@@ -1915,6 +1932,15 @@ def ask_rate_check(ip, scope="", limit=ASK_RATE_LIMIT, bucket=None):
         return True, max(0, limit - (used + 1))
     except Exception:
         return True, limit  # store error → fail open rather than break the feature
+
+
+# Item 52d (24 Nov 2026): the sign-in email limits in verilay_accounts were per-worker memory too. They now also use the
+# shared database counter (hashed keys, never the email or address in the table).
+try:
+    import verilay_accounts as _acc_limits
+    _acc_limits.SHARED_LIMIT_CHECK = lambda scope, key, cap: ask_rate_check(key, scope=scope, limit=cap)[0] if _HAS_SUPABASE else True
+except Exception as _e:
+    print(f"[accounts] shared sign-in limits not wired: {type(_e).__name__}", flush=True)
 
 
 # ── Verilay Pro, free during the launch (25 Oct 2026) ────────────────────────────

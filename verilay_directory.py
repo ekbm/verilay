@@ -533,6 +533,8 @@ def _create_listing(report_id, body):
 
 @bp.route("/apps/list", methods=["POST"])
 def list_app():
+    if not _not_cross_site():
+        return jsonify({"error": "Please list your app from verilay.dev."}), 403
     body = request.get_json(silent=True) or {}
     code, out = _create_listing(_clean(body.get("report_id"), 40), body)
     return jsonify(out), code
@@ -984,6 +986,8 @@ def contact_builder(slug):
     def back(err=""):
         return redirect(page + ("?err=" + urllib.parse.quote(err) if err else "?sent=1") + "#contact")
 
+    if not _not_cross_site():          # item 52b: a form on another website can't send messages through Verilay
+        return back("Please send your message from this page.")
     if request.form.get("website"):  # bot: look like success, send and store nothing
         return back()
     email = _clean(request.form.get("email"), 254).lower()
@@ -1014,6 +1018,19 @@ def contact_builder(slug):
 
 
 # ── Moses's review page ───────────────────────────────────────────────────────
+
+def _not_cross_site():
+    """Public forms (item 52b, 24 Nov 2026): refuse a post that says it came from another website. Browsers send Origin
+    (or Referer) with form posts; when neither is sent at all (some privacy settings), the post is allowed, because the
+    trap field and rate limits still apply."""
+    src = request.headers.get("Origin") or request.headers.get("Referer") or ""
+    if not src:
+        return True
+    try:
+        return urllib.parse.urlsplit(src).netloc == request.host
+    except Exception:
+        return False
+
 
 def _same_origin():
     """Admin buttons must be pressed on this site, not on another page that posts here."""
