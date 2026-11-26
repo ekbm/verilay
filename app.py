@@ -5708,6 +5708,65 @@ def self_monitor_health():
 
 BLOG_POSTS = [
     {
+        "slug": "fix-it-with-ai-one-fix-at-a-time",
+        "title": "Fix It With AI, Part 3: One Fix at a Time, With an Undo Point",
+        "seo_title": "How to Undo an AI Change in Lovable or Replit (and Fix One Thing at a Time)",
+        "date": "November 26, 2026",
+        "category": "Guide",
+        "excerpt": "Fixing five things at once is how AI-built apps break. Make one change, test it, and save an undo point first. What undo does and doesn't bring back.",
+        "medium_url": None,
+        "read_time": "6 min read",
+        "featured": False,
+        "body": """
+<p>In Part 2, the rule was: <strong>before your AI changes anything, make it explain the problem.</strong> This part is about what happens next, when you finally say "go ahead".</p>
+<p>Here's the trap. You've got a report with five problems. The AI has explained them all, and it says it can fix the lot. It's tempting to say "yes, do all five".</p>
+<p>Don't.</p>
+<h2>Why five fixes at once is how apps break</h2>
+<p>When five things change at once and something stops working, you don't know which change did it. Was it the login fix? The database rule? The new check on the payment page? You end up asking the AI to fix its own fixes, and every round adds more change on top.</p>
+<p>One change at a time keeps three things simple:</p>
+<ul>
+<li><strong>If something breaks, you know what broke it.</strong> It was the last change, because there was only one.</li>
+<li><strong>Undoing it is clean.</strong> Going back one step removes one fix, not five.</li>
+<li><strong>The AI stays focused.</strong> A small, clear request gets a small, clear change. A big request gets a big change, often bigger than you asked for.</li>
+</ul>
+<p>When I fixed problems in one of my older apps this month, I did it in rounds: one problem per round, test it, publish it, check the live app, then the next one. It felt slow. It was faster than untangling five changes would have been.</p>
+<h2>The undo point: what it brings back, and what it doesn't</h2>
+<p>Most AI builders save your work as you go, so you can step back to an earlier version:</p>
+<ul>
+<li><strong>Lovable</strong> saves every change as a version automatically. You can go back to an earlier one, and you can <strong>bookmark</strong> a version you know works. (<a href="https://docs.lovable.dev/features/projects/history" rel="noopener">Lovable docs</a>)</li>
+<li><strong>Replit</strong>'s agent saves <strong>checkpoints</strong> at key moments, and you can roll back to one. (<a href="https://docs.replit.com/core-concepts/agent/checkpoints-and-rollbacks" rel="noopener">Replit docs</a>)</li>
+</ul>
+<p>Here's the part I didn't know until I read both pages properly. <strong>Going back restores your code. It doesn't bring back your live data.</strong></p>
+<p>Lovable's own page says reverting "restores your project's code only" and "does not restore or roll back your database data". Replit can include your <em>development</em> database in a rollback if you choose it, but says restoring your production database "is not performed automatically".</p>
+<p>So if a fix deletes records, changes everyone's settings or reshapes a table, clicking "undo" puts the old code back, but the data change stays. That's why fixes that touch data need extra care (more on that below).</p>
+<h2>One safe round, step by step</h2>
+<p><strong>1. Save an undo point.</strong> Before the change, bookmark the current version, or note the checkpoint. Give it a name you'll recognise: <em>"before login fix, everything works"</em>.</p>
+<p><strong>2. Ask for one fix, and only one.</strong> Name the place, and say what must keep working (the list from the Part 2 answer). Tell it not to touch anything else.</p>
+<p><strong>3. Don't let the AI publish.</strong> Ask it to make the change in the preview only. You decide when it goes live.</p>
+<p><strong>4. Test in the preview.</strong> Try the thing you fixed, then the things it could have broken: sign in, the main page, the payment or booking flow, anything on the "what relies on it" list.</p>
+<p><strong>5. Publish, then check the live app.</strong> Some problems only show up live. If you have a phone app that's already released, open it too, because it talks to the same backend.</p>
+<p><strong>6. Write one line down.</strong> <em>"Nov 20: fixed X, tested Y and Z, all fine."</em> When something odd happens next week, this list is gold.</p>
+<p>Then, and only then, start the next fix.</p>
+<h2>When a fix touches your data</h2>
+<p>Some fixes change data, not just code: a new database rule, a change to a table, a script that tidies up old records. Undo won't reverse those.</p>
+<p>Before a fix like that, ask your AI:</p>
+<blockquote><em>"Will this change any data or the structure of my database? If yes, list exactly what changes, tell me how to back up first, and how we'd reverse it if something goes wrong. Don't make the change yet."</em></blockquote>
+<p>If the answer is "it only changes code", you're on safe ground. If it changes data, make the backup first, or get someone who knows databases to look.</p>
+<h2>Sometimes the safest fix is switching it off</h2>
+<p>Not every problem needs repairing. If the problem is in an old feature nobody uses, like an early version of an API or a test page left behind, <strong>switching it off</strong> can be simpler and safer than repairing it. It's also easy to undo: switch it back on.</p>
+<p>Ask your AI: <em>"Is anything still using this part? If not, would switching it off be simpler and safer than fixing it?"</em></p>
+<h2>The one-fix prompt</h2>
+<p>When the explanation from Part 2 makes sense, this is the "go ahead" I use:</p>
+<blockquote><em>"Thanks. Please fix only the place we just discussed, not the other places you listed. We'll do those separately, one at a time. Keep everything you listed working. Don't publish or deploy anything. I'll test it in the preview first. Then tell me exactly what you changed, file by file, and how to check that everything still works."</em></blockquote>
+<h2>How Verilay helps</h2>
+<p>Every fix in a Verilay report can come with two prompts. Step 1 is the "explain first" prompt from Part 2. It now also asks whether switching the part off would be simpler than repairing it. Step 2 is the go-ahead, and it's written to do exactly what this post describes: fix only that one place, don't publish, test in the preview first, and say what changed, file by file. From 1 December, these ready-made prompts are part of the Fix pack (A$2.99 per app, for 7 days). Scanning, re-scanning and the plain-English explanation of every problem stay free, so you can always do it yourself with the steps above.</p>
+<p>After each round, scanning again (free) shows what's fixed and what's still there.</p>
+<h2>Next in the series</h2>
+<p>Part 4: <strong>how do you know it worked?</strong> The AI says "done". The page looks fine. But is the problem really gone, and did anything else quietly stop working? In two weeks: how to check, with proof, not just a "fixed!".</p>
+<p>If a fix of yours went wrong and undo didn't save you, I'd like to hear about it: <a href="mailto:moses@verilay.dev">moses@verilay.dev</a>.</p>
+""",
+    },
+    {
         "slug": "plain-english-glossary-for-ai-app-builders",
         "title": "Building AI Apps Like an Engineer: A Plain-English Glossary",
         "seo_title": "Vibe Coding Glossary: App Security Terms Explained Simply",
