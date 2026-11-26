@@ -368,6 +368,33 @@ async function showCompareOffer() {
     anchor.parentNode.insertBefore(card, anchor.nextSibling);
     return;
   }
+  // Item 57 (26 Nov 2026, BusAwake): a re-scan of the same app shows its progress at the top, by itself, so a user who
+  // fixed everything doesn't only see a new letter. Moses: when someone scans again, also say when a bigger scan would
+  // read more of the code (only when it would: size_advice is set only if the app has more code than was read).
+  if (best._same) {
+    card.style.cssText = 'font-size:13.5px;color:#085041;background:#E1F5EE;border:0.5px solid #9FE1CB;border-radius:8px;' +
+      'padding:.55rem .85rem;margin-bottom:10px;line-height:1.55';
+    card.innerHTML = 'Comparing with your scan on ' + esc(_compareWhen(best.timestamp)) + '&hellip;';
+    anchor.parentNode.insertBefore(card, anchor.nextSibling);
+    var adv = sizeAdviceText(currentReport);
+    try {
+      var h = reportHeaders(savedReportId, {'Content-Type': 'application/json', 'X-Previous-Token': reportToken(best.id)});
+      var r = await fetch('/compare-report', {method: 'POST', headers: h,
+        body: JSON.stringify({report_id: savedReportId, previous_id: best.id})}).then(function(x) { return x.json(); });
+      if (r && !r.error && r.comparable) {
+        card.innerHTML = '<strong>Since your scan on ' + esc(_compareWhen(best.timestamp)) + ':</strong> ' + esc(r.headline || '') +
+          ' <a href="' + esc(r.page || ('/compare/' + savedReportId)) + '" target="_blank" rel="noopener" style="color:#085041;font-weight:600">' +
+          'See what changed &rarr;</a>' +
+          ((r.new_found || []).length ? '<div style="font-size:12.5px;margin-top:3px">A newly raised point can be one an earlier scan missed, ' +
+            'not something your fix broke: the AI reads the code fresh each time.</div>' : '') +
+          (adv ? '<div style="font-size:12.5px;margin-top:3px">' + esc(adv) + '</div>' : '');
+        return;
+      }
+    } catch (e) {}
+    card.remove();          // could not compare (for example a private report): fall back to the usual one-line offer
+    card = document.createElement('div');
+    card.id = 'compare-card';
+  }
   // One small line (25 Oct 2026): the comparison opens on its own page, in a new tab, so this report stays as it is.
   card.style.cssText = 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:#444441;background:#F1EFE8;' +
     'border-radius:8px;padding:.5rem .8rem;margin-bottom:10px';

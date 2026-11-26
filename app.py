@@ -159,7 +159,7 @@ load_dotenv()
 GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
 # Stamped on every cached analysis (verilay_scancache.py). BUMP IT whenever a rule, a prompt, the scoring or the
 # way results are built changes, so no reused result can ever come from older logic.
-ANALYSIS_VERSION = "2026-11-24.4"   # .4: item 55 (one missing setting under two names counts once)  # .3   # .3: rules files to Login/Database only (app 06 false criticals)  # .2   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
+ANALYSIS_VERSION = "2026-11-26.1"   # item 58 (on-device apps: no sign-in is a note)  # .4   # .4: item 55 (one missing setting under two names counts once)  # .3   # .3: rules files to Login/Database only (app 06 false criticals)  # .2   # .2: item 53 ("only part of ... was read" is a note)  # .1   # items 44 (rules files to every review call) and 45 (coverage notes are not warnings)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 app = Flask(__name__)
@@ -1130,6 +1130,52 @@ _COVERAGE_NOTE = _re.compile(r"(?i)\b(?:not|never|couldn'?t|could not|cannot|can
                              r"\bpartly (?:read|reviewed|confirmed)\b|"
                              # 24 Nov 2026, Verilay's own deep scan: "Much of the main server file was not read"
                              r"\b(?:was|were|wasn'?t|weren'?t)\s+not\s+read\b|\b(?:wasn'?t|weren'?t)\s+read\b")
+
+
+# Item 58 (26 Nov 2026, BusAwake 8f4c41a6c463): an Android/web app that keeps its data on the phone, with no accounts
+# and no server, got "No sign-in protecting stored contact details" (Auth) AND "...shown without a check of who is using the
+# device" (Frontend): one non-issue, counted twice, and the grade dropped from B to C after the user fixed everything.
+_ON_DEVICE_SERVER_KINDS = ("backend", "database", "auth")
+_NO_SIGNIN = _re.compile(r"(?i)\bno (?:sign[- ]?in|log[- ]?in|login|authentication|auth)\b|"
+                         r"\bwithout (?:a |any )?(?:sign[- ]?in|log[- ]?in|login|authentication|password)\b|"
+                         r"\bcheck of who is using\b|\banyone (?:with|holding) (?:the|this|their) (?:phone|device)\b")
+ON_DEVICE_NOTE = ("This app keeps its data on the device, with no accounts or server, so anyone holding the phone can see it. "
+                  "That is normal for apps like this: add a lock (PIN or fingerprint) only if the data is sensitive.")
+
+
+def on_device_app(data):
+    """True when nothing in the scan points to a server, a database or a sign-in system: no stack item of those kinds and
+    no server or database functions found. Unknown shape (no stack at all) is not treated as on-device."""
+    d = data or {}
+    stack = [x for x in (d.get("stack") or []) if isinstance(x, dict)]
+    if not stack:
+        return False
+    if any(str(x.get("category") or "").lower() in _ON_DEVICE_SERVER_KINDS for x in stack):
+        return False
+    scope = (d.get("authz_scan") or {}).get("scope") or {}
+    return not any(int(scope.get(k) or 0) for k in ("backend_functions", "database_functions", "sql_files", "tables"))
+
+
+def demote_no_signin_on_device(layers, data):
+    """On an on-device app, "no sign-in" findings become one note (severity 'info'), not warnings."""
+    if not on_device_app(data):
+        return layers
+    for layer in layers or []:
+        if not isinstance(layer, dict):
+            continue
+        fs = (layer.get("expert") or {}).get("findings") or []
+        had = False
+        for f in fs:
+            if (isinstance(f, dict) and f.get("severity") in ("critical", "warning")
+                    and _NO_SIGNIN.search(str(f.get("title") or ""))):
+                f["severity"] = "info"
+                f["on_device_note"] = True
+                if ON_DEVICE_NOTE not in str(f.get("detail") or ""):
+                    f["detail"] = (str(f.get("detail") or "").rstrip() + " " + ON_DEVICE_NOTE).strip()
+                had = True
+        if had and not any(isinstance(f, dict) and f.get("severity") in ("critical", "warning") for f in fs):
+            layer["status"] = "passing"
+    return layers
 
 
 def demote_coverage_notes(layers):
@@ -4901,6 +4947,7 @@ def analyse_stream():
             _crit = _warn = _pass = 0
             cap_example_file_findings(partial["layers"], scan_findings)   # placeholders in .env.example: not critical (item 27)
             demote_coverage_notes(partial["layers"])                      # "not fully reviewed" is a note, not a warning (item 45)
+            demote_no_signin_on_device(partial["layers"], s1)               # on-device app: "no sign-in" is a note (item 58)
             align_layer_status(partial["layers"])
             mark_repeated_findings(partial["layers"])
             for _layer in partial["layers"]:
