@@ -217,6 +217,34 @@ def get_analysis_count():
     return 0
 
 
+# "1,000+ scans and counting" (Moses, 26 Nov 2026): every scan Verilay has run, our own accuracy testing included, next
+# to the number of DIFFERENT apps. Rounded DOWN to the hundred, so it never overstates. Kept 10 minutes.
+_SCAN_TOTAL = {"n": 0, "at": 0.0}
+
+
+def get_scan_total():
+    if not _HAS_SUPABASE:
+        return 0
+    if time.time() - _SCAN_TOTAL["at"] < 600:
+        return _SCAN_TOTAL["n"]
+    try:
+        n = _sb.table("reports").select("id", count="exact").limit(1).execute().count or 0
+        _SCAN_TOTAL.update(n=int(n), at=time.time())
+    except Exception as e:
+        print(f"[home] scan total unavailable: {type(e).__name__}", flush=True)
+        _SCAN_TOTAL["at"] = time.time() - 540          # try again in a minute
+    return _SCAN_TOTAL["n"]
+
+
+def scans_total_label(n):
+    """'1,000+' for 1,000-1,099 and so on; '' under 100 (not worth showing)."""
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        return ""
+    return f"{n // 100 * 100:,}+" if n >= 100 else ""
+
+
 def increment_analysis_count(score=None, method=None):
     """Increment cumulative stats counter."""
     if not _HAS_SUPABASE:
@@ -2324,11 +2352,25 @@ def _hours_to_midnight_utc(now=None):
 
 DAILY_LIMIT_MESSAGE = ("You have used today's {n} free scans. The count starts again at midnight UTC, in about {h} hour{s}. "
                        "Your earlier reports still open from the history on this page.")
+# Moses, 26 Nov 2026: from 1 Dec the daily limit points to the Fix pack, whose re-scans of that app don't count.
+DAILY_LIMIT_FIX_PACK = (" Fixing an app? The Fix pack ({price} for 7 days) gives you every fix prompt and unlimited re-scans of "
+                        "that app: open your latest report of it and choose \"Get the Fix pack\".")
 BUDGET_MESSAGE = ("Verilay has reached today's limit for free scans. It starts again at midnight UTC, in about {h} hour{s}. "
                   "Your earlier reports still open, and a recent result for the same public repository can still be shown.")
 
 
-def free_ai_gate(ip, method, is_admin=False, now=None):
+def fix_pack_app_key(method, repo_name):
+    """The app a scan is about, in the Fix pack's terms ('gh:owner/repo' or 'zip:<name>'), or None."""
+    if not prompts_unlock:
+        return None
+    try:
+        return prompts_unlock.app_key({"input_method": method, "repo": repo_name},
+                                      billing.normalise_repo if billing else (lambda x: None))
+    except Exception:
+        return None
+
+
+def free_ai_gate(ip, method, is_admin=False, now=None, app_key=None):
     """None when this free scan may spend AI; otherwise the plain message to show. The budget is checked first, so a
     visitor's daily count is not used up by a scan that cannot run anyway."""
     if is_admin:
@@ -2344,9 +2386,19 @@ def free_ai_gate(ip, method, is_admin=False, now=None):
                      "a burst of scans; to change the budget, set VERILAY_DAILY_AI_BUDGET_USD on Railway."], every=6 * 3600)
         return BUDGET_MESSAGE.format(h=h, s=plural)
     if method in ("github", "zip"):
+        # An active Fix pack for this app: its re-scans are included, so they don't count (from 1 Dec, Moses 26 Nov).
+        if after_pro_launch() and app_key:
+            try:
+                if _visitor_unlock(app_key):
+                    return None
+            except Exception:
+                pass
         ok, used = daily_scan_check(ip, now=now)
         if not ok:
-            return DAILY_LIMIT_MESSAGE.format(n=_daily_free_scans(), h=h, s=plural)
+            msg = DAILY_LIMIT_MESSAGE.format(n=_daily_free_scans(), h=h, s=plural)
+            if after_pro_launch() and prompts_unlock:
+                msg += DAILY_LIMIT_FIX_PACK.format(price=_fix_pack_price())
+            return msg
     return None
 
 
@@ -4700,7 +4752,7 @@ def analyse_stream():
             # Daily limits, checked here: everything above is free (reading files, the key/package/access checks, a
             # reused result), and step 1 is the first AI call. See free_ai_gate.
             _gate_msg = (None if (_pro and _pro.get("email_hash") == "paid") else pro_gate() if _pro
-                         else free_ai_gate(ip, method, _is_admin or _is_eval))
+                         else free_ai_gate(ip, method, _is_admin or _is_eval, app_key=fix_pack_app_key(method, repo_name)))
             if _gate_msg:
                 _refund_rate_limit(ip)      # no AI was used, so the hourly allowance is given back
                 yield json.dumps({"event":"error","data":_gate_msg}) + "\n"
@@ -11327,7 +11379,8 @@ def index():
     for _k, _v in home_prompt_text().items():
         html = html.replace(_k, _v)
     improved = appcount.improved_for_homepage(_sb) if _HAS_SUPABASE else ""
-    return render_template_string(html, analysis_count=count if count > 0 else "", improved_count=improved)
+    return render_template_string(html, analysis_count=count if count > 0 else "", improved_count=improved,
+                                  scans_total=scans_total_label(get_scan_total()))
 
 
 @app.route("/static/app.js")
@@ -11648,7 +11701,10 @@ __LAUNCH_BANNER__
     </div>
     <div class="hx-stats">
       {% if analysis_count %}
-      <div class="hx-st"><b>{{ analysis_count }}</b><span>apps analysed so far</span></div>
+      <div class="hx-st"><b>{{ analysis_count }}</b><span>different apps checked so far</span></div>
+      {% endif %}
+      {% if scans_total %}
+      <div class="hx-st"><b>{{ scans_total }}</b><span>scans and counting</span></div>
       {% endif %}
       {% if improved_count %}
       <div class="hx-st"><b>{{ improved_count }}</b><span>apps re-checked with a better grade after the fixes</span></div>
