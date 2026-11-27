@@ -95,16 +95,18 @@ def line_html(names):
     head = ('<div class="hx-countries" style="margin-top:14px;background:#fff;border:.5px solid var(--bdr,#e4e2f5);border-radius:12px;'
             'padding:.7rem 1rem;font-size:14px;line-height:1.6;color:var(--txt)">&#127757; <strong style="color:var(--put,#3C3489)">'
             f'Builders from {esc(scale_text(len(names)))} have checked their apps with Verilay</strong>, including ')
-    foot = ('<div style="font-size:12px;color:var(--mut,#6b6966);margin-top:2px">Countries only, never apps or times. Our own and '
-            'test scans are left out.</div></div>')
+    foot = '</div>'          # Moses, 27 Nov 2026: no "countries only / own scans left out" note, it goes without saying
     if not rest:
         return head + esc(", ".join(first[:-1]) + " and " + first[-1]) + "." + foot
     rest_txt = ", " + ", ".join(rest[:-1]) + (" and " if len(rest) > 1 else "") + rest[-1] + "."
     if len(rest) == 1:
         rest_txt = " and " + rest[0] + "."
+    # 27 Nov 2026: a <details> box put the rest on a new line starting with a stray comma, and kept "and more" showing.
+    # A plain link that hides itself and shows the rest in the same sentence reads properly everywhere.
     return (head + esc(", ".join(first))
-            + '<details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--pu,#534AB7);font-weight:600;'
-            'list-style:none">&nbsp;and more &#9662;</summary><span>' + esc(rest_txt) + '</span></details>' + foot)
+            + '<a href="#" class="hx-more" style="color:var(--pu,#534AB7);font-weight:600;text-decoration:none;white-space:nowrap" '
+            'onclick="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';return false;">'
+            ' and more &#9662;</a><span class="hx-rest" style="display:none">' + esc(rest_txt) + '</span>' + foot)
 
 
 def countries_line(sb, patterns, now=None):
