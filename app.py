@@ -222,6 +222,16 @@ def get_analysis_count():
 _SCAN_TOTAL = {"n": 0, "at": 0.0}
 
 
+def _countries_line_html():
+    """'Apps checked from all over the world' (Moses, 27 Nov 2026): verilay_countries.py. '' on any problem."""
+    try:
+        import verilay_countries as _vc
+        return _vc.countries_line(_sb if _HAS_SUPABASE else None, appcount.exclude_patterns())
+    except Exception as e:
+        print(f"[home] countries line failed: {type(e).__name__}", flush=True)
+        return ""
+
+
 def get_scan_total():
     if not _HAS_SUPABASE:
         return 0
@@ -11375,7 +11385,8 @@ def index():
                 .replace("__SELFMONITOR_TABLE__", selfmon_table)
                 .replace("__SAMPLE_BUTTON__", _sample_button_html())
                 .replace("__SAMPLE_PREVIEW__", _sample_preview())
-                .replace("__LAUNCH_BANNER__", launch_banner_html()))
+                .replace("__LAUNCH_BANNER__", launch_banner_html())
+                .replace("__COUNTRIES_LINE__", _countries_line_html()))
     for _k, _v in home_prompt_text().items():
         html = html.replace(_k, _v)
     improved = appcount.improved_for_homepage(_sb) if _HAS_SUPABASE else ""
@@ -11713,6 +11724,7 @@ __LAUNCH_BANNER__
       <div class="hx-st"><b>Every file</b><span>scanned for exposed keys and passwords</span></div>
       __TILE_FIX__
     </div>
+    __COUNTRIES_LINE__
     __SAMPLE_PREVIEW__
     <p class="hx-fine">
       No account, nothing to install. Verilay reads your files only to build the report, and the
