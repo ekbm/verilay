@@ -3022,8 +3022,8 @@ function renderReport(data) {
     more.unshift(['sec-grade', 'About your grade', secHtml('sec-grade', 'About your grade', 'What the grade means and how to reach the next one', gradeHtml, false)]);
     more.unshift(['sec-details', 'Scan details', secHtml('sec-details', 'Scan details', 'What was scanned, the tech stack and the numbers', detailsHtml, false)]);
   }
-  more.push(['sec-share', 'Share and IT pack', secHtml('sec-share', 'Share and IT pack', 'Share link, README badge, app directory, IT Review Pack',
-    '<div id="share-slot"></div><div style="font-size:13px;margin-top:.4rem"><a href="#" onclick="var b=document.getElementById(\'btn-it-review\');if(b)b.click();return false;" style="color:var(--pu);font-weight:600">Open the IT Review Pack</a> &middot; a printable checklist for IT teams approving this app</div>', false)]);
+  more.push(['sec-share', 'Share and approval checklist', secHtml('sec-share', 'Share and approval checklist', 'Share link, README badge, app directory, Approval checklist',
+    '<div id="share-slot"></div><div style="font-size:13px;margin-top:.4rem"><a href="#" onclick="var b=document.getElementById(\'btn-it-review\');if(b)b.click();return false;" style="color:var(--pu);font-weight:600">Open the Approval checklist</a> &middot; a printable page for anyone approving this app</div>', false)]);
   document.getElementById('report-content').innerHTML = topHtml;
   document.getElementById('report-sections').innerHTML = sections;
   window._moreBase = more;

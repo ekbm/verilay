@@ -370,7 +370,7 @@ def render_it_review(data, report_id):
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>IT Review Pack — {repo}</title>
+<title>Approval checklist — {repo}</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f8fc;color:#1a1a2e;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}}
@@ -426,7 +426,7 @@ ul.plain li{{margin-bottom:.35rem}}
 </div>
 
 <div class="card">
-  <div class="meta">Verilay · IT Review Pack</div>
+  <div class="meta">Verilay · Approval checklist</div>
   <h1>{repo}</h1>
   <div class="meta">Source: {method_label} · Scanned: {generated} · Report ID: {rid}</div>
   <div class="banner"><strong>Risk reduced and reviewed — not certified safe.</strong>

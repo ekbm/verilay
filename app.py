@@ -10160,8 +10160,8 @@ a:focus-visible,summary:focus-visible,details:focus-visible{{outline:2px solid #
   <div style="font-size:13px;color:#666;margin-bottom:.65rem">{data.get('summary','')}</div>
   <div style="display:inline-block;background:{verdict_color};color:#fff;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;margin-bottom:.5rem">{verdict_label}</div>
   <div style="font-size:13px;color:#555">{verdict_reason}</div>
-  <a href="/report/{report_id}/it-review" style="display:inline-block;margin-top:.75rem;font-size:13px;color:#534AB7;font-weight:600;text-decoration:none">IT Review Pack &rarr;</a>
-  <span style="font-size:12px;color:#888"> a printable checklist for IT teams approving this app</span>
+  <a href="/report/{report_id}/it-review" style="display:inline-block;margin-top:.75rem;font-size:13px;color:#534AB7;font-weight:600;text-decoration:none">Approval checklist &rarr;</a>
+  <span style="font-size:12px;color:#888"> a printable page for anyone approving this app</span>
 </div>""")
 
     if data.get("private"):
@@ -10599,7 +10599,7 @@ def code_health_page(report_id):
 
 @app.route("/report/<report_id>/it-review")
 def it_review(report_id):
-    """Printable IT Review Pack for a saved report. See verilay_it_review.py."""
+    """Printable Approval checklist (was "IT Review Pack" until 28 Nov 2026) for a saved report. See verilay_it_review.py."""
     data = get_report_data(report_id)
     if not data:
         return "Report not found", 404
@@ -11948,7 +11948,7 @@ __LAUNCH_BANNER__
       No coding knowledge needed to understand the findings or act on them.
       <br><br>
       <strong style="color:var(--txt)">For IT teams:</strong> Use Verilay as a first-pass check on apps your
-      staff built with AI tools. Every report includes a printable IT Review Pack — a checklist, a suggested
+      staff built with AI tools. Every report includes a printable Approval checklist — a checklist, a suggested
       decision, and a clear list of what the review did not check. Risk reduced and reviewed, not certified safe.
       Questions or a team pilot: <a href="mailto:moses@verilay.dev?subject=Verilay%20for%20IT%20teams" style="color:var(--pu)">moses@verilay.dev</a>
       <br><br>
@@ -12327,7 +12327,7 @@ __LAUNCH_BANNER__
         <i class="ti ti-download" style="font-size:13px"></i> Export .md
       </button>
       <button id="btn-it-review" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:12px;cursor:pointer">
-        <i class="ti ti-clipboard-check" style="font-size:13px"></i> IT Review Pack
+        <i class="ti ti-clipboard-check" style="font-size:13px"></i> Approval checklist
       </button>
       <button id="btn-print" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:0.5px solid var(--bdr);background:transparent;color:var(--mut);font-size:12px;cursor:pointer">
         <i class="ti ti-printer" style="font-size:13px"></i> Print / PDF
