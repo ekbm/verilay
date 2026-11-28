@@ -4791,6 +4791,9 @@ def analyse_stream():
             s1["files_total"] = len(tree) if tree else len(files)
             s1["code_files_total"] = code_files_count(tree if tree else list(files.keys()))
             s1["code_fingerprint"] = code_fingerprint(files)        # item 48: "same code as your last scan"
+            _vc = verilay_code_check(repo_name, method, _all_text or files, _is_eval)
+            if _vc:
+                s1["verilay_code"] = _vc                          # admin only: hidden from /report-data
             _adv = size_advice(dict(s1, input_method=method))      # item 42: the scan that would see more of this app
             if _adv:
                 s1["size_advice"] = _adv
@@ -5377,6 +5380,35 @@ if paywall is not None:
     paywall.PROMPT_PAID_HOOK = _on_prompt_paid
 
 
+def verilay_code_check(repo_name, method, files, is_eval=False):
+    """Does this app contain Verilay's own code? (Moses, 28 Nov 2026; verilay_fingerprint.py.) The visitor sees nothing; the
+    owner gets one email per app a day. Verilay's own apps and accuracy-check scans are skipped. Never raises."""
+    try:
+        if is_eval or appcount_excluded(repo_name):
+            return None
+        import verilay_fingerprint as _fp
+        found = _fp.find(files)
+        if found:
+            admin_alert("verilay-code:" + str(repo_name or "")[:80], f"a scanned app contains Verilay's code: {str(repo_name or '')[:80]}",
+                        [f"App: {repo_name} ({method})", "Verilay markers found: " + ", ".join(found["markers"]),
+                         "In files: " + ", ".join(found["files"]),
+                         "Verilay's licence allows personal and open-source use; commercial use needs a licence. "
+                         "See /admin/scans (flagged in Notes). Nothing was shown to the visitor."], every=24 * 3600)
+        return found
+    except Exception as e:
+        print(f"[fingerprint] check skipped: {type(e).__name__}", flush=True)
+        return None
+
+
+def appcount_excluded(repo_name):
+    """True for Verilay's own apps and the accuracy-check apps (the same list as the homepage count)."""
+    r = str(repo_name or "").strip().lower()
+    for pat in appcount.exclude_patterns():
+        if (pat.endswith("%") and r.startswith(pat[:-1])) or r == pat:
+            return True
+    return False
+
+
 def code_fingerprint(files):
     """A short fingerprint of the code a scan read (item 48, 24 Nov 2026): two scans with the same fingerprint read the
     same files with the same contents. Only the fingerprint is kept, never the code."""
@@ -5609,7 +5641,7 @@ def report_data(report_id):
     # email/comment a visitor typed into the feedback box.
     data = {k: v for k, v in data.items() if k not in ("_mgmt", "feedback_email", "feedback_comment", "feedback_helpful",
                                                        "improvement_story", "pro_survey", "compare_feedback", "country", "rescan_feedback",
-                                                       "save_for_email", "locked_fixes")}
+                                                       "save_for_email", "locked_fixes", "verilay_code")}
     if isinstance(data.get("top_fixes"), list):
         data["top_fixes"] = _fixes_with_checks(data["top_fixes"])
     if data.get("preview_only") and data.get("input_method") == "url":
@@ -9230,7 +9262,8 @@ def _scan_rows(limit=60):
     cols = ("id,created_at,repo,score,input_method,user_id,tier:data->>scan_tier,deep:data->>is_deep_scan,private:data->>private,"
             "files:data->>files_read,notchecked:data->layers_not_checked,built:data->>built_with,compared:data->comparison->>grade_after,"
             "survey:data->pro_survey->>at,deleted:data->>deleted,incomplete:data->analysis_incomplete,country:data->>country,"
-            "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval,declined:data->>ai_declined")
+            "rating:data->>feedback_helpful,came_from:data->>came_from,eval:data->>eval,declined:data->>ai_declined,"
+            "vcode:data->verilay_code->>markers")
     try:
         # Verilay's own test scans stay out, however many came in between (13 Nov 2026: about 170 test scans on 11-12 Nov
         # filled a fixed 180-row window, so the page showed only 7 real scans). How many were skipped is shown on the page.
@@ -9405,6 +9438,8 @@ def admin_scans():
             extras.append("compared")
         if r.get("survey"):
             extras.append("Pro survey")
+        if r.get("vcode"):
+            extras.append('<b style="color:#A32D2D" title="' + esc(str(r.get("vcode"))[:200]) + '">&#9888; contains Verilay code</b>')
         lines += (f'<tr><td>{esc(str(r.get("created_at") or "")[:16].replace("T", " "))}</td>'
                   f'<td><a href="/report/{esc(str(r.get("id") or ""))}" target="_blank" rel="noopener">{esc(str(r.get("repo") or "Untitled")[:60])}</a>'
                   f'{" &#128274;" if priv else ""}</td><td>{_flag(r.get("country"))}</td><td>{_htmlmod.escape(r.get("came_from") or "")}</td><td>{how}</td>'
@@ -9441,6 +9476,7 @@ _LIST_SOURCES = {
     "fix-light": "Self Fix early access: Light (A$9.99)",
     "fix-full": "Self Fix early access: Full (A$29)",
     "fix-neither": "Self Fix early access: neither for now",
+    "fix-developer": "Fix with a developer (quote request)",
     "fix-session-report": "Self Fix early access (line on a report)",
     "fix-session-compare": "Self Fix early access (compare page)",
     "fix-session-footer": "Self Fix early access (report footer)",
@@ -9455,7 +9491,10 @@ _LIST_SOURCES = {
 
 
 _STAGE_LABELS = {"idea": "just trying an idea", "testing": "testing with a few people", "real-users": "real users or clients",
-                 "paying": "paying customers"}
+                 "paying": "paying customers",
+                 # developer quote answers (28 Nov 2026)
+                 "pay-u50": "would pay under A$50", "pay-50-150": "would pay A$50-150", "pay-150p": "would pay A$150+",
+                 "pay-unsure": "not sure what they'd pay", "quote-yes": "wants a quote", "quote-no": "no quote for now"}
 
 
 def _list_source_label(source):
@@ -9735,8 +9774,17 @@ def pricing_page():
                        "Checks your builder's replies, and a rescan shows what is fixed",
                        "Light (A$9.99) or Full (A$29)", "Guided, not guaranteed"],
                       "Tell me when it opens", "#fix-interest"),
+        # 28 Nov 2026 (Moses): test whether people want a developer to fix their app, and what they'd pay. Interest only.
+        _pricing_card("Fix with a developer", "Quote", "per app", "Planned · register interest", False,
+                      ["A developer fixes the problems in your Verilay report",
+                       "You only pay when a re-scan shows the problem is fixed",
+                       "Tell us what you&rsquo;d pay, and get a quote when it opens"],
+                      "Request a quote", "#fix-developer"),
     ]
     cards = "".join(_cl)
+    # One plain line, no form and no details (Moses, 28 Nov 2026: a dated signal of what's planned).
+    it_line = ('<p style="font-size:13.5px;color:#3C3489;background:#EEEDFE;border-radius:10px;padding:.6rem .9rem;margin:.2rem 0 1rem">'
+               '<strong>IT Review Pack for IT firms</strong>, coming soon.</p>')
     if after_pro_launch():
         # From 1 Dec 2026 (Moses, 22 Nov: "so there is no confusion"): scans, then add-ons, then what's coming.
         # _cl order: 0 Free, 1 Fix prompts, 2 Bigger scan, 3 Deep scan, 4 Monitoring, 5 Self Fix.
@@ -9748,9 +9796,11 @@ def pricing_page():
                                         "The bigger and deep scans already include it.")
                  + f'<div class="pgrid">{_cl[1]}</div>'
                  + _h("Coming soon", "Not on sale yet. Join early access and we&rsquo;ll tell you once when they open.")
-                 + f'<div class="pgrid">{_cl[4]}{_cl[5]}</div>')
+                 + f'<div class="pgrid">{_cl[4]}{_cl[5]}{_cl[6]}</div>' + it_line)
+    else:
+        cards = cards + "</div>" + it_line + "<div>"      # before 1 Dec: the plain line under the single grid
     _opt = ('display:block;border:.5px solid #d3d1c7;border-radius:10px;padding:9px 11px;margin:0 0 8px;font-size:14px;cursor:pointer')
-    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Verilay Self Fix: early access</h2>'
+    fix_form = ('<div id="fix-interest" class="psurvey" style="background:#fff;border-color:#e5e3dc"><h2>Help with fixing: early access</h2>'
                 '<p>Not open yet. Tell us what you&rsquo;d want, and we&rsquo;ll email you once when it opens. Nothing else.</p>'
                 '<div style="font-weight:600;font-size:14px;margin:.4rem 0 .4rem">1. Which would you want?</div>'
                 f'<label style="{_opt}"><input type="radio" name="fix-opt" value="light"> <strong>Light, A$9.99 per app</strong><br>'
@@ -9758,6 +9808,16 @@ def pricing_page():
                 f'<label style="{_opt}"><input type="radio" name="fix-opt" value="full"> <strong>Full, A$29 per app</strong><br>'
                 '<span style="font-size:13px;color:#6b6966">About 10 rounds, the whole report. A full fix record (fixed, protected, left on '
                 'purpose, not checked) you can show a client or IT team.</span></label>'
+                f'<label style="{_opt}"><input type="radio" name="fix-opt" value="developer"> <strong>Have a developer fix it for me</strong> '
+                '(get a quote)<br><span style="font-size:13px;color:#6b6966">A developer fixes the problems in your report; you pay only when '
+                'a re-scan shows they&rsquo;re fixed.</span></label>'
+                '<div id="fix-dev-qs" style="display:none;margin:0 0 .6rem 1.4rem">'
+                '<div style="font-size:13.5px;font-weight:600;margin:.1rem 0 .3rem">What would you pay to have one problem fixed and verified?</div>'
+                '<select id="fix-pay" style="width:100%;max-width:360px;padding:8px;border-radius:8px;border:.5px solid #d3d1c7;font-size:14px;'
+                'font-family:inherit;margin-bottom:.5rem"><option value="">Choose one</option><option value="u50">Under A$50</option>'
+                '<option value="50-150">A$50 to A$150</option><option value="150p">More than A$150</option><option value="unsure">Not sure</option></select>'
+                '<label style="display:flex;gap:8px;font-size:13.5px;cursor:pointer"><input type="checkbox" id="fix-quote"> '
+                'Email me a quote when this opens</label></div>'
                 f'<label style="{_opt}"><input type="radio" name="fix-opt" value="neither"> Neither for now</label>'
                 '<div style="font-weight:600;font-size:14px;margin:.6rem 0 .4rem">2. What stage is your app at?</div>'
                 '<select id="fix-stage" style="width:100%;max-width:360px;padding:8px;border-radius:8px;border:.5px solid #d3d1c7;font-size:14px;'
@@ -9773,12 +9833,19 @@ def pricing_page():
                 """<script>(function(){var b=document.getElementById('fix-join');if(!b)return;b.onclick=async function(){
 var st=document.getElementById('fix-status'),em=(document.getElementById('fix-email').value||'').trim();
 if(!em){st.textContent='Add your email so we can tell you when it opens.';return;}b.disabled=true;st.textContent='';
-var o=document.querySelector('input[name="fix-opt"]:checked'),sg=document.getElementById('fix-stage');
+var o=document.querySelector('input[name="fix-opt"]:checked'),sg=document.getElementById('fix-stage'),
+pay=document.getElementById('fix-pay'),qt=document.getElementById('fix-quote');
 try{var r=await fetch('/pro/early-access',{method:'POST',headers:{'Content-Type':'application/json'},
-body:JSON.stringify({email:em,product:'fix',choice:o?o.value:'',stage:sg?sg.value:'',src:new URLSearchParams(location.search).get('src')||'',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
+body:JSON.stringify({email:em,product:'fix',choice:o?o.value:'',stage:sg?sg.value:'',pay:pay?pay.value:'',quote:!!(qt&&qt.checked),src:new URLSearchParams(location.search).get('src')||'',website:document.getElementById('fix-website').value})}).then(function(x){return x.json();});
 if(r.ok){st.textContent='You are on the list. We will email you once when Verilay Self Fix opens.';b.style.display='none';
 try{if(typeof plausible==='function')plausible('Fix Early Access Join');}catch(e){}return;}st.textContent=r.error||'It could not be sent. Try again.';}
-catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};})();</script>""")
+catch(e){st.textContent='It could not be sent. Try again.';}b.disabled=false;};
+function dev(){var d=document.getElementById('fix-dev-qs'),o=document.querySelector('input[name="fix-opt"]:checked');
+if(d)d.style.display=(o&&o.value==='developer')?'block':'none';}
+document.querySelectorAll('input[name="fix-opt"]').forEach(function(r){r.addEventListener('change',dev);});
+function fromHash(){if(location.hash==='#fix-developer'){var r=document.querySelector('input[name="fix-opt"][value="developer"]');
+if(r){r.checked=true;dev();}var f=document.getElementById('fix-interest');if(f)f.scrollIntoView({behavior:'smooth'});}}
+window.addEventListener('hashchange',fromHash);fromHash();})();</script>""")
     body = ("""<style>.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:1rem 0}
 .pc{background:#fff;border:.5px solid #e5e3dc;border-radius:12px;padding:1rem;display:flex;flex-direction:column}
 .pc.star{border:1.5px solid #534AB7}.pc h3{margin:0;font-size:16px}.pc .price{font-size:24px;font-weight:700;margin:.4rem 0 .1rem}

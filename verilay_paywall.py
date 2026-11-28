@@ -1273,10 +1273,16 @@ def pro_early_access_submit():
     src = body.get("src") if body.get("src") in ("report", "compare", "footer") else ""     # which "what's next" link brought them
     # 22 Nov 2026 (Moses: test Self Fix demand before building): which option (Light A$9.99 / Full A$29 / neither) and the
     # app's stage, kept in the waitlist source as "fix-<choice>|<stage>" so no new table is needed.
-    choice = body.get("choice") if body.get("choice") in ("light", "full", "neither") else ""
+    choice = body.get("choice") if body.get("choice") in ("light", "full", "neither", "developer") else ""
     stage = body.get("stage") if body.get("stage") in ("idea", "testing", "real-users", "paying") else ""
+    # 28 Nov 2026 (Moses): "have a developer fix it" also says what they'd pay and whether they want a quote.
+    pay = body.get("pay") if body.get("pay") in ("u50", "50-150", "150p", "unsure") else ""
+    quote = bool(body.get("quote")) if choice == "developer" else None
     if fix and choice:
-        source = f"fix-{choice}" + (f"|{stage}" if stage else "") + (f"|{src}" if src else "")
+        source = (f"fix-{choice}" + (f"|{stage}" if stage else "")
+                  + (f"|pay-{pay}" if choice == "developer" and pay else "")
+                  + (("|quote-yes" if quote else "|quote-no") if choice == "developer" else "")
+                  + (f"|{src}" if src else ""))
     else:
         source = (("fix-session-" + src) if src else "fix-session") if fix else "pro-scan"
     sb = _sb()
@@ -1288,8 +1294,12 @@ def pro_early_access_submit():
     if _mon_notify_ok():
         threading.Thread(target=notify.send_monitoring_interest_alert,
                          args=(email, "", ({"Interested in": "Verilay Self Fix (early access)",
-                                            "Option": {"light": "Light, A$9.99", "full": "Full, A$29", "neither": "Neither for now"}.get(choice, "not chosen"),
-                                            "App stage": stage or "not given"} if fix
+                                            "Option": {"light": "Light, A$9.99", "full": "Full, A$29", "neither": "Neither for now",
+                                                       "developer": "Have a developer fix it (quote)"}.get(choice, "not chosen"),
+                                            "App stage": stage or "not given",
+                                            **({"Would pay for one fix": {"u50": "under A$50", "50-150": "A$50-150", "150p": "A$150+",
+                                                                         "unsure": "not sure"}.get(pay, "not given"),
+                                                "Wants a quote": "yes" if quote else "no"} if choice == "developer" else {})} if fix
                                            else {"Interested in": "Verilay Pro scan, A$4.99 (early access)"}),
                                "From the Verilay Self Fix session card on the Pricing page." if fix
                                else "From the locked fix prompts after a light free scan."), daemon=True).start()
